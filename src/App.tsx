@@ -37,8 +37,10 @@ import {
 } from './utils/cloudDb';
 import { cacheSpotMetadata, getAllCachedSpots, subscribeNetworkStatus } from './utils/offlineStorage';
 import { loadLogsFromStorage, saveLogsToStorage } from './utils/storage';
+import { App as CapApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { setupHardwareBackButtonListener, isNativePlatform, getNativeLocation } from './utils/nativeBridge';
-import { parseOAuthCallback, processOAuthCallbackResult } from './services/oauthService';
+import { parseOAuthCallback, processOAuthCallbackResult, parseAppDeepLink } from './services/oauthService';
 import { APP_VERSION } from './version';
 
 export function App() {
@@ -62,7 +64,7 @@ export function App() {
   const [currentUser, setCurrentUser] = React.useState<AuthUser | null>(() => getSavedAuthUser());
   const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
 
-  // 네이버, 카카오, 구글 소셜 로그인 콜백 수신 및 자동 처리
+  // 네이버, 카카오, 구글 소셜 로그인 콜백 수신 및 자동 처리 (웹 SPA)
   React.useEffect(() => {
     const callbackData = parseOAuthCallback();
     if (callbackData) {
@@ -78,6 +80,41 @@ export function App() {
         }
       });
     }
+  }, []);
+
+  // 모바일 앱 딥링크 (com.tlogger.exfish://oauth?...) 리스너 등록
+  React.useEffect(() => {
+    let sub: any = null;
+    try {
+      sub = CapApp.addListener('appUrlOpen', async (data) => {
+        if (!data || !data.url) return;
+        if (data.url.startsWith('com.tlogger.exfish://oauth')) {
+          try {
+            await Browser.close();
+          } catch {}
+
+          const callbackData = parseAppDeepLink(data.url);
+          if (callbackData) {
+            processOAuthCallbackResult(callbackData).then((res) => {
+              if (res.user) {
+                setCurrentUser(res.user);
+                if (res.user.windUnit) setWindUnit(res.user.windUnit);
+                if (res.user.currentUnit) setCurrentUnit(res.user.currentUnit);
+                setIsLoginModalOpen(false);
+              }
+            });
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('Capacitor App listener not active:', e);
+    }
+
+    return () => {
+      if (sub && typeof sub.then === 'function') {
+        sub.then((s: any) => s.remove && s.remove());
+      }
+    };
   }, []);
 
   // 환경 데이터 상태

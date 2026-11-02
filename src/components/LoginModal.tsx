@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { DEFAULT_POPULAR_SPECIES, SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import type { CurrentUnit, WindUnit } from '../types';
-import { buildOAuthAuthorizeUrl, isUserAdmin, type AuthProvider } from '../services/oauthService';
+import { buildOAuthAuthorizeUrl, startSocialAuth, isUserAdmin, type AuthProvider } from '../services/oauthService';
 
 export interface AuthUser {
   id: string; // 닉네임 또는 계정 ID
@@ -252,15 +252,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
   };
 
-  const handleSocialAuth = (provider: AuthProvider) => {
+  const handleSocialAuth = async (provider: AuthProvider) => {
     setError('');
-    const res = buildOAuthAuthorizeUrl(provider);
+    const res = await startSocialAuth(provider);
     if (res.error) {
       setError(res.error);
-      return;
-    }
-    if (res.url) {
-      window.location.href = res.url;
     }
   };
 

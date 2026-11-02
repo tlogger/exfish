@@ -124,6 +124,25 @@
             };
 
             localStorage.setItem('exfish_kakao_auth_payload', JSON.stringify(authPayload));
+
+            // 모바일 앱(Capacitor) 딥링크 복귀 지원
+            var isApp = false;
+            try {
+              var rawState = searchParams.get('state');
+              if (rawState) {
+                var stateObj = JSON.parse(decodeURIComponent(rawState));
+                if (stateObj && stateObj.isApp) isApp = true;
+              }
+            } catch(e) {}
+
+            if (isApp) {
+              var appDeepLink = 'com.tlogger.exfish://oauth?provider=kakao&payload=' + encodeURIComponent(JSON.stringify(authPayload));
+              window.location.href = appDeepLink;
+              setTimeout(function() {
+                redirectBack();
+              }, 2500);
+              return;
+            }
           } else {
             console.warn('Kakao token exchange failed:', tokenData);
             // 메인 앱에서 재시도할 수 있도록 code 저장

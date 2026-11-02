@@ -3,6 +3,8 @@ import { saveAuthUser, getSavedUserPreferences } from '../components/LoginModal'
 import type { WindUnit, CurrentUnit } from '../types';
 import { getSavedCloudConfig } from '../utils/cloudDb';
 import { createClient } from '@supabase/supabase-js';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 
 export type AuthProvider = 'google' | 'kakao' | 'naver';
 
@@ -80,6 +82,10 @@ export function getOAuthClientConfig(): OAuthClientConfig {
 
 /** 현재 실행 호스트 기반 SPA 메인 경로 산출 */
 export function getOAuthMainRedirectUri(): string {
+  if (Capacitor.isNativePlatform()) {
+    // 모바일 앱 환경에서는 Google OAuth의 허용 도메인인 공식 GitHub Pages URL을 리다이렉트 URI로 제공
+    return 'https://tlogger.github.io/exfish/';
+  }
   const origin = window.location.origin;
   const basePath = window.location.pathname.startsWith('/exfish') ? '/exfish/' : '/';
   return `${origin}${basePath}`;
@@ -88,8 +94,9 @@ export function getOAuthMainRedirectUri(): string {
 /** 소셜 공급자별 OAuth2 인가 URL 생성 */
 export function buildOAuthAuthorizeUrl(provider: AuthProvider): { url: string; error?: string } {
   const config = getOAuthClientConfig();
-  const isLocal = typeof window !== 'undefined' && window.location.hostname === 'localhost';
-  const state = encodeURIComponent(JSON.stringify({ provider, t: Date.now() }));
+  const isNative = Capacitor.isNativePlatform();
+  const isLocal = !isNative && typeof window !== 'undefined' && window.location.hostname === 'localhost';
+  const state = encodeURIComponent(JSON.stringify({ provider, isApp: isNative, t: Date.now() }));
 
   if (provider === 'naver') {
     const callbackUrl = isLocal ? `${window.location.origin}/naverlogin` : config.naverCallbackUrl;
@@ -122,6 +129,81 @@ export function buildOAuthAuthorizeUrl(provider: AuthProvider): { url: string; e
   }
 
   return { url: '', error: '지원되지 않는 로그인 공급자입니다.' };
+}
+
+/**
+ * 소셜 로그인 시작 (웹에서는 location.href 이동, 모바일 앱에서는 Chrome Custom Tab 오픈)
+ */
+export async function startSocialAuth(provider: AuthProvider): Promise<{ error?: string }> {
+  const { url, error } = buildOAuthAuthorizeUrl(provider);
+  if (error || !url) {
+    return { error: error || '소셜 인증 인가 URL 생성에 실패했습니다.' };
+  }
+
+  if (Capacitor.isNativePlatform()) {
+    // 모바일 앱: Google WebView 차단(403 disallowed_useragent)을 우회하고 브라우저 기존 로그인 세션을 활용하기 위해 CCT 실행
+    try {
+      await Browser.open({ url, windowName: '_system' });
+    } catch (e) {
+      console.error('Failed to open browser:', e);
+      window.location.href = url;
+    }
+  } else {
+    // 일반 웹: 기존대로 페이지 이동
+    window.location.href = url;
+  }
+
+  return {};
+}
+
+/**
+ * 모바일 앱 딥링크 (com.tlogger.exfish://oauth?...) 파싱 헬퍼
+ */
+export function parseAppDeepLink(urlStr: string): {
+  provider: AuthProvider;
+  accessToken?: string;
+  code?: string;
+  directUser?: DirectUserPayload;
+  error?: string;
+} | null {
+  try {
+    const rawSearch = urlStr.includes('?') ? urlStr.substring(urlStr.indexOf('?') + 1) : '';
+    const params = new URLSearchParams(rawSearch);
+
+    // 1. 네이버/카카오에서 완성된 payload를 직접 전달한 경우
+    const payloadRaw = params.get('payload');
+    if (payloadRaw) {
+      const parsed = JSON.parse(decodeURIComponent(payloadRaw));
+      return {
+        provider: parsed.provider as AuthProvider,
+        accessToken: parsed.access_token,
+        directUser: {
+          id: parsed.id,
+          name: parsed.name,
+          email: parsed.email,
+          profile_image: parsed.profile_image,
+          provider: parsed.provider as AuthProvider,
+          access_token: parsed.access_token,
+        },
+      };
+    }
+
+    // 2. 구글 또는 URL 쿼리 파라미터 직접 수신
+    const provider = (params.get('provider') as AuthProvider) || 'google';
+    const accessToken = params.get('access_token') || undefined;
+    const code = params.get('code') || undefined;
+    const error = params.get('error_description') || params.get('error') || undefined;
+
+    return {
+      provider,
+      accessToken,
+      code,
+      error,
+    };
+  } catch (e) {
+    console.error('Failed to parse app deep link:', e);
+    return null;
+  }
 }
 
 export interface DirectUserPayload {
@@ -232,7 +314,8 @@ export async function processOAuthCallbackResult(callbackData: {
   if (provider === 'kakao' && code && !directUser) {
     try {
       const config = getOAuthClientConfig();
-      const isLocal = window.location.hostname === 'localhost';
+      const isNative = Capacitor.isNativePlatform();
+      const isLocal = !isNative && window.location.hostname === 'localhost';
       const callbackUrl = isLocal ? `${window.location.origin}/kakaologin` : config.kakaoCallbackUrl;
 
       const tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {

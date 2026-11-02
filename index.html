@@ -11,6 +11,25 @@
     <link rel="manifest" href="./manifest.json" />
     <title>ExFish - ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며...</title>
     <meta name="description" content="ExFish: ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며... 한국 연안 갯바위, 방파제, 해변 포인트 및 실시간 기상, 수온, 조류, 72시간 물때 시간표와 실측 조과 기록 플랫폼" />
+    <script>
+      (function() {
+        try {
+          var hash = window.location.hash || '';
+          var search = window.location.search || '';
+          var query = hash.substring(1) || search.substring(1);
+          if (query.indexOf('state=') !== -1) {
+            var params = new URLSearchParams(query);
+            var rawState = params.get('state');
+            if (rawState) {
+              var stateObj = JSON.parse(decodeURIComponent(rawState));
+              if (stateObj && stateObj.isApp) {
+                window.location.href = 'com.tlogger.exfish://oauth?' + query;
+              }
+            }
+          }
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

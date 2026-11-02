@@ -67,6 +67,16 @@
         return;
       }
 
+      // 모바일 앱(Capacitor) 딥링크 복귀 감지
+      var isApp = false;
+      try {
+        var stateMatch = (hash.match(/state=([^&]+)/) || search.match(/state=([^&]+)/));
+        if (stateMatch) {
+          var stateObj = JSON.parse(decodeURIComponent(stateMatch[1]));
+          if (stateObj && stateObj.isApp) isApp = true;
+        }
+      } catch(e) {}
+
       // 기본 세션 페이로드 준비
       var fallbackPayload = {
         provider: 'naver',
@@ -83,7 +93,12 @@
       var script = document.createElement('script');
       var timeout = setTimeout(function() {
         cleanup();
-        redirectBack();
+        if (isApp) {
+          window.location.href = 'com.tlogger.exfish://oauth?provider=naver&payload=' + encodeURIComponent(JSON.stringify(fallbackPayload));
+          setTimeout(redirectBack, 2500);
+        } else {
+          redirectBack();
+        }
       }, 1800);
 
       function cleanup() {
@@ -96,6 +111,7 @@
 
       window[callbackName] = function(data) {
         cleanup();
+        var finalPayload = fallbackPayload;
         try {
           if (data && data.response) {
             var profile = data.response;
@@ -104,7 +120,7 @@
             var realName = profile.nickname || profile.name || (realEmail ? realEmail.split('@')[0] : '') || '네이버 조사';
             var realPhoto = profile.profile_image || '';
 
-            var successPayload = {
+            finalPayload = {
               provider: 'naver',
               id: realId,
               name: realName,
@@ -113,17 +129,29 @@
               access_token: accessToken,
               timestamp: Date.now()
             };
-            localStorage.setItem('exfish_naver_auth_payload', JSON.stringify(successPayload));
+            localStorage.setItem('exfish_naver_auth_payload', JSON.stringify(finalPayload));
           }
         } catch (e) {
           console.error('Naver profile error:', e);
         }
+
+        if (isApp) {
+          window.location.href = 'com.tlogger.exfish://oauth?provider=naver&payload=' + encodeURIComponent(JSON.stringify(finalPayload));
+          setTimeout(redirectBack, 2500);
+          return;
+        }
+
         redirectBack();
       };
 
       script.onerror = function() {
         cleanup();
-        redirectBack();
+        if (isApp) {
+          window.location.href = 'com.tlogger.exfish://oauth?provider=naver&payload=' + encodeURIComponent(JSON.stringify(fallbackPayload));
+          setTimeout(redirectBack, 2500);
+        } else {
+          redirectBack();
+        }
       };
 
       script.src = 'https://openapi.naver.com/v1/nid/me?access_token=' + encodeURIComponent(accessToken) + '&oauth_callback=' + encodeURIComponent(callbackName);
