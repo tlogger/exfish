@@ -80,26 +80,63 @@ export function getOAuthClientConfig(): OAuthClientConfig {
   };
 }
 
+/** 네이티브 앱 환경 여부 (Capacitor, Android Bridge, WebView Origin 등 종합 판별) */
+export function isNativeApp(): boolean {
+  if (typeof window === 'undefined') return false;
+  // 1. Capacitor 공식 검사
+  if (Capacitor.isNativePlatform()) return true;
+  // 2. Android WebView bridge 객체 직접 검사
+  if ((window as any).androidBridge != null) return true;
+  // 3. Capacitor 글로벌 객체 검사
+  if ((window as any).Capacitor?.isNativePlatform?.()) return true;
+  // 4. Capacitor WebView origin/protocol 검사 (https://localhost:포트없음 또는 capacitor://)
+  if (window.location.protocol === 'capacitor:') return true;
+  if (window.location.origin === 'https://localhost') return true;
+  if (window.location.hostname === 'localhost' && !window.location.port) return true;
+  // 5. UserAgent 검사 (Android WebView / Capacitor)
+  if (typeof navigator !== 'undefined' && navigator.userAgent) {
+    if (/Capacitor|wv|Android.*Version\/[\d.]+/i.test(navigator.userAgent)) return true;
+  }
+  return false;
+}
+
 /** 현재 실행 호스트 기반 SPA 메인 경로 산출 */
 export function getOAuthMainRedirectUri(): string {
-  if (Capacitor.isNativePlatform()) {
+  if (isNativeApp()) {
     // 모바일 앱 환경에서는 Google OAuth의 허용 도메인인 공식 GitHub Pages URL을 리다이렉트 URI로 제공
     return 'https://tlogger.github.io/exfish/';
   }
-  const origin = window.location.origin;
-  const basePath = window.location.pathname.startsWith('/exfish') ? '/exfish/' : '/';
-  return `${origin}${basePath}`;
+  const isLocalDevWithPort =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+    Boolean(window.location.port);
+  if (isLocalDevWithPort) {
+    return `${window.location.origin}/`;
+  }
+  return 'https://tlogger.github.io/exfish/';
 }
 
 /** 소셜 공급자별 OAuth2 인가 URL 생성 */
 export function buildOAuthAuthorizeUrl(provider: AuthProvider): { url: string; error?: string } {
   const config = getOAuthClientConfig();
-  const isNative = Capacitor.isNativePlatform();
-  const isLocal = !isNative && typeof window !== 'undefined' && window.location.hostname === 'localhost';
+  const isNative = isNativeApp();
+  // PC 로컬 개발 (localhost:5173 등 실제 포트가 있는 경우)에서만 로컬 콜백 사용, 앱이나 배포에서는 절대 localhost 불허
+  const isLocalDevWithPort =
+    !isNative &&
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+    Boolean(window.location.port);
+
   const state = encodeURIComponent(JSON.stringify({ provider, isApp: isNative, t: Date.now() }));
 
   if (provider === 'naver') {
-    const callbackUrl = isLocal ? `${window.location.origin}/naverlogin` : config.naverCallbackUrl;
+    let callbackUrl = 'https://tlogger.github.io/exfish/naverlogin';
+    if (isLocalDevWithPort) {
+      callbackUrl = `${window.location.origin}/naverlogin`;
+    } else if (config.naverCallbackUrl && !config.naverCallbackUrl.includes('localhost')) {
+      callbackUrl = config.naverCallbackUrl;
+    }
+
     return {
       url: `https://nid.naver.com/oauth2.0/authorize?response_type=token&client_id=${encodeURIComponent(
         config.naverClientId
@@ -108,7 +145,13 @@ export function buildOAuthAuthorizeUrl(provider: AuthProvider): { url: string; e
   }
 
   if (provider === 'kakao') {
-    const callbackUrl = isLocal ? `${window.location.origin}/kakaologin` : config.kakaoCallbackUrl;
+    let callbackUrl = 'https://tlogger.github.io/exfish/kakaologin';
+    if (isLocalDevWithPort) {
+      callbackUrl = `${window.location.origin}/kakaologin`;
+    } else if (config.kakaoCallbackUrl && !config.kakaoCallbackUrl.includes('localhost')) {
+      callbackUrl = config.kakaoCallbackUrl;
+    }
+
     return {
       url: `https://kauth.kakao.com/oauth/authorize?client_id=${encodeURIComponent(
         config.kakaoClientId
@@ -135,24 +178,26 @@ export function buildOAuthAuthorizeUrl(provider: AuthProvider): { url: string; e
  * 소셜 로그인 시작 (웹에서는 location.href 이동, 모바일 앱에서는 Chrome Custom Tab 오픈)
  */
 export async function startSocialAuth(provider: AuthProvider): Promise<{ error?: string }> {
+  const isNative = isNativeApp();
   const { url, error } = buildOAuthAuthorizeUrl(provider);
   if (error || !url) {
     return { error: error || '소셜 인증 인가 URL 생성에 실패했습니다.' };
   }
 
-  if (Capacitor.isNativePlatform()) {
+  console.log('[startSocialAuth]', { provider, isNative, url });
+
+  if (isNative) {
     // 모바일 앱: Google WebView 차단(403 disallowed_useragent)을 우회하고 브라우저 기존 로그인 세션을 활용하기 위해 CCT 실행
     try {
       await Browser.open({ url, windowName: '_system' });
+      return {};
     } catch (e) {
-      console.error('Failed to open browser:', e);
-      window.location.href = url;
+      console.error('Failed to open Browser plugin, fallback to window.location:', e);
     }
-  } else {
-    // 일반 웹: 기존대로 페이지 이동
-    window.location.href = url;
   }
 
+  // 일반 웹: 기존대로 페이지 이동
+  window.location.href = url;
   return {};
 }
 
@@ -189,7 +234,16 @@ export function parseAppDeepLink(urlStr: string): {
     }
 
     // 2. 구글 또는 URL 쿼리 파라미터 직접 수신
-    const provider = (params.get('provider') as AuthProvider) || 'google';
+    let provider = (params.get('provider') as AuthProvider) || null;
+    const rawState = params.get('state');
+    if (!provider && rawState) {
+      try {
+        const stateObj = JSON.parse(decodeURIComponent(rawState));
+        if (stateObj?.provider) provider = stateObj.provider;
+      } catch {}
+    }
+    if (!provider) provider = 'google';
+
     const accessToken = params.get('access_token') || undefined;
     const code = params.get('code') || undefined;
     const error = params.get('error_description') || params.get('error') || undefined;
@@ -314,9 +368,13 @@ export async function processOAuthCallbackResult(callbackData: {
   if (provider === 'kakao' && code && !directUser) {
     try {
       const config = getOAuthClientConfig();
-      const isNative = Capacitor.isNativePlatform();
-      const isLocal = !isNative && window.location.hostname === 'localhost';
-      const callbackUrl = isLocal ? `${window.location.origin}/kakaologin` : config.kakaoCallbackUrl;
+      const isNative = isNativeApp();
+      const isLocalDevWithPort =
+        !isNative &&
+        typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+        Boolean(window.location.port);
+      const callbackUrl = isLocalDevWithPort ? `${window.location.origin}/kakaologin` : 'https://tlogger.github.io/exfish/kakaologin';
 
       const tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {
         method: 'POST',

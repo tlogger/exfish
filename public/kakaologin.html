@@ -145,11 +145,18 @@
             }
           } else {
             console.warn('Kakao token exchange failed:', tokenData);
-            // 메인 앱에서 재시도할 수 있도록 code 저장
+            if (isApp) {
+              window.location.href = 'com.tlogger.exfish://oauth?provider=kakao&code=' + encodeURIComponent(code);
+              return;
+            }
             localStorage.setItem('exfish_kakao_code', code);
           }
         } catch (e) {
           console.error('Kakao login processing failed:', e);
+          if (isApp) {
+            window.location.href = 'com.tlogger.exfish://oauth?provider=kakao&code=' + encodeURIComponent(code);
+            return;
+          }
           localStorage.setItem('exfish_kakao_code', code);
         }
       }

@@ -23,7 +23,8 @@
             if (rawState) {
               var stateObj = JSON.parse(decodeURIComponent(rawState));
               if (stateObj && stateObj.isApp) {
-                window.location.href = 'com.tlogger.exfish://oauth?' + query;
+                var provider = stateObj.provider || 'google';
+                window.location.href = 'com.tlogger.exfish://oauth?provider=' + encodeURIComponent(provider) + '&' + query;
               }
             }
           }

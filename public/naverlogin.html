@@ -62,11 +62,6 @@
         window.location.replace(cleanTarget);
       }
 
-      if (!accessToken) {
-        redirectBack();
-        return;
-      }
-
       // 모바일 앱(Capacitor) 딥링크 복귀 감지
       var isApp = false;
       try {
@@ -76,6 +71,15 @@
           if (stateObj && stateObj.isApp) isApp = true;
         }
       } catch(e) {}
+
+      if (!accessToken) {
+        if (isApp) {
+          window.location.href = 'com.tlogger.exfish://oauth?provider=naver&error=no_access_token';
+          return;
+        }
+        redirectBack();
+        return;
+      }
 
       // 기본 세션 페이로드 준비
       var fallbackPayload = {
