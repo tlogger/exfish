@@ -9,6 +9,9 @@
     "cap:build": "npm run build && npx cap sync android",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
+    "build:apk": "cd android && .\\gradlew.bat assembleRelease && cd .. && powershell -Command \"Copy-Item android/app/build/outputs/apk/release/exfish.apk public/exfish.apk -Force\" && npm run build",
+    "build:release": "npm run build && npx cap sync android && cd android && .\\gradlew.bat assembleRelease && .\\gradlew.bat bundleRelease && cd .. && powershell -Command \"Copy-Item android/app/build/outputs/apk/release/exfish.apk public/exfish.apk -Force\" && npm run build",
+    "sync:apk": "powershell -Command \"Copy-Item android/app/build/outputs/apk/release/exfish.apk public/exfish.apk -Force; Copy-Item public/exfish.apk dist/exfish.apk -Force\"",
     "lint": "oxlint",
     "preview": "vite preview"
   },
