@@ -29,16 +29,58 @@ export function getWeatherText(code: number): string {
   }
 }
 
-/** 0-360° 방위각을 16방위 텍스트(한국어)로 변환 */
+/** 0-360° 방위각을 16방위 순수 한국어 텍스트로 변환 */
 export function getCompassDirection(deg: number): string {
   const directions = [
-    '북(N)', '북북동(NNE)', '북동(NE)', '동북동(ENE)',
-    '동(E)', '동남동(ESE)', '남동(SE)', '남남동(SSE)',
-    '남(S)', '남남서(SSW)', '남서(SW)', '서남서(WSW)',
-    '서(W)', '서북서(WNW)', '북서(NW)', '북북서(NNW)'
+    '북', '북북동', '북동', '동북동',
+    '동', '동남동', '남동', '남남동',
+    '남', '남남서', '남서', '서남서',
+    '서', '서북서', '북서', '북북서'
   ];
-  const index = Math.round(deg / 22.5) % 16;
+  const norm = ((Number(deg) || 0) % 360 + 360) % 360;
+  const index = Math.round(norm / 22.5) % 16;
   return directions[index];
+}
+
+/**
+ * 한국 기상청 표준 풍향 표기 (바람이 불어오는 방위 기준 '~풍')
+ * 예: 0° -> '북풍' (북->남으로 부는 바람), 90° -> '동풍' (동->서로 부는 바람), 270° -> '서풍' (서->동으로 부는 바람)
+ */
+export function getWindDirectionKor(deg: number): string {
+  return `${getCompassDirection(deg)}풍`;
+}
+
+/**
+ * 풍향 각도(From)로부터 실제 바람이 불어가는 이동 방향(From -> To) 한국어 설명 반환
+ * 예: 90°(동풍) -> '동→서', 270°(서풍) -> '서→동', 0°(북풍) -> '북→남'
+ */
+export function getWindFlowDescKor(deg: number): string {
+  const directions8 = ['북', '북동', '동', '남동', '남', '남서', '서', '북서'];
+  const normFrom = ((Number(deg) || 0) % 360 + 360) % 360;
+  const normTo = (normFrom + 180) % 360;
+  const fromStr = directions8[Math.round(normFrom / 45) % 8];
+  const toStr = directions8[Math.round(normTo / 45) % 8];
+  return `${fromStr}→${toStr}`;
+}
+
+/**
+ * 조류·해류 유향(물이 흘러가는 방향, To)을 한국식 조류 방향으로 변환
+ * 예: 90° -> '동류(→동)', 180° -> '남류(↓남)', 270° -> '서류(←서)'
+ */
+export function getCurrentDirectionKor(deg: number): string {
+  const currentDirs8 = [
+    '북류(↑북)',
+    '북동류(↗북동)',
+    '동류(→동)',
+    '남동류(↘남동)',
+    '남류(↓남)',
+    '남서류(↙남서)',
+    '서류(←서)',
+    '북서류(↖북서)',
+  ];
+  const norm = ((Number(deg) || 0) % 360 + 360) % 360;
+  const index = Math.round(norm / 45) % 8;
+  return currentDirs8[index];
 }
 
 interface CachedItem<T> {

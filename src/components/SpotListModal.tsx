@@ -19,7 +19,12 @@ import type {
   FishingSpot,
   WindUnit
 } from '../types';
-import { formatCurrentVelocity, formatWindSpeed, getCompassDirection } from '../utils/weatherApi';
+import {
+  formatCurrentVelocity,
+  formatWindSpeed,
+  getCurrentDirectionKor,
+  getWindDirectionKor,
+} from '../utils/weatherApi';
 import { getDistanceKm } from '../utils/tideEngine';
 
 export type SpotSortOption = 'BITESCORE' | 'DISTANCE' | 'NAME' | 'LATEST';
@@ -331,7 +336,7 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                         <Wind size={12} className="text-cyan-400 shrink-0" />
                         <div className="truncate">
                           <span className="text-[10px] text-slate-400 block -mb-0.5">
-                            {getCompassDirection(env.windDir)}
+                            {getWindDirectionKor(env.windDir)}
                           </span>
                           <span className="font-bold text-cyan-300 font-mono">
                             {formatWindSpeed(env.windSpeed, windUnit)}
@@ -344,7 +349,7 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                         <Compass size={12} className="text-emerald-400 shrink-0" />
                         <div className="truncate">
                           <span className="text-[10px] text-slate-400 block -mb-0.5">
-                            {getCompassDirection(env.currentDir)}
+                            {getCurrentDirectionKor(env.currentDir)}
                           </span>
                           <span className="font-bold text-emerald-300 font-mono">
                             {formatCurrentVelocity(env.currentVel, currentUnit)}

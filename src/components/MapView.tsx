@@ -12,7 +12,13 @@ import { MaterialSpotMarker } from './MaterialSpotMarker';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo, SweetSpot } from '../types';
 import type { AuthUser } from './LoginModal';
 import { isUserAdmin } from '../services/oauthService';
-import { formatWindSpeed, formatCurrentVelocity, getCompassDirection } from '../utils/weatherApi';
+import {
+  formatWindSpeed,
+  formatCurrentVelocity,
+  getWindDirectionKor,
+  getWindFlowDescKor,
+  getCurrentDirectionKor,
+} from '../utils/weatherApi';
 import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
 import { generateDynamicBathymetryContours } from '../utils/dynamicBathymetryEngine';
 import {
@@ -1309,7 +1315,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   clickable={false}
                 >
                   <div className="px-2 py-0.5 rounded-full text-[9px] font-bold font-mono shadow-xl border pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1 bg-slate-950/95 text-cyan-300 border-cyan-400/80">
-                    <span>💨 {getCompassDirection(weather.windDirection)}풍 {formatWindSpeed(weather.windSpeed, windUnit)}</span>
+                    <span>💨 {getWindDirectionKor(weather.windDirection)}({getWindFlowDescKor(weather.windDirection)}) {formatWindSpeed(weather.windSpeed, windUnit)}</span>
                   </div>
                 </CustomOverlayMap>
 
@@ -1451,7 +1457,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   clickable={false}
                 >
                   <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/70 text-[9px] font-bold shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                    🌊 조류 ({formatCurrentVelocity(marine.currentVelocity, currentUnit)}, {getCompassDirection(marine.currentDirection)})
+                    🌊 조류 ({formatCurrentVelocity(marine.currentVelocity, currentUnit)}, {getCurrentDirectionKor(marine.currentDirection)})
                   </div>
                 </CustomOverlayMap>
               </React.Fragment>

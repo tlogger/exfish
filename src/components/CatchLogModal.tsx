@@ -2,7 +2,12 @@ import React from 'react';
 import { ArrowUp, Clock, Compass, RefreshCw, ShieldAlert } from 'lucide-react';
 import type { CatchLog, CurrentUnit, FishingMethod, TideDayInfo, WeatherData, WindUnit } from '../types';
 import { syncCatchEnvironment } from '../utils/catchSync';
-import { formatCurrentVelocity, formatWindSpeed, getCompassDirection } from '../utils/weatherApi';
+import {
+  formatCurrentVelocity,
+  formatWindSpeed,
+  getWindDirectionKor,
+  getWindFlowDescKor,
+} from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import { compressImageFile } from '../utils/exifExtractor';
@@ -25,17 +30,23 @@ interface CatchLogModalProps {
   onSaveLog: (logData: Omit<CatchLog, 'id' | 'created_at'>) => void;
 }
 
-// 8방위 빠른 선택 프리셋
-const WIND_DIR_PRESETS: { label: string; deg: number }[] = [
-  { label: '북 (N)', deg: 0 },
-  { label: '북동 (NE)', deg: 45 },
-  { label: '동 (E)', deg: 90 },
-  { label: '남동 (SE)', deg: 135 },
-  { label: '남 (S)', deg: 180 },
-  { label: '남서 (SW)', deg: 225 },
-  { label: '서 (W)', deg: 270 },
-  { label: '북서 (NW)', deg: 315 },
+// 한국 기상청 표준 8방위 풍향 프리셋 (불어오는 방향 기준 '~풍' + 실제 바람 진행 화살표)
+const WIND_DIR_PRESETS: { label: string; arrow: string; flow: string; deg: number }[] = [
+  { label: '북풍', arrow: '↓', flow: '북→남', deg: 0 },
+  { label: '북동풍', arrow: '↙', flow: '북동→남서', deg: 45 },
+  { label: '동풍', arrow: '←', flow: '동→서', deg: 90 },
+  { label: '남동풍', arrow: '↖', flow: '남동→북서', deg: 135 },
+  { label: '남풍', arrow: '↑', flow: '남→북', deg: 180 },
+  { label: '남서풍', arrow: '↗', flow: '남서→북동', deg: 225 },
+  { label: '서풍', arrow: '→', flow: '서→동', deg: 270 },
+  { label: '북서풍', arrow: '↘', flow: '북서→남동', deg: 315 },
 ];
+
+/** 두 방위각(0-360°) 사이의 최소 사잇각(0-180°) 계산 */
+function getAngularDiff(a: number, b: number): number {
+  const diff = Math.abs(((a - b) % 360 + 360) % 360);
+  return diff > 180 ? 360 - diff : diff;
+}
 
 /** 시작 시각과 종료 시각(HH:mm)으로부터 경과 시간(분)을 계산 */
 function calcDurationMinutes(start: string, end: string): number {
@@ -228,6 +239,9 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       setTideState(syncRes.tide_state);
       setWaterTemp(syncRes.water_temp);
       setWindSpeed(syncRes.wind_speed);
+      if (syncRes.wind_direction != null) {
+        setWindDirection(syncRes.wind_direction);
+      }
       if (syncRes.current_velocity != null) {
         setSimCurrentVel(syncRes.current_velocity);
       }
@@ -697,43 +711,51 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               </button>
             </div>
 
-            {/* 풍향(Wind Direction) 나침반 및 각도 선택기 */}
+            {/* 풍향(Wind Direction) 나침반 및 한국식 풍향 선택기 */}
             <div className="p-2.5 rounded-lg bg-slate-900/90 border border-blue-900/50 space-y-2">
               <div className="flex justify-between items-center text-xs">
                 <div className="flex items-center gap-2">
+                  {/* ArrowUp(↑)을 바람 진행 방향((windDirection + 180) % 360)으로 회전: 동풍(90°)이면 서쪽(←, 270°)을 가리킴 */}
                   <div
                     className="w-6 h-6 rounded-full bg-blue-600/30 border border-blue-400 flex items-center justify-center transition-transform duration-300"
-                    style={{ transform: `rotate(${windDirection}deg)` }}
-                    title={`풍향: ${windDirection}°`}
+                    style={{ transform: `rotate(${(windDirection + 180) % 360}deg)` }}
+                    title={`${getWindDirectionKor(windDirection)} (${getWindFlowDescKor(windDirection)} 진행, ${windDirection}°)`}
                   >
                     <ArrowUp size={14} className="text-cyan-300" />
                   </div>
                   <div>
                     <span className="text-slate-300 font-medium">당시 풍향: </span>
                     <strong className="text-cyan-300 font-mono font-bold">
-                      {windDirection}° ({getCompassDirection(windDirection)})
+                      {getWindDirectionKor(windDirection)} ({getWindFlowDescKor(windDirection)}, {windDirection}°)
                     </strong>
                   </div>
                 </div>
-                <span className="text-[11px] text-slate-400">바람 불어오는 방향</span>
+                <span className="text-[11px] text-slate-400">화살표 = 바람 진행 방향</span>
               </div>
 
-              {/* 8방위 빠른 선택 칩 */}
+              {/* 한국식 8방위 풍향 빠른 선택 칩 */}
               <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 pt-1">
-                {WIND_DIR_PRESETS.map((p) => (
-                  <button
-                    key={p.deg}
-                    type="button"
-                    onClick={() => setWindDirection(p.deg)}
-                    className={`px-1 py-1 rounded text-[10px] font-medium transition ${
-                      Math.abs(windDirection - p.deg) < 22.5
-                        ? 'bg-cyan-500 text-slate-950 font-bold ring-1 ring-cyan-300'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-750'
-                    }`}
-                  >
-                    {p.label.split(' ')[0]}
-                  </button>
-                ))}
+                {WIND_DIR_PRESETS.map((p) => {
+                  const isSelected = getAngularDiff(windDirection, p.deg) <= 22.5;
+                  return (
+                    <button
+                      key={p.deg}
+                      type="button"
+                      onClick={() => setWindDirection(p.deg)}
+                      title={`${p.label} (${p.flow} 방향으로 부는 바람)`}
+                      className={`px-1 py-1.5 rounded text-[10.5px] font-medium transition flex flex-col items-center justify-center leading-tight ${
+                        isSelected
+                          ? 'bg-cyan-500 text-slate-950 font-bold ring-1 ring-cyan-300'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-750'
+                      }`}
+                    >
+                      <span>{p.label}</span>
+                      <span className={`text-[9px] ${isSelected ? 'text-slate-900 font-bold' : 'text-cyan-400/80'}`}>
+                        {p.arrow} {p.flow}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

@@ -93,8 +93,11 @@ export function generatePostMortemReport(input: PostMortemInput): PostMortemRepo
   }
 
   // 4. 캐스팅 맞바람 성분 세기
-  const windAngleDiff = Math.abs(((currentWindDir - castingBearingDeg + 180) % 360) - 180);
-  // windAngleDiff: 0도(등바람), 180도(맞바람)
+  // currentWindDir는 불어오는 방향(From)이므로 실제 바람 진행 방향(To)은 (currentWindDir + 180) % 360
+  const windVectorDeg = (currentWindDir + 180) % 360;
+  const rawWindDiff = Math.abs(windVectorDeg - castingBearingDeg) % 360;
+  const windAngleDiff = rawWindDiff > 180 ? 360 - rawWindDiff : rawWindDiff;
+  // windAngleDiff: 0도(등바람), 180도(정면 맞바람)
   const isHeadwind = windAngleDiff > 120;
   const headwindFactor = Math.max(0, Math.cos((windAngleDiff * Math.PI) / 180) * -1);
   const headwindRaw = isHeadwind

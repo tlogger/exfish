@@ -54,7 +54,15 @@ import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudD
 import { SPECIES_ENCYCLOPEDIA, type SpeciesCategory, type SpeciesEcology } from '../utils/speciesDatabase';
 import { SpeciesQuickModal } from './SpeciesQuickModal';
 import { getSpeciesRigInfo } from '../utils/speciesRigs';
-import { formatCurrentVelocity, formatWindSpeed, getCompassDirection, getWeatherText, getWindyWebUrl } from '../utils/weatherApi';
+import {
+  formatCurrentVelocity,
+  formatWindSpeed,
+  getCurrentDirectionKor,
+  getWeatherText,
+  getWindDirectionKor,
+  getWindFlowDescKor,
+  getWindyWebUrl,
+} from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { playEvacuationBeep } from '../utils/tideAlertSound';
 import { sendEmergencyEvacuationNotification, requestNotificationPermission } from '../utils/nativeBridge';
@@ -1337,7 +1345,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               isWindDanger ? 'bg-rose-500/30 text-rose-200' : 'bg-cyan-500/20 text-cyan-300'
                             }`}
                             style={{ transform: `rotate(${simWindDir}deg)` }}
-                            title={`풍향 ${Math.round(simWindDir)}°`}
+                            title={`${getWindDirectionKor(simWindDir)} (${getWindFlowDescKor(simWindDir)} 진행, ${Math.round(simWindDir)}°)`}
                           >
                             ↓
                           </div>
@@ -1354,8 +1362,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         >
                           {formatWindSpeed(simWindSpeed, windUnit)}
                         </div>
-                        <div className={`text-[11px] font-medium shrink-0 ml-1 ${isWindDanger ? 'text-rose-300' : 'text-slate-300'}`}>
-                          {getCompassDirection(simWindDir)}
+                        <div
+                          className={`text-[11px] font-medium shrink-0 ml-1 ${isWindDanger ? 'text-rose-300' : 'text-slate-300'}`}
+                          title={`${getWindFlowDescKor(simWindDir)} 방향으로 부는 바람`}
+                        >
+                          {getWindDirectionKor(simWindDir)} ({getWindFlowDescKor(simWindDir)})
                         </div>
                       </div>
                       <div className={`text-[10px] flex justify-between pt-1 border-t ${isWindDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-400'}`}>
@@ -1407,7 +1418,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               isCurrentDanger ? 'bg-rose-500/30 text-rose-200' : 'bg-emerald-500/20 text-emerald-300'
                             }`}
                             style={{ transform: `rotate(${simCurrentDir}deg)` }}
-                            title={`조류방향 ${Math.round(simCurrentDir)}°`}
+                            title={`조류 진행 방향 ${getCurrentDirectionKor(simCurrentDir)} (${Math.round(simCurrentDir)}°)`}
                           >
                             ↑
                           </div>
@@ -1425,7 +1436,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           {formatCurrentVelocity(simCurrentVel, currentUnit)}
                         </div>
                         <div className={`text-[11px] font-medium shrink-0 ml-1 ${isCurrentDanger ? 'text-rose-300' : 'text-slate-300'}`}>
-                          {getCompassDirection(simCurrentDir)}
+                          {getCurrentDirectionKor(simCurrentDir)}
                         </div>
                       </div>
                       <div className={`text-[10px] pt-1 border-t flex justify-between ${isCurrentDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-400'}`}>
@@ -2267,7 +2278,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       </span>
                       {log.wind_direction != null && (
                         <span className="px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-200 border border-cyan-800/60 font-mono flex items-center gap-1">
-                          🧭 {log.wind_direction}° ({getCompassDirection(log.wind_direction)})
+                          🧭 {getWindDirectionKor(log.wind_direction)} ({getWindFlowDescKor(log.wind_direction)})
                         </span>
                       )}
                       {log.current_velocity != null && (
