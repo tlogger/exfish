@@ -15,9 +15,6 @@ import { isUserAdmin } from '../services/oauthService';
 import {
   formatWindSpeed,
   formatCurrentVelocity,
-  getWindDirectionKor,
-  getWindFlowDescKor,
-  getCurrentDirectionKor,
 } from '../utils/weatherApi';
 import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
 import { generateDynamicBathymetryContours } from '../utils/dynamicBathymetryEngine';
@@ -1315,7 +1312,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   clickable={false}
                 >
                   <div className="px-2 py-0.5 rounded-full text-[9px] font-bold font-mono shadow-xl border pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1 bg-slate-950/95 text-cyan-300 border-cyan-400/80">
-                    <span>💨 {getWindDirectionKor(weather.windDirection)}({getWindFlowDescKor(weather.windDirection)}) {formatWindSpeed(weather.windSpeed, windUnit)}</span>
+                    <span>💨 {formatWindSpeed(weather.windSpeed, windUnit)}</span>
                   </div>
                 </CustomOverlayMap>
 
@@ -1457,7 +1454,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   clickable={false}
                 >
                   <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/70 text-[9px] font-bold shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                    🌊 조류 ({formatCurrentVelocity(marine.currentVelocity, currentUnit)}, {getCurrentDirectionKor(marine.currentDirection)})
+                    🌊 {formatCurrentVelocity(marine.currentVelocity, currentUnit)}
                   </div>
                 </CustomOverlayMap>
               </React.Fragment>

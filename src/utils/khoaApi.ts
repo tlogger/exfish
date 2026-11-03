@@ -124,23 +124,30 @@ export async function fetchKhoaTideLevel(
   }
 }
 
-/** 2. 조위관측소 실측 풍향/풍속 조회 (가장 최근 실측치 반환) */
+/** 당일 1분 단위 KHOA 시계열(1440건)에서 현재 시각이 포함된 최신 페이지 번호(numOfRows=300 기준 1~5) 산출 */
+function getCurrentMinutePageNo(): number {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  return Math.min(5, Math.max(1, Math.ceil((mins + 5) / 300)));
+}
+
+/** 2. 조위관측소 실측 풍향/풍속 조회 (당일 현재 시각에 해당하는 최신 페이지 조회) */
 export async function fetchKhoaWind(
   obsCode: string,
   dateStr: string = getTodayString()
 ): Promise<KhoaWindRecord | null> {
   const cleanDate = dateStr.replace(/-/g, '');
   const baseUrl = getKhoaApiBaseUrl();
-  const url = `${baseUrl}/1192136/surveyWind/GetSurveyWindApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=60`;
+  const targetPage = getCurrentMinutePageNo();
 
-  try {
+  const tryFetchPage = async (pageNo: number): Promise<KhoaWindRecord | null> => {
+    const url = `${baseUrl}/1192136/surveyWind/GetSurveyWindApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=300&pageNo=${pageNo}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     const items = json?.body?.items?.item;
     if (!Array.isArray(items) || items.length === 0) return null;
 
-    // 가장 최근 유효 관측치 (마지막 인덱스 또는 뒤에서 유효값 탐색)
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
       if (it.wspd != null && it.wndrct != null && !isNaN(Number(it.wspd))) {
@@ -155,22 +162,32 @@ export async function fetchKhoaWind(
       }
     }
     return null;
+  };
+
+  try {
+    const latest = await tryFetchPage(targetPage);
+    if (latest) return latest;
+    if (targetPage > 1) {
+      return await tryFetchPage(targetPage - 1);
+    }
+    return null;
   } catch (e) {
     console.warn(`[KHOA API] fetchKhoaWind failed (${obsCode}):`, e);
     return null;
   }
 }
 
-/** 3. 조위관측소 실측 수온 조회 (가장 최근 실측치 반환) */
+/** 3. 조위관측소 실측 수온 조회 (당일 현재 시각에 해당하는 최신 페이지 조회) */
 export async function fetchKhoaWaterTemp(
   obsCode: string,
   dateStr: string = getTodayString()
 ): Promise<KhoaWaterTempRecord | null> {
   const cleanDate = dateStr.replace(/-/g, '');
   const baseUrl = getKhoaApiBaseUrl();
-  const url = `${baseUrl}/1192136/surveyWaterTemp/GetSurveyWaterTempApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=60`;
+  const targetPage = getCurrentMinutePageNo();
 
-  try {
+  const tryFetchPage = async (pageNo: number): Promise<KhoaWaterTempRecord | null> => {
+    const url = `${baseUrl}/1192136/surveyWaterTemp/GetSurveyWaterTempApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=300&pageNo=${pageNo}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
@@ -188,6 +205,15 @@ export async function fetchKhoaWaterTemp(
           wtem: Math.round(Number(it.wtem) * 10) / 10,
         };
       }
+    }
+    return null;
+  };
+
+  try {
+    const latest = await tryFetchPage(targetPage);
+    if (latest) return latest;
+    if (targetPage > 1) {
+      return await tryFetchPage(targetPage - 1);
     }
     return null;
   } catch (e) {

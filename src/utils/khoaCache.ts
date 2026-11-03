@@ -34,9 +34,10 @@ export async function getCachedKhoaDepth(lat: number, lng: number): Promise<Khoa
   );
 }
 
-/** 2. 조위관측소 실측 풍향/풍속 중앙 DB 캐시 취득 (15분 유효) */
+/** 2. 조위관측소 실측 풍향/풍속 중앙 DB 캐시 취득 (15분 슬롯 유효) */
 export async function getCachedKhoaWind(obsCode: string): Promise<KhoaWindRecord | null> {
-  const cacheKey = `WIND:${obsCode}`;
+  const slot = Math.floor(Date.now() / (15 * 60 * 1000));
+  const cacheKey = `WIND_V2:${obsCode}:${slot}`;
   const ttlMs = 15 * 60 * 1000; // 15분
 
   return getOrFetchKhoaData<KhoaWindRecord>(
@@ -48,9 +49,10 @@ export async function getCachedKhoaWind(obsCode: string): Promise<KhoaWindRecord
   );
 }
 
-/** 3. 조위관측소 실측 수온 중앙 DB 캐시 취득 (30분 유효) */
+/** 3. 조위관측소 실측 수온 중앙 DB 캐시 취득 (30분 슬롯 유효) */
 export async function getCachedKhoaWaterTemp(obsCode: string): Promise<KhoaWaterTempRecord | null> {
-  const cacheKey = `TEMP:${obsCode}`;
+  const slot = Math.floor(Date.now() / (30 * 60 * 1000));
+  const cacheKey = `TEMP_V2:${obsCode}:${slot}`;
   const ttlMs = 30 * 60 * 1000; // 30분
 
   return getOrFetchKhoaData<KhoaWaterTempRecord>(

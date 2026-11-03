@@ -5,8 +5,6 @@ import { syncCatchEnvironment } from '../utils/catchSync';
 import {
   formatCurrentVelocity,
   formatWindSpeed,
-  getWindDirectionKor,
-  getWindFlowDescKor,
 } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
@@ -711,30 +709,22 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               </button>
             </div>
 
-            {/* 풍향(Wind Direction) 나침반 및 한국식 풍향 선택기 */}
+            {/* 풍향(Wind Direction) 화살표 선택기 (텍스트 없이 직관적 방향 화살표만 표출) */}
             <div className="p-2.5 rounded-lg bg-slate-900/90 border border-blue-900/50 space-y-2">
-              <div className="flex justify-between items-center text-xs">
+              <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  {/* ArrowUp(↑)을 바람 진행 방향((windDirection + 180) % 360)으로 회전: 동풍(90°)이면 서쪽(←, 270°)을 가리킴 */}
+                  <span className="text-slate-300 font-medium">당시 풍향</span>
                   <div
                     className="w-6 h-6 rounded-full bg-blue-600/30 border border-blue-400 flex items-center justify-center transition-transform duration-300"
                     style={{ transform: `rotate(${(windDirection + 180) % 360}deg)` }}
-                    title={`${getWindDirectionKor(windDirection)} (${getWindFlowDescKor(windDirection)} 진행, ${windDirection}°)`}
                   >
                     <ArrowUp size={14} className="text-cyan-300" />
                   </div>
-                  <div>
-                    <span className="text-slate-300 font-medium">당시 풍향: </span>
-                    <strong className="text-cyan-300 font-mono font-bold">
-                      {getWindDirectionKor(windDirection)} ({getWindFlowDescKor(windDirection)}, {windDirection}°)
-                    </strong>
-                  </div>
                 </div>
-                <span className="text-[11px] text-slate-400">화살표 = 바람 진행 방향</span>
               </div>
 
-              {/* 한국식 8방위 풍향 빠른 선택 칩 */}
-              <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 pt-1">
+              {/* 8방위 바람 진행 방향 화살표 선택 칩 */}
+              <div className="grid grid-cols-8 gap-1 pt-0.5">
                 {WIND_DIR_PRESETS.map((p) => {
                   const isSelected = getAngularDiff(windDirection, p.deg) <= 22.5;
                   return (
@@ -742,17 +732,13 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                       key={p.deg}
                       type="button"
                       onClick={() => setWindDirection(p.deg)}
-                      title={`${p.label} (${p.flow} 방향으로 부는 바람)`}
-                      className={`px-1 py-1.5 rounded text-[10.5px] font-medium transition flex flex-col items-center justify-center leading-tight ${
+                      className={`py-1.5 rounded text-sm font-bold transition flex items-center justify-center ${
                         isSelected
-                          ? 'bg-cyan-500 text-slate-950 font-bold ring-1 ring-cyan-300'
-                          : 'bg-slate-800 text-slate-300 hover:bg-slate-750'
+                          ? 'bg-cyan-500 text-slate-950 ring-1 ring-cyan-300'
+                          : 'bg-slate-800 text-cyan-300 hover:bg-slate-750'
                       }`}
                     >
-                      <span>{p.label}</span>
-                      <span className={`text-[9px] ${isSelected ? 'text-slate-900 font-bold' : 'text-cyan-400/80'}`}>
-                        {p.arrow} {p.flow}
-                      </span>
+                      {p.arrow}
                     </button>
                   );
                 })}

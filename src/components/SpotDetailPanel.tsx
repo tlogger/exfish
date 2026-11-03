@@ -57,10 +57,7 @@ import { getSpeciesRigInfo } from '../utils/speciesRigs';
 import {
   formatCurrentVelocity,
   formatWindSpeed,
-  getCurrentDirectionKor,
   getWeatherText,
-  getWindDirectionKor,
-  getWindFlowDescKor,
   getWindyWebUrl,
 } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
@@ -1341,17 +1338,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                             </span>
                           ) : null}
                           <div
-                            className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold transition-transform duration-300 ${
+                            className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold transition-transform duration-300 ${
                               isWindDanger ? 'bg-rose-500/30 text-rose-200' : 'bg-cyan-500/20 text-cyan-300'
                             }`}
                             style={{ transform: `rotate(${simWindDir}deg)` }}
-                            title={`${getWindDirectionKor(simWindDir)} (${getWindFlowDescKor(simWindDir)} 진행, ${Math.round(simWindDir)}°)`}
                           >
                             ↓
                           </div>
-                          <span className={`text-[10px] font-mono ${isWindDanger ? 'text-rose-300' : ''}`}>
-                            {Math.round(simWindDir)}°
-                          </span>
                         </div>
                       </div>
                       <div className="flex items-baseline justify-between mt-0.5">
@@ -1361,12 +1354,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           }`}
                         >
                           {formatWindSpeed(simWindSpeed, windUnit)}
-                        </div>
-                        <div
-                          className={`text-[11px] font-medium shrink-0 ml-1 ${isWindDanger ? 'text-rose-300' : 'text-slate-300'}`}
-                          title={`${getWindFlowDescKor(simWindDir)} 방향으로 부는 바람`}
-                        >
-                          {getWindDirectionKor(simWindDir)} ({getWindFlowDescKor(simWindDir)})
                         </div>
                       </div>
                       <div className={`text-[10px] flex justify-between pt-1 border-t ${isWindDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-400'}`}>
@@ -1414,17 +1401,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                             </span>
                           ) : null}
                           <div
-                            className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold transition-transform duration-300 ${
+                            className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold transition-transform duration-300 ${
                               isCurrentDanger ? 'bg-rose-500/30 text-rose-200' : 'bg-emerald-500/20 text-emerald-300'
                             }`}
                             style={{ transform: `rotate(${simCurrentDir}deg)` }}
-                            title={`조류 진행 방향 ${getCurrentDirectionKor(simCurrentDir)} (${Math.round(simCurrentDir)}°)`}
                           >
                             ↑
                           </div>
-                          <span className={`text-[10px] font-mono ${isCurrentDanger ? 'text-rose-300' : ''}`}>
-                            {Math.round(simCurrentDir)}°
-                          </span>
                         </div>
                       </div>
                       <div className="flex items-baseline justify-between mt-0.5">
@@ -1434,9 +1417,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           }`}
                         >
                           {formatCurrentVelocity(simCurrentVel, currentUnit)}
-                        </div>
-                        <div className={`text-[11px] font-medium shrink-0 ml-1 ${isCurrentDanger ? 'text-rose-300' : 'text-slate-300'}`}>
-                          {getCurrentDirectionKor(simCurrentDir)}
                         </div>
                       </div>
                       <div className={`text-[10px] pt-1 border-t flex justify-between ${isCurrentDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-400'}`}>
@@ -2273,14 +2253,18 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-900/60">
                         🌡️ 수온 {log.water_temp}°C
                       </span>
-                      <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-900/60">
-                        💨 풍속 {formatWindSpeed(log.wind_speed, windUnit)}
+                      <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-900/60 inline-flex items-center gap-1">
+                        <span>💨</span>
+                        {log.wind_direction != null && (
+                          <span
+                            className="inline-flex items-center justify-center w-3.5 h-3.5 font-bold"
+                            style={{ transform: `rotate(${log.wind_direction}deg)` }}
+                          >
+                            ↓
+                          </span>
+                        )}
+                        <span>{formatWindSpeed(log.wind_speed, windUnit)}</span>
                       </span>
-                      {log.wind_direction != null && (
-                        <span className="px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-200 border border-cyan-800/60 font-mono flex items-center gap-1">
-                          🧭 {getWindDirectionKor(log.wind_direction)} ({getWindFlowDescKor(log.wind_direction)})
-                        </span>
-                      )}
                       {log.current_velocity != null && (
                         <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-900/60 font-mono">
                           🧭 조류 {formatCurrentVelocity(log.current_velocity, currentUnit)}

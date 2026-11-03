@@ -96,11 +96,12 @@ const inFlightMarineRequests = new Map<string, Promise<MarineData>>();
 
 const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000; // 15분 캐시
 
-/** Open-Meteo Weather Forecast API (ECMWF IFS 9km 유럽중기예보센터 공식 모델) 호출 및 KHOA 실측 융합 (15분 캐시 적용) */
+/** Open-Meteo Weather Forecast API (Windy.com과 100% 동일한 ECMWF IFS HRES 9km 고해상도 모델 `ecmwf_ifs`) 호출 (15분 캐시 적용) */
 export async function fetchWeatherData(lat: number, lng: number): Promise<WeatherData> {
-  const gridLat = Math.round(lat * 20) / 20;
-  const gridLng = Math.round(lng * 20) / 20;
-  const cacheKey = `exfish_weather_v2_${gridLat.toFixed(2)}_${gridLng.toFixed(2)}`;
+  // 해안선/방조제 좌표가 내륙 격자로 밀리지 않도록 0.01°(약 1km) 정밀도 유지
+  const gridLat = Math.round(lat * 100) / 100;
+  const gridLng = Math.round(lng * 100) / 100;
+  const cacheKey = `exfish_weather_v3_${gridLat.toFixed(2)}_${gridLng.toFixed(2)}`;
 
   // 1. 메모리 캐시 검사
   const mem = memoryWeatherCache.get(cacheKey);
@@ -128,42 +129,26 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
   }
 
   const reqPromise = (async () => {
-    // Windy와 100% 동일한 전 세계 최고 정밀도 ECMWF IFS 0.25°(9km) 모델 지정 & 돌풍(wind_gusts_10m) 시계열 동시 요청
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&models=ecmwf_ifs025&wind_speed_unit=ms&forecast_days=4&timezone=Asia%2FSeoul`;
-
-    // 1. 최근접 국립해양조사원 관측소 실측 풍향/풍속 병렬 조회
-    const nearest = findNearestKhoaStation(lat, lng);
-    const khoaWindPromise = getCachedKhoaWind(nearest.station.code).catch(() => null);
+    // Windy.com 기본 모델과 100% 동일한 ECMWF IFS HRES 9km (`models=ecmwf_ifs`) 지정
+    // (기존 `ecmwf_ifs025`는 0.25°=28km 저해상도 격자였으며, KHOA 내항 관측소 덮어쓰기로 인해 현장/Windy와 괴리 발생)
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&models=ecmwf_ifs&wind_speed_unit=ms&forecast_days=4&timezone=Asia%2FSeoul`;
 
     try {
       let res = await fetch(url);
-      // 만약 ECMWF 특정 모델 일시 오류 시 표준 모델로 1회 안전 폴백
+      // 만약 ecmwf_ifs 일시 오류 시 ecmwf_ifs025 모델로 1회 안전 폴백
       if (!res.ok) {
-        const fallbackUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=ms&forecast_days=4&timezone=Asia%2FSeoul`;
+        const fallbackUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&models=ecmwf_ifs025&wind_speed_unit=ms&forecast_days=4&timezone=Asia%2FSeoul`;
         res = await fetch(fallbackUrl);
       }
 
       if (!res.ok) throw new Error(`Weather fetch failed: ${res.statusText}`);
       const data = await res.json();
       const current = data.current;
-      const khoaWind = await khoaWindPromise;
 
-      // KHOA 실측 풍향/풍속 우선 반영 (실측치가 존재할 경우)
-      let finalWindSpeed = Math.round(current.wind_speed_10m * 10) / 10;
-      let finalWindDir = current.wind_direction_10m;
-      let isObserved = false;
-      let observedStationName: string | undefined = undefined;
-      let observedDistanceKm: number | undefined = undefined;
-      let observedTime: string | undefined = undefined;
-
-      if (khoaWind && typeof khoaWind.wspd === 'number' && !isNaN(khoaWind.wspd) && typeof khoaWind.wndrct === 'number') {
-        finalWindSpeed = Math.round(khoaWind.wspd * 10) / 10;
-        finalWindDir = Math.round(khoaWind.wndrct);
-        isObserved = true;
-        observedStationName = nearest.station.name;
-        observedDistanceKm = nearest.distanceKm;
-        observedTime = khoaWind.obsrvnDt?.split(' ')[1]?.slice(0, 5) || undefined;
-      }
+      // Windy.com과 완전 일치하도록 포인트 해당 좌표의 ECMWF IFS 9km 풍향·풍속을 원형 그대로 사용
+      // (수십 km 떨어진 내항 조위관측소 풍속계로 덮어쓰지 않음)
+      const finalWindSpeed = Math.round((current.wind_speed_10m ?? 2.0) * 10) / 10;
+      const finalWindDir = Math.round(current.wind_direction_10m ?? 0);
 
       // 물리적 검증(Physical Sanity Check): 돌풍(windGust)은 항상 일반 풍속 이상이어야 함 (풍속 > 돌풍 역전 차단)
       const rawGust = current.wind_gusts_10m != null ? Math.round(current.wind_gusts_10m * 10) / 10 : finalWindSpeed;
@@ -185,10 +170,7 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
         windSpeed: finalWindSpeed,
         windDirection: finalWindDir,
         windGust: finalWindGust,
-        isObserved,
-        observedStationName,
-        observedDistanceKm,
-        observedTime,
+        isObserved: false,
         hourly: {
           time: data.hourly?.time?.slice(0, 96) || [],
           temp: (data.hourly?.temperature_2m?.slice(0, 96) || []).map((v: number) => Math.round(v * 10) / 10),
@@ -212,7 +194,8 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
       return result;
     } catch (err) {
       console.warn('Weather API fallback used:', err);
-      const khoaWind = await khoaWindPromise.catch(() => null);
+      const nearest = findNearestKhoaStation(lat, lng);
+      const khoaWind = await getCachedKhoaWind(nearest.station.code).catch(() => null);
 
       const fallback: WeatherData = {
         temp: 18.5,
@@ -248,9 +231,9 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
 
 /** Open-Meteo Marine API 호출 및 국립해양조사원 실측 수온 & ROMS 해류 융합 (단위 km/h -> m/s 정규화, 15분 캐시 적용) */
 export async function fetchMarineData(lat: number, lng: number): Promise<MarineData> {
-  const gridLat = Math.round(lat * 20) / 20;
-  const gridLng = Math.round(lng * 20) / 20;
-  const cacheKey = `exfish_marine_v2_${gridLat.toFixed(2)}_${gridLng.toFixed(2)}`;
+  const gridLat = Math.round(lat * 100) / 100;
+  const gridLng = Math.round(lng * 100) / 100;
+  const cacheKey = `exfish_marine_v3_${gridLat.toFixed(2)}_${gridLng.toFixed(2)}`;
 
   // 1. 메모리 캐시 검사
   const mem = memoryMarineCache.get(cacheKey);

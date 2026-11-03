@@ -22,8 +22,6 @@ import type {
 import {
   formatCurrentVelocity,
   formatWindSpeed,
-  getCurrentDirectionKor,
-  getWindDirectionKor,
 } from '../utils/weatherApi';
 import { getDistanceKm } from '../utils/tideEngine';
 
@@ -331,12 +329,15 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                       풍향/풍속, 조류, 수온, 날씨/기온, 물때, 조위 */}
                   {env ? (
                     <div className="mt-2.5 pt-2 border-t border-slate-800/80 grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-[11px] text-slate-300">
-                      {/* 1. 풍향·풍속 */}
+                      {/* 1. 풍향·풍속 (말 없이 방향 화살표 + 풍속만 표시) */}
                       <div className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-1.5 truncate">
                         <Wind size={12} className="text-cyan-400 shrink-0" />
-                        <div className="truncate">
-                          <span className="text-[10px] text-slate-400 block -mb-0.5">
-                            {getWindDirectionKor(env.windDir)}
+                        <div className="flex items-center gap-1 truncate">
+                          <span
+                            className="inline-flex items-center justify-center w-3.5 h-3.5 text-cyan-300 font-bold text-xs shrink-0"
+                            style={{ transform: `rotate(${env.windDir}deg)` }}
+                          >
+                            ↓
                           </span>
                           <span className="font-bold text-cyan-300 font-mono">
                             {formatWindSpeed(env.windSpeed, windUnit)}
@@ -344,12 +345,15 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                         </div>
                       </div>
 
-                      {/* 2. 조류·해류 */}
+                      {/* 2. 조류·해류 (방향 화살표 + 유속만 표시) */}
                       <div className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-1.5 truncate">
                         <Compass size={12} className="text-emerald-400 shrink-0" />
-                        <div className="truncate">
-                          <span className="text-[10px] text-slate-400 block -mb-0.5">
-                            {getCurrentDirectionKor(env.currentDir)}
+                        <div className="flex items-center gap-1 truncate">
+                          <span
+                            className="inline-flex items-center justify-center w-3.5 h-3.5 text-emerald-300 font-bold text-xs shrink-0"
+                            style={{ transform: `rotate(${env.currentDir}deg)` }}
+                          >
+                            ↑
                           </span>
                           <span className="font-bold text-emerald-300 font-mono">
                             {formatCurrentVelocity(env.currentVel, currentUnit)}
