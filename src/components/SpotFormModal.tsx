@@ -119,23 +119,30 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // 동일 파일 재선택 허용을 위해 input 값 초기화
+    e.target.value = '';
 
     setIsExtracting(true);
     setExifSuccessMsg('');
     setPendingGps(null);
 
     try {
-      // 1. 브라우저 및 클라우드 DB 영구 보전용 압축 Base64 Data URL 생성
-      const dataUrl = await compressImageFile(file);
-      setPhotoUrls((prev) => [...prev, dataUrl]);
-
-      // 2. EXIF GPS 분석
+      // 1. 스트림 소실 방지를 위해 EXIF GPS 분석을 가장 먼저 수행
       const res = await extractExifFromImage(file);
-      if (res.lat && res.lng) {
+
+      // 2. 브라우저 및 클라우드 DB 영구 보전용 압축 Base64 Data URL 생성
+      const dataUrl = await compressImageFile(file);
+      if (dataUrl) {
+        setPhotoUrls((prev) => [...prev, dataUrl]);
+      }
+
+      if (res.lat != null && res.lng != null && !isNaN(res.lat) && !isNaN(res.lng)) {
         setPendingGps({ lat: res.lat, lng: res.lng });
         setExifSuccessMsg(`📍 사진에서 GPS 좌표(위도 ${res.lat.toFixed(5)}, 경도 ${res.lng.toFixed(5)})가 감지되었습니다!`);
       } else {
-        setExifSuccessMsg('ℹ️ 사진에 GPS 정보가 없어 현재 좌표를 유지합니다.');
+        setExifSuccessMsg(
+          'ℹ️ 선택된 사진에 GPS 태그가 없습니다. (안드로이드 갤러리 위치보호·구글포토 클라우드 축소본·카톡 전송본인 경우 우측 [📁 원본 파일로 선택]에서 카메라 원본(DCIM)을 선택해 주세요.)'
+        );
       }
     } catch {
       setExifSuccessMsg('사진을 분석하는 중 오류가 발생했습니다.');
@@ -230,14 +237,31 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
               {isExtracting && <span className="text-xs text-cyan-400 animate-pulse font-bold">EXIF 분석 중...</span>}
             </div>
             <p className="text-xs text-slate-300">
-              사진의 EXIF로부터 GPS 추출합니다
+              사진의 EXIF로부터 GPS 좌표를 자동 추출합니다. (갤러리 선택 시 GPS가 제거되면 <strong>원본 파일로 선택</strong>을 이용해 주세요)
             </p>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoUpload}
-              className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-600 file:text-white hover:file:bg-cyan-500 cursor-pointer text-white/70"
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold cursor-pointer transition shadow">
+                <span>🖼️ 갤러리/카메라 선택</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+              </label>
+              <label
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-cyan-500/50 text-cyan-300 text-xs font-semibold cursor-pointer transition"
+                title="안드로이드 포토피커가 GPS를 지우는 경우 내 파일(DCIM/Camera)에서 원본을 직접 선택합니다"
+              >
+                <span>📁 원본 파일로 선택 (GPS 보존)</span>
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.heic,.webp,application/octet-stream"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+              </label>
+            </div>
 
             {/* GPS 추출 성공 시 사용자 승인 질문 박스 */}
             {pendingGps && (

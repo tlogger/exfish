@@ -240,16 +240,22 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // 동일 파일 재선택 허용을 위해 input 값 초기화
+    e.target.value = '';
 
     setIsAnalyzing(true);
     setExifNotice('');
 
     try {
-      // 영구 보전 가능한 고화질 압축 Base64 데이터 생성 (blob: URL 소실 원천 방지)
-      const dataUrl = await compressImageFile(file);
-      setPhotoUrl(dataUrl);
-
+      // 1. 스트림 소실 방지를 위해 EXIF GPS/일시 분석을 가장 먼저 수행
       const res = await extractExifFromImage(file);
+
+      // 2. 영구 보전 가능한 고화질 압축 Base64 데이터 생성 (blob: URL 소실 원천 방지)
+      const dataUrl = await compressImageFile(file);
+      if (dataUrl) {
+        setPhotoUrl(dataUrl);
+      }
+
       const notices: string[] = [];
 
       let targetDate = catchDate;
@@ -267,7 +273,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
         targetTime = res.timeStr;
         notices.push(`히트시각: ${res.timeStr}`);
       }
-      if (res.lat && res.lng) {
+      if (res.lat != null && res.lng != null && !isNaN(res.lat) && !isNaN(res.lng)) {
         setCatchLat(res.lat);
         setCatchLng(res.lng);
         targetLat = res.lat;
@@ -278,7 +284,9 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       if (notices.length > 0) {
         setExifNotice(`📸 EXIF 인식 완료 (${notices.join(' | ')})`);
       } else {
-        setExifNotice('ℹ️ 사진에 EXIF 메타데이터가 없어 기본 좌표 및 일시를 유지합니다.');
+        setExifNotice(
+          'ℹ️ 선택된 사진에 EXIF 태그가 없어 기본 좌표·일시를 유지합니다. (갤러리 위치보호·클라우드 축소본인 경우 [📁 원본 파일로 선택]을 이용해 주세요.)'
+        );
       }
 
       // 날짜/시각/좌표 기반 환경 자동 동기화 트리거
@@ -802,12 +810,29 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
                 </span>
               )}
             </div>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoUpload}
-              className="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer text-slate-300"
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer transition shadow">
+                <span>🖼️ 갤러리/카메라 선택</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+              </label>
+              <label
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-emerald-500/50 text-emerald-300 text-xs font-semibold cursor-pointer transition"
+                title="안드로이드 포토피커가 GPS를 지우는 경우 내 파일(DCIM/Camera)에서 원본을 직접 선택합니다"
+              >
+                <span>📁 원본 파일로 선택 (GPS 보존)</span>
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.heic,.webp,application/octet-stream"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+              </label>
+            </div>
             {exifNotice && (
               <div className="text-xs text-emerald-400 font-medium bg-emerald-950/60 p-2 rounded border border-emerald-800/60 leading-relaxed">
                 {exifNotice}
