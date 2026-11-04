@@ -29,14 +29,10 @@ import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends BridgeActivity {
-    private static final int REQ_MEDIA_LOCATION_PERMS = 1001;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // Request ACCESS_MEDIA_LOCATION & Media Read permissions so Android 10+ does not strip EXIF GPS tags
-        requestMediaLocationPermissionsIfNeeded();
 
         if (bridge != null && bridge.getWebView() != null) {
             WebSettings settings = bridge.getWebView().getSettings();
@@ -85,7 +81,6 @@ public class MainActivity extends BridgeActivity {
                     final ValueCallback<Uri[]> filePathCallback,
                     final FileChooserParams fileChooserParams
                 ) {
-                    requestMediaLocationPermissionsIfNeeded();
                     final ValueCallback<Uri[]> wrappedCallback = (uris) -> {
                         if (uris == null || uris.length == 0 || uris[0] == null) {
                             filePathCallback.onReceiveValue(uris);
@@ -136,40 +131,6 @@ public class MainActivity extends BridgeActivity {
                 }
             });
         }
-    }
-
-    /**
-     * Request ACCESS_MEDIA_LOCATION (API 29+) and READ_MEDIA_IMAGES (API 33+) / READ_EXTERNAL_STORAGE
-     * so Android's MediaProvider does not redact EXIF GPS coordinates when opening gallery photos.
-     */
-    private void requestMediaLocationPermissionsIfNeeded() {
-        try {
-            List<String> needed = new ArrayList<>();
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
-                        != PackageManager.PERMISSION_GRANTED) {
-                    needed.add(Manifest.permission.READ_MEDIA_IMAGES);
-                }
-            } else {
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                        != PackageManager.PERMISSION_GRANTED) {
-                    needed.add(Manifest.permission.READ_EXTERNAL_STORAGE);
-                }
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_MEDIA_LOCATION)
-                        != PackageManager.PERMISSION_GRANTED) {
-                    needed.add(Manifest.permission.ACCESS_MEDIA_LOCATION);
-                }
-            }
-            if (!needed.isEmpty()) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    needed.toArray(new String[0]),
-                    REQ_MEDIA_LOCATION_PERMS
-                );
-            }
-        } catch (Exception ignored) {}
     }
 
     /**

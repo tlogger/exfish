@@ -15,6 +15,8 @@ import { isUserAdmin } from '../services/oauthService';
 import {
   formatWindSpeed,
   formatCurrentVelocity,
+  getWindDirectionKor,
+  getCurrentDirectionKor,
 } from '../utils/weatherApi';
 import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
 import { generateDynamicBathymetryContours } from '../utils/dynamicBathymetryEngine';
@@ -1312,7 +1314,9 @@ export const MapView: React.FC<MapViewProps> = ({
                   clickable={false}
                 >
                   <div className="px-2 py-0.5 rounded-full text-[9px] font-bold font-mono shadow-xl border pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1 bg-slate-950/95 text-cyan-300 border-cyan-400/80">
-                    <span>💨 {formatWindSpeed(weather.windSpeed, windUnit)}</span>
+                    <span className="inline-block text-[10px]" style={{ transform: `rotate(${weather.windDirection}deg)` }}>↓</span>
+                    <span className="font-sans font-medium text-cyan-200">{getWindDirectionKor(weather.windDirection)}</span>
+                    <span>{formatWindSpeed(weather.windSpeed, windUnit)}</span>
                   </div>
                 </CustomOverlayMap>
 
@@ -1453,8 +1457,10 @@ export const MapView: React.FC<MapViewProps> = ({
                   zIndex={56}
                   clickable={false}
                 >
-                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/70 text-[9px] font-bold shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                    🌊 {formatCurrentVelocity(marine.currentVelocity, currentUnit)}
+                  <div className="px-1.5 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/70 text-[9px] font-bold shadow-md pointer-events-none kakao-invert-restore select-none whitespace-nowrap flex items-center gap-1">
+                    <span className="inline-block text-[10px] text-emerald-400" style={{ transform: `rotate(${marine.currentDirection}deg)` }}>↑</span>
+                    <span className="font-sans font-medium text-emerald-300">{getCurrentDirectionKor(marine.currentDirection)}</span>
+                    <span className="font-mono">{formatCurrentVelocity(marine.currentVelocity, currentUnit)}</span>
                   </div>
                 </CustomOverlayMap>
               </React.Fragment>
@@ -3038,13 +3044,16 @@ export const MapView: React.FC<MapViewProps> = ({
                 {weather.temp.toFixed(1)}°
               </span>
 
-              <div className="flex items-center gap-0.5 text-cyan-300 leading-none font-bold" title={`풍향 ${Math.round(weather.windDirection)}°`}>
+              <div className="flex items-center gap-1 text-cyan-300 leading-none font-bold" title={`풍향 ${Math.round(weather.windDirection)}°`}>
                 <div
                   className="w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold"
                   style={{ transform: `rotate(${weather.windDirection}deg)` }}
                 >
                   ↓
                 </div>
+                <span className="text-[11px] font-sans font-medium text-cyan-200 leading-none">
+                  {getWindDirectionKor(weather.windDirection)}
+                </span>
                 <span className="font-mono font-bold text-[11px] leading-none">
                   {formatWindSpeed(weather.windSpeed, windUnit)}
                 </span>
@@ -3052,8 +3061,8 @@ export const MapView: React.FC<MapViewProps> = ({
             </div>
           )}
 
-          {/* 2행: 수온 + 물때 (1pt 확대한 12px, 수온 텍스트 제거, 우하단 그림자) */}
-          {(marine?.seaSurfaceTemp !== undefined || tide?.mulText) && (
+          {/* 2행: 수온 + 물때 + 조류 (1pt 확대한 12px, 수온 텍스트 제거, 우하단 그림자) */}
+          {(marine?.seaSurfaceTemp !== undefined || tide?.mulText || (marine?.currentVelocity !== undefined && marine.currentVelocity > 0.05)) && (
             <div className="flex items-center gap-1.5 leading-none mt-0.5 font-bold">
               {marine?.seaSurfaceTemp !== undefined && (
                 <span className="text-[12px] font-mono text-rose-300 font-bold leading-none flex items-center gap-0.5">
@@ -3065,6 +3074,20 @@ export const MapView: React.FC<MapViewProps> = ({
               {tide?.mulText && (
                 <span className="text-[12px] font-bold text-cyan-200 leading-none">
                   {marine?.seaSurfaceTemp !== undefined ? `· ${tide.mulText}` : tide.mulText}
+                </span>
+              )}
+
+              {marine?.currentVelocity !== undefined && marine.currentVelocity > 0.05 && (
+                <span className="text-[11px] font-bold text-emerald-300 leading-none flex items-center gap-0.5">
+                  <span className="text-slate-400">·</span>
+                  <div
+                    className="w-3.5 h-3.5 flex items-center justify-center text-[9px] font-bold text-emerald-400"
+                    style={{ transform: `rotate(${marine.currentDirection}deg)` }}
+                  >
+                    ↑
+                  </div>
+                  <span className="font-sans font-medium text-emerald-300">{getCurrentDirectionKor(marine.currentDirection)}</span>
+                  <span className="font-mono">{formatCurrentVelocity(marine.currentVelocity, currentUnit)}</span>
                 </span>
               )}
             </div>

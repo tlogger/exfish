@@ -64,19 +64,19 @@ export function getWindFlowDescKor(deg: number): string {
 }
 
 /**
- * 조류·해류 유향(물이 흘러가는 방향, To)을 한국식 조류 방향으로 변환
- * 예: 90° -> '동류(→동)', 180° -> '남류(↓남)', 270° -> '서류(←서)'
+ * 조류·해류 유향(물이 흘러가는 방향, To)을 한국식 조류 방향으로 변환 (단순 방향 표기)
+ * 예: 90° -> '동류', 180° -> '남류', 270° -> '서류'
  */
 export function getCurrentDirectionKor(deg: number): string {
   const currentDirs8 = [
-    '북류(↑북)',
-    '북동류(↗북동)',
-    '동류(→동)',
-    '남동류(↘남동)',
-    '남류(↓남)',
-    '남서류(↙남서)',
-    '서류(←서)',
-    '북서류(↖북서)',
+    '북류',
+    '북동류',
+    '동류',
+    '남동류',
+    '남류',
+    '남서류',
+    '서류',
+    '북서류',
   ];
   const norm = ((Number(deg) || 0) % 360 + 360) % 360;
   const index = Math.round(norm / 45) % 8;

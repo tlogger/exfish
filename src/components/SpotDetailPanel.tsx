@@ -59,6 +59,8 @@ import {
   formatWindSpeed,
   getWeatherText,
   getWindyWebUrl,
+  getWindDirectionKor,
+  getCurrentDirectionKor,
 } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { playEvacuationBeep } from '../utils/tideAlertSound';
@@ -1337,6 +1339,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               주의
                             </span>
                           ) : null}
+                          <span className="text-[11px] font-bold text-cyan-200">
+                            {getWindDirectionKor(simWindDir)}
+                          </span>
                           <div
                             className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold transition-transform duration-300 ${
                               isWindDanger ? 'bg-rose-500/30 text-rose-200' : 'bg-cyan-500/20 text-cyan-300'
@@ -1400,6 +1405,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               주의
                             </span>
                           ) : null}
+                          <span className={`text-[11px] font-bold ${isCurrentDanger ? 'text-rose-200' : isCurrentWarning ? 'text-amber-200' : 'text-emerald-300'}`}>
+                            {getCurrentDirectionKor(simCurrentDir)}
+                          </span>
                           <div
                             className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold transition-transform duration-300 ${
                               isCurrentDanger ? 'bg-rose-500/30 text-rose-200' : 'bg-emerald-500/20 text-emerald-300'

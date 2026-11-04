@@ -22,6 +22,8 @@ import type {
 import {
   formatCurrentVelocity,
   formatWindSpeed,
+  getWindDirectionKor,
+  getCurrentDirectionKor,
 } from '../utils/weatherApi';
 import { getDistanceKm } from '../utils/tideEngine';
 
@@ -329,7 +331,7 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                       풍향/풍속, 조류, 수온, 날씨/기온, 물때, 조위 */}
                   {env ? (
                     <div className="mt-2.5 pt-2 border-t border-slate-800/80 grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-[11px] text-slate-300">
-                      {/* 1. 풍향·풍속 (말 없이 방향 화살표 + 풍속만 표시) */}
+                      {/* 1. 풍향·풍속 (방향 화살표 + 간단한 방향 + 풍속) */}
                       <div className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-1.5 truncate">
                         <Wind size={12} className="text-cyan-400 shrink-0" />
                         <div className="flex items-center gap-1 truncate">
@@ -339,13 +341,16 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                           >
                             ↓
                           </span>
+                          <span className="text-[10px] text-cyan-200 font-sans font-medium shrink-0">
+                            {getWindDirectionKor(env.windDir)}
+                          </span>
                           <span className="font-bold text-cyan-300 font-mono">
                             {formatWindSpeed(env.windSpeed, windUnit)}
                           </span>
                         </div>
                       </div>
 
-                      {/* 2. 조류·해류 (방향 화살표 + 유속만 표시) */}
+                      {/* 2. 조류·해류 (방향 화살표 + 간단한 방향 + 유속) */}
                       <div className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-1.5 truncate">
                         <Compass size={12} className="text-emerald-400 shrink-0" />
                         <div className="flex items-center gap-1 truncate">
@@ -354,6 +359,9 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                             style={{ transform: `rotate(${env.currentDir}deg)` }}
                           >
                             ↑
+                          </span>
+                          <span className="text-[10px] text-emerald-200 font-sans font-medium shrink-0">
+                            {getCurrentDirectionKor(env.currentDir)}
                           </span>
                           <span className="font-bold text-emerald-300 font-mono">
                             {formatCurrentVelocity(env.currentVel, currentUnit)}
