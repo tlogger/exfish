@@ -33,6 +33,8 @@ dist-ssr
 *.aab
 *.apk
 !public/exfish.apk
+!public/exfish.aab
+!public/ExFish-release-v1.02.08.aab
 update_images.ps1
 convert_assets.ps1
 
