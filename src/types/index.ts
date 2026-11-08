@@ -196,6 +196,8 @@ export interface SpeciesBiteScore {
   verdict: string;
   activityMatch: string; // 야행성/주행성 적합도
   tempMatch: string; // 수온 적합도
+  effectiveTemp?: number; // 저층 보정 또는 유효 수온
+  isBottomCorrected?: boolean; // 저층 수온 보정 여부
 }
 
 export interface BiteScoreBreakdown {
@@ -209,4 +211,5 @@ export interface BiteScoreBreakdown {
   topSpecies?: SpeciesBiteScore; // 현재 여건 1위 추천 어종
   speciesScores?: SpeciesBiteScore[]; // 관심 대상어별 세부 점수
   targetSummaryLabel?: string; // 예: "내 관심어종 [우럭, 풀치] 맞춤"
+  waveSweepWarning?: string | null; // 파고 채비 쓸림 진단
 }

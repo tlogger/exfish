@@ -1800,6 +1800,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       )}
                     </div>
                     <p className="text-xs text-slate-300 truncate pt-0.5">{biteScore.verdict}</p>
+                    {biteScore.waveSweepWarning && (
+                      <p className="text-[10.5px] text-amber-300 font-medium truncate pt-0.5 flex items-center gap-1">
+                        <span>{biteScore.waveSweepWarning}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
                 {biteScore.topSpecies && (
@@ -1846,7 +1851,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   SPECIES_ENCYCLOPEDIA['우럭'];
 
                 const scoreInfo = (weather && marine && tide)
-                  ? calculateSingleSpeciesScore(ecology, spot, weather, marine, tide, curHour, curMonth)
+                  ? calculateSingleSpeciesScore(ecology, spot, weather, marine, tide, curHour, curMonth, now)
                   : {
                       speciesName: spName,
                       score: 50,
