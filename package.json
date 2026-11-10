@@ -1,7 +1,7 @@
 {
   "name": "exfish",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.02.10",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,7 @@
     "build:release": "npm run build && npx cap sync android && cd android && .\\gradlew.bat assembleRelease && .\\gradlew.bat bundleRelease && cd .. && powershell -Command \"Copy-Item android/app/build/outputs/apk/release/exfish.apk public/exfish.apk -Force\" && npm run build",
     "sync:apk": "powershell -Command \"Copy-Item android/app/build/outputs/apk/release/exfish.apk public/exfish.apk -Force; Copy-Item public/exfish.apk dist/exfish.apk -Force\"",
     "lint": "oxlint",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -54,6 +55,7 @@
     "potrace": "^2.1.8",
     "tailwindcss": "^4.3.3",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "vitest": "^5.1.0"
   }
 }

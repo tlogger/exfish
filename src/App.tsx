@@ -363,43 +363,50 @@ export function App() {
       const now = new Date();
       const currentHour = now.getHours();
 
-      // 주요 포인트별 병렬 fetch (동시 최대 10개)
-      const entries = await Promise.all(
-        spots.map(async (spot) => {
-          try {
-            const tideData = calculateTideDay(spot.lat, spot.lng, now);
-            const currentTide = tideData.hourlyCurve.find((c) => c.hour === currentHour);
+      // 주요 포인트별 동시 요청 수 제한(배치 4개씩)을 통한 네트워크 과부하 및 Open-Meteo 429 차단 방지
+      const entries: (readonly [string, SpotRealtimeSummary] | null)[] = [];
+      const BATCH_SIZE = 4;
+      for (let i = 0; i < spots.length; i += BATCH_SIZE) {
+        if (!isMounted) break;
+        const chunk = spots.slice(i, i + BATCH_SIZE);
+        const chunkResults = await Promise.all(
+          chunk.map(async (spot) => {
+            try {
+              const tideData = calculateTideDay(spot.lat, spot.lng, now);
+              const currentTide = tideData.hourlyCurve.find((c) => c.hour === currentHour);
 
-            const [w, m] = await Promise.all([
-              fetchWeatherData(spot.lat, spot.lng),
-              fetchMarineData(spot.lat, spot.lng),
-            ]);
+              const [w, m] = await Promise.all([
+                fetchWeatherData(spot.lat, spot.lng),
+                fetchMarineData(spot.lat, spot.lng),
+              ]);
 
-            const bScore = calculateBiteScore(spot, w, m, tideData, currentUser?.favoriteSpecies);
-            const dist = userLocation
-              ? getDistanceKm(userLocation.lat, userLocation.lng, spot.lat, spot.lng)
-              : undefined;
+              const bScore = calculateBiteScore(spot, w, m, tideData, currentUser?.favoriteSpecies);
+              const dist = userLocation
+                ? getDistanceKm(userLocation.lat, userLocation.lng, spot.lat, spot.lng)
+                : undefined;
 
-            const summary: SpotRealtimeSummary = {
-              temp: w.temp,
-              weatherText: w.weatherText,
-              windSpeed: w.windSpeed,
-              windDir: w.windDirection,
-              seaTemp: m.seaSurfaceTemp,
-              waveHeight: m.waveHeight,
-              currentVel: m.currentVelocity,
-              currentDir: m.currentDirection,
-              mulText: tideData.mulText,
-              tideHeight: currentTide?.height ?? 0,
-              biteScore: bScore.totalScore,
-              distanceKm: dist,
-            };
-            return [spot.id, summary] as const;
-          } catch {
-            return null;
-          }
-        })
-      );
+              const summary: SpotRealtimeSummary = {
+                temp: w.temp,
+                weatherText: w.weatherText,
+                windSpeed: w.windSpeed,
+                windDir: w.windDirection,
+                seaTemp: m.seaSurfaceTemp,
+                waveHeight: m.waveHeight,
+                currentVel: m.currentVelocity,
+                currentDir: m.currentDirection,
+                mulText: tideData.mulText,
+                tideHeight: currentTide?.height ?? 0,
+                biteScore: bScore.totalScore,
+                distanceKm: dist,
+              };
+              return [spot.id, summary] as const;
+            } catch {
+              return null;
+            }
+          })
+        );
+        entries.push(...chunkResults);
+      }
 
       if (isMounted) {
         const nextMap: Record<string, SpotRealtimeSummary> = {};
@@ -496,33 +503,48 @@ export function App() {
     [currentUser?.favoriteSpecies]
   );
 
-  // 선택된 포인트의 실시간 데이터 10초 주기 자동 갱신 (요구사항 8: 창을 닫지 않는 한 10초마다 업데이트)
+  // 선택된 포인트의 실시간 물때 곡선 및 입질 지수 10초 주기 로컬 갱신 (원격 API 호출 배제, 배터리 절약)
   React.useEffect(() => {
     if (!selectedSpot) return;
 
-    const intervalId = setInterval(async () => {
+    const intervalId = setInterval(() => {
       try {
         const now = new Date();
-        const kForecast = await getKhoaTideForecast(selectedSpot.lat, selectedSpot.lng, now);
-        const tideData = kForecast?.tideDayInfo || calculateTideDay(selectedSpot.lat, selectedSpot.lng, now);
+        // 원격 API 호출 없이 로컬 시계열 재연산 (조위/입질지수/피딩타임 실시간 정밀 동기화)
+        const tideData = calculateTideDay(selectedSpot.lat, selectedSpot.lng, now);
         setTide(tideData);
 
+        if (weather && marine) {
+          const score = calculateBiteScore(selectedSpot, weather, marine, tideData, currentUser?.favoriteSpecies);
+          setBiteScore(score);
+        }
+      } catch (err) {
+        console.warn('10초 로컬 조위 동기화 에러 (무시):', err);
+      }
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [selectedSpot?.id, selectedSpot?.lat, selectedSpot?.lng, weather, marine, currentUser?.favoriteSpecies]);
+
+  // 원격 해양/기상 데이터 15분 주기 배경 갱신 (Open-Meteo 모델 주기와 동기화)
+  React.useEffect(() => {
+    if (!selectedSpot) return;
+
+    const weatherIntervalId = setInterval(async () => {
+      try {
         const [weatherData, marineData] = await Promise.all([
           fetchWeatherData(selectedSpot.lat, selectedSpot.lng),
           fetchMarineData(selectedSpot.lat, selectedSpot.lng),
         ]);
         setWeather(weatherData);
         setMarine(marineData);
-
-        const score = calculateBiteScore(selectedSpot, weatherData, marineData, tideData, currentUser?.favoriteSpecies);
-        setBiteScore(score);
       } catch (err) {
-        console.warn('10초 자동 갱신 일시 에러 (무시):', err);
+        console.warn('15분 원격 기상 갱신 일시 에러 (무시):', err);
       }
-    }, 10000);
+    }, 15 * 60 * 1000);
 
-    return () => clearInterval(intervalId);
-  }, [selectedSpot?.id, selectedSpot?.lat, selectedSpot?.lng, currentUser?.favoriteSpecies]);
+    return () => clearInterval(weatherIntervalId);
+  }, [selectedSpot?.id, selectedSpot?.lat, selectedSpot?.lng]);
 
   // 로그인 유저의 관심 어종(favoriteSpecies) 변경 시, 현재 선택된 포인트의 입질 지수 실시간 재연산
   React.useEffect(() => {

@@ -131,6 +131,16 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   // 갯바위 들물 탈출 골든타임 비프 경보 활성화 상태 (Phase 3: 네이티브 푸시/알람 연동)
   const [isEvacAlarmEnabled, setIsEvacAlarmEnabled] = React.useState(false);
 
+  // 30초 주기 동기화되는 현재 시각 상태 (JSX 렌더 중 new Date() 직접 호출로 인한 순수성 위반 방지)
+  const [currentTime, setCurrentTime] = React.useState<Date>(() => new Date());
+
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   // 관리자(구글 paedros@gmail.com) 및 작성자 권한 판별
   const isAdmin = isUserAdmin(currentUser);
   const isSpotOwner = Boolean(
@@ -209,12 +219,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   const realDepthResult = React.useMemo(() => {
     const mslDepth = khoaDepthRecord?.dpwt != null ? khoaDepthRecord.dpwt : 8.5;
     const datumZ0 = nearestStationInfo.station.datumZ0 ?? 3.5;
-    const nowHour = new Date().getHours();
+    const nowHour = currentTime.getHours();
     const curPoint = tide?.hourlyCurve?.find((c) => c.hour === nowHour) || tide?.hourlyCurve?.[0];
     const currentTideCm = curPoint?.height ?? 350;
 
     return calculateRealWaterDepth(mslDepth, datumZ0, currentTideCm);
-  }, [khoaDepthRecord, nearestStationInfo, tide?.hourlyCurve]);
+  }, [khoaDepthRecord, nearestStationInfo, tide?.hourlyCurve, currentTime]);
 
   // 포인트 변경 시 해당 포인트의 현장 메모 로드
   React.useEffect(() => {
@@ -308,7 +318,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
     : `https://map.kakao.com/link/to/${encodeURIComponent(destinationName)},${spot.lat},${spot.lng}`;
 
   // 현재 시각 및 시뮬레이션 대상 시각 Date 객체
-  const now = new Date();
+  const now = currentTime;
   const currentHour = now.getHours();
   const currentTidePoint = tide?.hourlyCurve.find((c) => c.hour === currentHour);
 
@@ -719,7 +729,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               if (!isHazardTerrain) return null;
 
               const isSpringTide = tide ? (tide.mulNumber >= 6 && tide.mulNumber <= 10) : false;
-              const now = new Date();
+              const now = currentTime;
               const curMinutes = now.getHours() * 60 + now.getMinutes();
               let isNearHighTide = false;
               let nextHighTideTimeStr = '';
@@ -800,7 +810,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             {tide && (() => {
               const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
               if (!isHazardTerrain || !tide.lowTides || tide.lowTides.length === 0) return null;
-              const now = new Date();
+              const now = currentTime;
               const curMins = now.getHours() * 60 + now.getMinutes();
 
               // 가장 인접한 간조(들물 시작점) 찾기 (조위변화곡선 예측 tide.lowTides와 100% 동기화)
@@ -1053,7 +1063,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               }, '');
               const areaD = `${pathD} L ${svgW} ${svgH} L 0 ${svgH} Z`;
 
-              const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+              const nowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
               const nowX = Math.min(svgW - 2, Math.max(2, (nowMinutes / 1440) * svgW));
 
               const displayMulText = tide.mulText;
@@ -1840,7 +1850,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     }
                   })();
 
-              const now = new Date();
+              const now = currentTime;
               const curHour = now.getHours();
               const curMonth = now.getMonth() + 1;
 

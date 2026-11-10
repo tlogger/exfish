@@ -55,7 +55,7 @@ export function getCachedSpotMetadata(spotId: string): CachedSpotMeta | null {
     if (!raw) return null;
     const spotsMap: Record<string, CachedSpotMeta> = JSON.parse(raw);
     return spotsMap[spotId] || null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -69,7 +69,7 @@ export function getAllCachedSpots(): FishingSpot[] {
     if (!raw) return [];
     const spotsMap: Record<string, CachedSpotMeta> = JSON.parse(raw);
     return Object.values(spotsMap).map((item) => item.spot);
-  } catch (e) {
+  } catch {
     return [];
   }
 }

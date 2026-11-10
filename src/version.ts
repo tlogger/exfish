@@ -6,5 +6,5 @@
  * cc: 버그 픽스 카운트업
  * yyyymmdd: 빌드 및 배포 날짜
  */
-export const APP_VERSION = '1.02.09-20261108';
+export const APP_VERSION = '1.02.10-20261110';
 export const APP_DISPLAY_NAME = 'ExFish';
