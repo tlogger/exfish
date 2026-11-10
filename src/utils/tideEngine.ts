@@ -71,17 +71,141 @@ export function findNearestHarbor(lat: number, lng: number): HarborRef {
   return nearest;
 }
 
+/**
+ * 한국천문연구원(KASI) 공식 음력 합삭(New Moon, 초하루 1일) 기준일 테이블 (2024~2030)
+ * 달과 태양의 시황경이 일치하는 합삭 시각이 포함된 KST 당일(00:00~24:00)을 음력 1일로 규정
+ */
+export const KOREAN_NEW_MOON_DATES = [
+  "2024-01-11","2024-02-10","2024-03-10","2024-04-09","2024-05-08","2024-06-06","2024-07-06","2024-08-04","2024-09-03","2024-10-03","2024-11-01","2024-12-01","2024-12-31",
+  "2025-01-29","2025-02-28","2025-03-29","2025-04-28","2025-05-27","2025-06-25","2025-07-25","2025-08-23","2025-09-22","2025-10-21","2025-11-20","2025-12-20",
+  "2026-01-19","2026-02-17","2026-03-19","2026-04-17","2026-05-17","2026-06-15","2026-07-14","2026-08-13","2026-09-11","2026-10-11","2026-11-09","2026-12-09",
+  "2027-01-08","2027-02-07","2027-03-08","2027-04-07","2027-05-06","2027-06-05","2027-07-04","2027-08-02","2027-09-01","2027-09-30","2027-10-29","2027-11-28","2027-12-28",
+  "2028-01-27","2028-02-25","2028-03-26","2028-04-25","2028-05-24","2028-06-23","2028-07-22","2028-08-20","2028-09-19","2028-10-18","2028-11-16","2028-12-16",
+  "2029-01-15","2029-02-13","2029-03-15","2029-04-14","2029-05-13","2029-06-12","2029-07-12","2029-08-10","2029-09-08","2029-10-08","2029-11-06","2029-12-05",
+  "2030-01-04","2030-02-03","2030-03-04","2030-04-03","2030-05-02","2030-06-01","2030-07-01","2030-07-30","2030-08-29","2030-09-27","2030-10-27","2030-11-25","2030-12-25"
+];
+
+/** 한국 표준시(KST) 기준 YYYY-MM-DD 문자열 취득 */
+export function getKstDateString(date: Date): string {
+  const kstTime = date.getTime() + 9 * 3600000;
+  const kst = new Date(kstTime);
+  const y = kst.getUTCFullYear();
+  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(kst.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** 양력 일자에 대한 한국 천문 역법 기준 음력 일수 (1일 ~ 30일) 계산 */
+export function getKoreanLunarDay(date: Date): number {
+  const dateStr = getKstDateString(date);
+
+  // 1. KASI 공식 합삭일 테이블 탐색 (작은달 29일 / 큰달 30일 완벽 대응)
+  let latestNewMoon: string | null = null;
+  for (let i = KOREAN_NEW_MOON_DATES.length - 1; i >= 0; i--) {
+    if (KOREAN_NEW_MOON_DATES[i] <= dateStr) {
+      latestNewMoon = KOREAN_NEW_MOON_DATES[i];
+      break;
+    }
+  }
+
+  if (latestNewMoon) {
+    const tTime = new Date(`${dateStr}T00:00:00Z`).getTime();
+    const nmTime = new Date(`${latestNewMoon}T00:00:00Z`).getTime();
+    const diffDays = Math.round((tTime - nmTime) / 86400000);
+    return Math.max(1, Math.min(30, diffDays + 1));
+  }
+
+  // 2. 테이블 범위를 벗어난 날짜: 정밀 삭망월 주기(29.530588853일) 기반 동적 근사
+  const synodicMonth = 29.530588853;
+  const baseTime = new Date('2026-11-09T16:02:00+09:00').getTime();
+  const diffDays = (date.getTime() - baseTime) / 86400000;
+  const cycleDays = ((diffDays % synodicMonth) + synodicMonth) % synodicMonth;
+  return Math.max(1, Math.min(30, Math.floor(cycleDays) + 1));
+}
+
 /** 양력 기준 달의 일령(Moon Age) 및 음력 일수 계산 (한국 표준시 정밀 천문 역법 기준) */
 export function getMoonAge(date: Date): number {
-  // 기준 신월(New Moon / 합삭): 2026년 10월 11일 00:50:00 KST (한국천문연구원 공식 합삭 시각)
-  const synodicMonth = 29.530588853; // 정밀 삭망월 주기(일)
-  const baseTime = new Date('2026-10-11T00:50:00+09:00').getTime();
+  const lunarDay = getKoreanLunarDay(date);
+  // 당일 KST 기준 시간 비율 (0.0 ~ 0.999) 반영하여 연속 시계열 생성
+  const kstTime = date.getTime() + 9 * 3600000;
+  const kst = new Date(kstTime);
+  const fractionOfDay = (kst.getUTCHours() * 3600 + kst.getUTCMinutes() * 60 + kst.getUTCSeconds()) / 86400;
+  return (lunarDay - 1) + fractionOfDay;
+}
 
-  // 한국 표준시(KST) 정오(12:00) 기준 일수로 계산하여 날짜 경계 오차 원천 차단
-  const kstTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0).getTime();
-  const diffDays = (kstTarget - baseTime) / (1000 * 60 * 60 * 24);
-  const moonAge = ((diffDays % synodicMonth) + synodicMonth) % synodicMonth;
-  return moonAge;
+/**
+ * KHOA 모바일 스마트조석예보 공식 mool7(서해 7물제), mool8(남해 8물제) 텍스트를 파싱
+ */
+export function parseKhoaSwtcMul(
+  moolStr: string | undefined | null,
+  region: 'WEST' | 'SOUTH' | 'EAST' | 'JEJU' = 'WEST'
+): { mulNumber: number; mulText: string } | null {
+  if (!moolStr || typeof moolStr !== 'string') return null;
+
+  const trimmed = moolStr.trim();
+  const isWest = region === 'WEST';
+
+  // 서해 7물제 고유 명칭 매핑
+  const westMap: Record<string, { num: number; text: string }> = {
+    '한매': { num: 1, text: '1물' },
+    '두매': { num: 2, text: '2물' },
+    '세매': { num: 3, text: '3물' },
+    '네매': { num: 4, text: '4물' },
+    '다섯매': { num: 5, text: '5물' },
+    '여섯매': { num: 6, text: '6물' },
+    '일곱매': { num: 7, text: '7물 (사리)' },
+    '여덟매': { num: 8, text: '8물' },
+    '아홉매': { num: 9, text: '9물' },
+    '열매': { num: 10, text: '10물' },
+    '한꺽기': { num: 11, text: '11물' },
+    '두꺽기': { num: 12, text: '12물' },
+    '아조': { num: 13, text: '13물' },
+    '조금': { num: 14, text: '14물 (조금)' },
+    '무시': { num: 15, text: '15물 (무시)' },
+  };
+
+  // 남해/동해/제주 8물제 고유 명칭 매핑
+  const southMap: Record<string, { num: number; text: string }> = {
+    '한물': { num: 1, text: '1물' },
+    '두물': { num: 2, text: '2물' },
+    '세물': { num: 3, text: '3물' },
+    '네물': { num: 4, text: '4물' },
+    '다섯물': { num: 5, text: '5물' },
+    '여섯물': { num: 6, text: '6물' },
+    '일곱물': { num: 7, text: '7물' },
+    '여덟물': { num: 8, text: '8물 (사리)' },
+    '아홉물': { num: 9, text: '9물' },
+    '열물': { num: 10, text: '10물' },
+    '열한물': { num: 11, text: '11물' },
+    '열두물': { num: 12, text: '12물' },
+    '열셋물': { num: 13, text: '13물' },
+    '열넷물': { num: 14, text: '14물 (조금)' },
+    '조금': { num: 14, text: '14물 (조금)' },
+    '무시': { num: 15, text: '15물 (무시)' },
+  };
+
+  const map = isWest ? westMap : southMap;
+  for (const [key, val] of Object.entries(map)) {
+    if (trimmed.includes(key)) {
+      return { mulNumber: val.num, mulText: val.text };
+    }
+  }
+
+  // "8물", "8" 등 정규 표현식 매칭
+  const numMatch = trimmed.match(/(\d+)물?/);
+  if (numMatch) {
+    const n = parseInt(numMatch[1], 10);
+    if (n >= 1 && n <= 15) {
+      let t = `${n}물`;
+      if (n === 14) t = '14물 (조금)';
+      else if (n === 15) t = '15물 (무시)';
+      else if (isWest && n === 7) t += ' (사리)';
+      else if (!isWest && n === 8) t += ' (사리)';
+      return { mulNumber: n, mulText: t };
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -138,11 +262,30 @@ export function calculateTideDay(
 
   const dayLabels = ['오늘', '내일', '모레'];
   const todayMoonAge = getMoonAge(baseDate);
-  const todayMul = getMulInfo(todayMoonAge, harbor.region);
+  const fallbackMul = getMulInfo(todayMoonAge, harbor.region);
   const todayTimes = SunCalc.getTimes(new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 12, 0, 0), lat, lng);
 
   const useSwtc = Boolean(khoaOverride?.swtcWeekly && khoaOverride.swtcWeekly.allExtremums && khoaOverride.swtcWeekly.allExtremums.length >= 2);
   const swtc = khoaOverride?.swtcWeekly;
+
+  // 당일 공식 물때 결정 (KHOA SWTC 우선 채택 -> 실패 시 한국천문연구원 정밀 역법 fallbackMul)
+  let todayMul = fallbackMul;
+  let todayLunarDateStr = `음력 ${fallbackMul.lunarDay}일`;
+
+  if (useSwtc && swtc?.days && swtc.days[0]) {
+    const swToday = swtc.days[0];
+    const parsedOfficial = parseKhoaSwtcMul(harbor.region === 'WEST' ? swToday.mool7 : swToday.mool8, harbor.region);
+    if (parsedOfficial) {
+      todayMul = {
+        mulNumber: parsedOfficial.mulNumber,
+        mulText: parsedOfficial.mulText,
+        lunarDay: fallbackMul.lunarDay,
+      };
+    }
+    if (swToday.dateMoon) {
+      todayLunarDateStr = `음력 ${swToday.dateMoon}`;
+    }
+  }
 
   // KHOA 모바일 공식 극점 관통 Hermite Cosine Spline 보간 함수
   const interpolateSwtc = (totalMinutes: number) => {
@@ -374,6 +517,9 @@ export function calculateTideDay(
 
     if (useSwtc && swtc?.days && swtc.days[d]) {
       const swDay = swtc.days[d];
+      const parsedDayMul = parseKhoaSwtcMul(harbor.region === 'WEST' ? swDay.mool7 : swDay.mool8, harbor.region);
+      const dayMulText = parsedDayMul?.mulText || fallbackMul.mulText;
+
       const dayHighs = swDay.events
         .filter((e) => e.type === 'HIGH')
         .map((e) => ({ time: e.time, height: e.height, diff: e.diff }));
@@ -384,7 +530,7 @@ export function calculateTideDay(
       threeDays.push({
         dateStr: dayName,
         dayLabel: dayLabels[d],
-        mulText: fallbackMul.mulText,
+        mulText: dayMulText,
         sunrise: swDay.sunrise || formatTime(times.sunrise),
         sunset: swDay.sunset || formatTime(times.sunset),
         highTides: dayHighs,
@@ -555,7 +701,7 @@ export function calculateTideDay(
   const feedingTimes = futureFeedingTimes.length > 0 ? futureFeedingTimes : allFeedingTimes.slice(0, 3);
 
   return {
-    lunarDateStr: `음력 ${todayMul.lunarDay}일`,
+    lunarDateStr: todayLunarDateStr,
     mulText: todayMul.mulText,
     mulNumber: todayMul.mulNumber,
     highTides: threeDays[0].highTides,

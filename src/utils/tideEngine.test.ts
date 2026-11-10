@@ -61,4 +61,66 @@ describe('tideEngine astronomical and tidal calculations', () => {
     expect(tideData.lowTides.length).toBeGreaterThanOrEqual(1);
     expect(tideData.threeDays.length).toBe(3);
   });
+
+  it('matches Badatime and KHOA official mul and lunar days across 29-day small months without drift', () => {
+    // 2026-11-10 군산 (서해): 음력 10월 2일 -> 8물
+    const gunsanDate = new Date('2026-11-10T12:00:00+09:00');
+    const gunsanTide = calculateTideDay(35.976, 126.554, gunsanDate);
+    expect(gunsanTide.mulNumber).toBe(8);
+    expect(gunsanTide.mulText).toBe('8물');
+    expect(gunsanTide.lunarDateStr).toBe('음력 2일');
+
+    // 2026-11-10 통영 (남해): 음력 10월 2일 -> 9물
+    const tongyeongDate = new Date('2026-11-10T12:00:00+09:00');
+    const tongyeongTide = calculateTideDay(34.84, 128.43, tongyeongDate);
+    expect(tongyeongTide.mulNumber).toBe(9);
+    expect(tongyeongTide.mulText).toBe('9물');
+
+    // 2026-10-27 과거 검증일: 서해 8물, 남해 9물 보존
+    const oct27Date = new Date('2026-10-27T12:00:00+09:00');
+    const oct27West = calculateTideDay(35.976, 126.554, oct27Date);
+    const oct27South = calculateTideDay(34.84, 128.43, oct27Date);
+    expect(oct27West.mulNumber).toBe(8);
+    expect(oct27South.mulNumber).toBe(9);
+
+    // 2026-11-09 합삭 당일: 서해 7물(사리), 남해 8물(사리)
+    const nov09Date = new Date('2026-11-09T12:00:00+09:00');
+    const nov09West = calculateTideDay(35.976, 126.554, nov09Date);
+    const nov09South = calculateTideDay(34.84, 128.43, nov09Date);
+    expect(nov09West.mulNumber).toBe(7);
+    expect(nov09West.mulText).toContain('7물 (사리)');
+    expect(nov09South.mulNumber).toBe(8);
+    expect(nov09South.mulText).toContain('8물 (사리)');
+  });
+
+  it('prioritizes KHOA official SWTC mool7/mool8 and dateMoon when provided', () => {
+    const gunsanDate = new Date('2026-11-10T12:00:00+09:00');
+    const mockSwtc: any = {
+      obsPostId: 'DT_0018',
+      stDate: '2026-11-10',
+      days: [
+        {
+          searchDate: '2026-11-10',
+          dateMoon: '10.02',
+          mool7: '여덟매',
+          mool8: '아홉물',
+          moolNormal: '한사리',
+          events: [
+            { type: 'HIGH', time: '04:12', height: 680, diff: 500, minutesFromMidnight: 252 },
+            { type: 'LOW', time: '10:45', height: 180, diff: 500, minutesFromMidnight: 645 },
+          ],
+        },
+      ],
+      allExtremums: [
+        { dayIdx: 0, date: '2026-11-10', type: 'HIGH', typeLabel: '만조', time: '04:12', height: 680, totalMinutesFromStart: 252 },
+        { dayIdx: 0, date: '2026-11-10', type: 'LOW', typeLabel: '간조', time: '10:45', height: 180, totalMinutesFromStart: 645 },
+      ],
+    };
+
+    const tide = calculateTideDay(35.976, 126.554, gunsanDate, { swtcWeekly: mockSwtc });
+    expect(tide.mulNumber).toBe(8);
+    expect(tide.mulText).toBe('8물');
+    expect(tide.lunarDateStr).toBe('음력 10.02');
+    expect(tide.threeDays[0].mulText).toBe('8물');
+  });
 });
