@@ -37,5 +37,6 @@ dist-ssr
 !public/ExFish-release-v1.02.08.aab
 update_images.ps1
 convert_assets.ps1
+.gemini/
 
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   calculateAerodynamicCastingDrift,
+  calculateCalibratedDistance,
   calculateSinkingPhysics,
   getBaitSpecs,
   ROD_POWER_SPECS,
@@ -61,14 +62,48 @@ describe('tackleCalibration physics engine', () => {
     expect(live.type).toBe('LIVE');
     expect(live.weightGrams).toBe(2.5);
 
-    const metal = getBaitSpecs('METAL', 2, 'GRUB', 6.0);
+    const metal = getBaitSpecs('METAL', 2, 'GRUB', 6.0, 3.0, 1.0, 40.0);
     expect(metal.type).toBe('METAL');
     expect(metal.lengthCm).toBe(6.0);
-    expect(metal.weightGrams).toBeGreaterThan(10);
+    expect(metal.weightGrams).toBe(40.0);
+    expect(metal.metalWeightGrams).toBe(40.0);
+
+    const castingBall = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 3.0, 1.5);
+    expect(castingBall.type).toBe('CASTING_BALL');
+    expect(castingBall.castingBallHo).toBe(3.0);
+    expect(castingBall.castingBallWeightGrams).toBe(11.3);
+    expect(castingBall.jigheadWeightGrams).toBe(1.5);
+    expect(castingBall.weightGrams).toBe(2.5); // 2-inch grub worm weight
 
     const lure = getBaitSpecs('LURE', 3, 'SHAD');
     expect(lure.shape).toBe('SHAD');
     expect(lure.lengthInches).toBe(3);
     expect(lure.weightGrams).toBe(6.8);
+  });
+
+  it('calculates casting ball distance and sinking physics correctly', () => {
+    // 캐스팅볼 3호(11.3g) + 지그헤드 1g + 2인치 그럽웜(2.5g) = 총 14.8g
+    const bait = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 3.0, 1.0);
+    const result = calculateCalibratedDistance(12.3, 0.8, 'ML', 2.6, bait);
+
+    expect(result.totalWeightGrams).toBeCloseTo(14.8, 1);
+    expect(result.distanceMeters).toBeGreaterThan(30);
+    expect(result.distanceMeters).toBeLessThan(100);
+
+    const sink = calculateSinkingPhysics(12.3, 5, 0.3, bait);
+    expect(sink.totalWeightGrams).toBeCloseTo(14.8, 1);
+    expect(sink.fallTimeSec).toBeGreaterThan(0);
+  });
+
+  it('calculates metal jig distance with user-selected 1~80g weight correctly', () => {
+    // 메탈 40g, 7cm, MH 로드, PE 1.2호
+    const metalBait = getBaitSpecs('METAL', 2, 'GRUB', 7.0, 3.0, 1.0, 40.0);
+    const result = calculateCalibratedDistance(40.0, 1.2, 'MH', 2.7, metalBait);
+
+    expect(result.totalWeightGrams).toBe(40.0);
+    expect(result.distanceMeters).toBeGreaterThan(50);
+
+    const sink = calculateSinkingPhysics(40.0, 10, 0.5, metalBait);
+    expect(sink.sinkSpeedMps).toBeGreaterThan(1.5); // 메탈은 고속 침강
   });
 });

@@ -6,17 +6,23 @@
 export type RodType = 'LURE' | 'SURF';
 export type RodPower = 'UL' | 'L' | 'ML' | 'M' | 'MH' | 'H' | 'SURF';
 
-// [요구사항 2-6-12 & 요구사항 4] 미끼 선택 모델 (생미끼, 루어: 인치 및 형상, 메탈: 길이 2.5~16cm)
-export type BaitType = 'LIVE' | 'LURE' | 'METAL';
+// 미끼 선택 모델: 생미끼(원투용), 루어(지그헤드/싱커+웜), 캐스팅볼(던질찌+지그헤드+웜), 메탈(메탈지그 1~80g)
+export type BaitType = 'LIVE' | 'LURE' | 'CASTING_BALL' | 'METAL';
 export type LureShape = 'GRUB' | 'SHAD' | 'STRAIGHT' | 'MINNOW';
 
 export interface BaitConfig {
   type: BaitType;
-  lengthInches: number; // 1 ~ 4 (루어용)
+  lengthInches: number; // 1 ~ 4 (루어, 캐스팅볼용)
   lengthCm?: number; // 2.5 ~ 16.0cm (메탈용)
   shape: LureShape;
-  weightGrams: number;
+  weightGrams: number; // 웜 자중 또는 메탈 자중
   surfaceAreaCm2: number;
+  // 캐스팅볼 전용
+  castingBallHo?: number; // 캐스팅볼 호수 (1~8호, 1호=3.75g)
+  castingBallWeightGrams?: number; // 캐스팅볼 무게 (g)
+  jigheadWeightGrams?: number; // 지그헤드 무게 (g)
+  // 메탈 지그 전용
+  metalWeightGrams?: number; // 메탈 무게 (1~80g)
 }
 
 export const LURE_SHAPE_NAMES: Record<LureShape, string> = {
@@ -26,11 +32,61 @@ export const LURE_SHAPE_NAMES: Record<LureShape, string> = {
   MINNOW: '미노우',
 };
 
+// 캐스팅볼 규격 프리셋 (1호 ~ 8호, 1호 = 3.75g)
+export interface CastingBallPreset {
+  ho: number;
+  label: string;
+  weightGrams: number;
+}
+
+export const CASTING_BALL_PRESETS: CastingBallPreset[] = [
+  { ho: 1.0, label: '1호', weightGrams: 3.8 },
+  { ho: 1.5, label: '1.5호', weightGrams: 5.6 },
+  { ho: 2.0, label: '2호', weightGrams: 7.5 },
+  { ho: 2.5, label: '2.5호', weightGrams: 9.4 },
+  { ho: 3.0, label: '3호', weightGrams: 11.3 },
+  { ho: 4.0, label: '4호', weightGrams: 15.0 },
+  { ho: 5.0, label: '5호', weightGrams: 18.8 },
+  { ho: 6.0, label: '6호', weightGrams: 22.5 },
+  { ho: 7.0, label: '7호', weightGrams: 26.3 },
+  { ho: 8.0, label: '8호', weightGrams: 30.0 },
+];
+
+// 캐스팅볼용 지그헤드 프리셋 (그램 & 온스)
+export interface JigheadPreset {
+  id: string;
+  type: 'g' | 'oz';
+  label: string;
+  weightGrams: number;
+}
+
+export const JIGHEAD_PRESETS: JigheadPreset[] = [
+  { id: 'jh-0.5g', type: 'g', label: '0.5g', weightGrams: 0.5 },
+  { id: 'jh-1g',   type: 'g', label: '1g',   weightGrams: 1.0 },
+  { id: 'jh-1.5g', type: 'g', label: '1.5g', weightGrams: 1.5 },
+  { id: 'jh-2g',   type: 'g', label: '2g',   weightGrams: 2.0 },
+  { id: 'jh-3g',   type: 'g', label: '3g',   weightGrams: 3.0 },
+  { id: 'jh-5g',   type: 'g', label: '5g',   weightGrams: 5.0 },
+  { id: 'jh-1-32', type: 'oz', label: '1/32oz', weightGrams: 0.9 },
+  { id: 'jh-1-16', type: 'oz', label: '1/16oz', weightGrams: 1.8 },
+  { id: 'jh-1-8',  type: 'oz', label: '1/8oz',  weightGrams: 3.5 },
+  { id: 'jh-1-4',  type: 'oz', label: '1/4oz',  weightGrams: 7.1 },
+];
+
+// 메탈 지그 무게 퀵 프리셋 (1~80g)
+export const METAL_WEIGHT_PRESETS = [7, 10, 14, 20, 28, 40, 60, 80] as const;
+
+// 메탈 지그 길이 퀵 프리셋
+export const METAL_LENGTH_PRESETS = [3.0, 5.0, 7.0, 10.0, 14.0] as const;
+
 export function getBaitSpecs(
   type: BaitType,
   lengthInches: number = 2,
   shape: LureShape = 'GRUB',
-  lengthCm: number = 6.0
+  lengthCm: number = 6.0,
+  castingBallHo: number = 3.0,
+  jigheadWeightGrams: number = 1.0,
+  metalWeightGrams: number = 28.0
 ): BaitConfig {
   if (type === 'LIVE') {
     // 생미끼는 2인치 그럽웜 기준으로 2.5g 가정
@@ -44,19 +100,55 @@ export function getBaitSpecs(
   }
 
   if (type === 'METAL') {
-    // 메탈 지그: 형상 없이 길이(2.5cm ~ 16.0cm)만 지정
-    // 표준 납/합금 메탈지그 밀도 기준 실측 무게 모델: 2.5cm(약 7g) ~ 6cm(약 30g) ~ 10cm(약 80g) ~ 16cm(약 200g)
+    // 메탈 지그: 길이(2.5cm ~ 16.0cm)와 메탈 무게(1~80g)
     const safeCm = Math.max(2.5, Math.min(16.0, Math.round(lengthCm * 2) / 2));
-    const metalWeight = Math.round((0.052 * Math.pow(safeCm, 2.95) + 3.0) * 10) / 10;
-    const surfaceAreaCm2 = Math.round((0.015 * safeCm * safeCm + 0.8) * 10) / 10;
+    const safeMetalWeight = Math.max(1, Math.min(80, Math.round(metalWeightGrams * 10) / 10));
+    const surfaceAreaCm2 = Math.round((0.012 * safeCm * safeCm + 0.6) * 10) / 10;
 
     return {
       type: 'METAL',
       lengthInches: Math.round(safeCm / 2.54),
       lengthCm: safeCm,
       shape: 'MINNOW',
-      weightGrams: metalWeight,
+      weightGrams: safeMetalWeight,
+      metalWeightGrams: safeMetalWeight,
       surfaceAreaCm2,
+    };
+  }
+
+  if (type === 'CASTING_BALL') {
+    const safeHo = Math.max(0.5, Math.min(15, Math.round(castingBallHo * 2) / 2));
+    const ballWeight = Math.round(safeHo * 3.75 * 10) / 10;
+    const safeJighead = Math.max(0.2, Math.min(20, Math.round(jigheadWeightGrams * 10) / 10));
+
+    const safeLen = Math.max(1, Math.min(4, Math.round(lengthInches)));
+    const weightTable: Record<LureShape, Record<number, number>> = {
+      GRUB: { 1: 1.0, 2: 2.5, 3: 5.0, 4: 9.0 },
+      SHAD: { 1: 1.2, 2: 3.2, 3: 6.8, 4: 12.5 },
+      STRAIGHT: { 1: 0.8, 2: 1.8, 3: 3.6, 4: 6.2 },
+      MINNOW: { 1: 1.6, 2: 4.2, 3: 8.8, 4: 15.5 },
+    };
+    const areaTable: Record<LureShape, Record<number, number>> = {
+      GRUB: { 1: 1.2, 2: 2.0, 3: 3.5, 4: 5.2 },
+      SHAD: { 1: 1.4, 2: 2.6, 3: 4.8, 4: 7.5 },
+      STRAIGHT: { 1: 0.9, 2: 1.5, 3: 2.4, 4: 3.5 },
+      MINNOW: { 1: 1.8, 2: 3.2, 3: 5.6, 4: 8.8 },
+    };
+
+    const wormWeight = weightTable[shape]?.[safeLen] ?? 2.5;
+    const wormArea = areaTable[shape]?.[safeLen] ?? 2.0;
+    const ballArea = Math.round((Math.PI * Math.pow((ballWeight / 3.75) * 0.45 + 0.6, 2)) * 10) / 10;
+
+    return {
+      type: 'CASTING_BALL',
+      lengthInches: safeLen,
+      lengthCm: Math.round(safeLen * 2.54 * 10) / 10,
+      shape,
+      weightGrams: wormWeight,
+      castingBallHo: safeHo,
+      castingBallWeightGrams: ballWeight,
+      jigheadWeightGrams: safeJighead,
+      surfaceAreaCm2: Math.round((ballArea + wormArea * 0.4) * 10) / 10,
     };
   }
 
@@ -160,14 +252,29 @@ export const WEIGHT_PRESETS: WeightPreset[] = [
   { id: 'juk-6', category: 'JUKKUMI', categoryLabel: '주꾸미 (호)', label: '6호', subLabel: '22.5g', weightGrams: 22.5 },
   { id: 'juk-7', category: 'JUKKUMI', categoryLabel: '주꾸미 (호)', label: '7호', subLabel: '26.3g', weightGrams: 26.3 },
 
-  // 4. 원투낚시용 봉돌 (16호, 20호, 30호, 40호, 1호=3.75g)
+  // 4. 원투낚시용 봉돌 (16호, 20호, 25호, 30호, 35호, 40호, 1호=3.75g)
   { id: 'surf-16', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '16호', subLabel: '60g',   weightGrams: 60 },
   { id: 'surf-20', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '20호', subLabel: '75g',   weightGrams: 75 },
+  { id: 'surf-25', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '25호', subLabel: '93.8g', weightGrams: 93.8 },
   { id: 'surf-30', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '30호', subLabel: '112.5g', weightGrams: 112.5 },
+  { id: 'surf-35', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '35호', subLabel: '131.3g', weightGrams: 131.3 },
   { id: 'surf-40', category: 'SURF', categoryLabel: '원투 봉돌 (호)', label: '40호', subLabel: '150g',  weightGrams: 150 },
 ];
 
-export function getWeightDescription(weightGrams: number): string {
+export function getWeightDescription(weightGrams: number, baitConfig?: BaitConfig): string {
+  if (baitConfig) {
+    if (baitConfig.type === 'CASTING_BALL') {
+      const ho = baitConfig.castingBallHo ?? 3.0;
+      const jh = baitConfig.jigheadWeightGrams ?? 1.0;
+      return `캐스팅볼 ${ho}호(${Math.round(ho * 3.75 * 10) / 10}g) + 지그헤드 ${jh}g`;
+    }
+    if (baitConfig.type === 'METAL') {
+      const mw = baitConfig.metalWeightGrams ?? weightGrams;
+      const len = baitConfig.lengthCm ?? 6.0;
+      return `메탈지그 ${mw}g (${len}cm)`;
+    }
+  }
+
   const match = WEIGHT_PRESETS.find((p) => Math.abs(p.weightGrams - weightGrams) < 0.15);
   if (match) {
     if (match.category === 'OZ') return `${match.label} (${match.weightGrams}g)`;
@@ -194,6 +301,9 @@ const KEY_BAIT_TYPE = 'exfish_bait_type';
 const KEY_BAIT_LENGTH = 'exfish_bait_length';
 const KEY_BAIT_LENGTH_CM = 'exfish_bait_length_cm';
 const KEY_BAIT_SHAPE = 'exfish_bait_shape';
+const KEY_CASTING_BALL_HO = 'exfish_casting_ball_ho';
+const KEY_JIGHEAD_WEIGHT = 'exfish_jighead_weight_g';
+const KEY_METAL_WEIGHT = 'exfish_metal_weight_g';
 
 export interface TackleRigConfig {
   weightGrams: number; // 싱커/추/봉돌 무게 (0.9g ~ 150g)
@@ -228,13 +338,27 @@ export function calculateCalibratedDistance(
   lengthFactor: number;
   totalWeightGrams: number;
 } {
-  const safeSinkerWeight = Math.max(0.5, Math.min(160, weightGrams));
-  const safeTotalWeight = Math.max(0.5, Math.min(180, safeSinkerWeight + baitConfig.weightGrams));
-  const safePE = Math.max(0.4, Math.min(3.0, peLineSize));
+  let safeTotalWeight: number;
+  let baitAirFactor = 1.0;
 
-  // 미끼 표면적에 따른 공기저항 계수 (기준 2.0 cm² = 1.0)
-  const baitDragRatio = Math.max(0.5, baitConfig.surfaceAreaCm2) / 2.0;
-  const baitAirFactor = Math.pow(1.0 / baitDragRatio, 0.08);
+  if (baitConfig.type === 'CASTING_BALL') {
+    const ballW = baitConfig.castingBallWeightGrams ?? ((baitConfig.castingBallHo ?? 3.0) * 3.75);
+    const jhW = baitConfig.jigheadWeightGrams ?? 1.0;
+    const wormW = baitConfig.weightGrams ?? 2.5;
+    safeTotalWeight = Math.max(0.5, Math.min(200, ballW + jhW + wormW));
+    baitAirFactor = 1.06; // 구형/유선형 던질찌의 안정적 비행 특성
+  } else if (baitConfig.type === 'METAL') {
+    const metalW = baitConfig.metalWeightGrams ?? weightGrams;
+    safeTotalWeight = Math.max(1.0, Math.min(200, metalW));
+    baitAirFactor = 1.15; // 메탈 지그의 극도로 낮은 공기 저항 및 높은 관성
+  } else {
+    const safeSinkerWeight = Math.max(0.5, Math.min(160, weightGrams));
+    safeTotalWeight = Math.max(0.5, Math.min(180, safeSinkerWeight + baitConfig.weightGrams));
+    const baitDragRatio = Math.max(0.5, baitConfig.surfaceAreaCm2) / 2.0;
+    baitAirFactor = Math.pow(1.0 / baitDragRatio, 0.08);
+  }
+
+  const safePE = Math.max(0.4, Math.min(3.0, peLineSize));
 
   if (rodPower === 'SURF') {
     // ----------------------------------------------------
@@ -444,18 +568,32 @@ export function calculateSinkingPhysics(
   driftDistanceM: number;
   totalWeightGrams: number;
 } {
-  const safeSinkerWeight = Math.max(0.5, Math.min(160, weightGrams));
-  const safeTotalWeight = Math.max(0.5, Math.min(180, safeSinkerWeight + baitConfig.weightGrams));
+  let safeTotalWeight: number;
+  let hydroDragFactor: number;
+
+  if (baitConfig.type === 'CASTING_BALL') {
+    const ballW = baitConfig.castingBallWeightGrams ?? ((baitConfig.castingBallHo ?? 3.0) * 3.75);
+    const jhW = baitConfig.jigheadWeightGrams ?? 1.0;
+    const wormW = baitConfig.weightGrams ?? 2.5;
+    safeTotalWeight = Math.max(0.5, Math.min(200, ballW + jhW + wormW));
+    hydroDragFactor = 0.65; // 던질찌의 부력 및 유체 저항 감속
+  } else if (baitConfig.type === 'METAL') {
+    const metalW = baitConfig.metalWeightGrams ?? weightGrams;
+    safeTotalWeight = Math.max(1.0, Math.min(200, metalW));
+    hydroDragFactor = 1.45; // 고비중 메탈의 고속 수중 침강
+  } else {
+    const safeSinkerWeight = Math.max(0.5, Math.min(160, weightGrams));
+    safeTotalWeight = Math.max(0.5, Math.min(180, safeSinkerWeight + baitConfig.weightGrams));
+    const baitDragRatio = Math.max(0.6, baitConfig.surfaceAreaCm2) / 2.0;
+    hydroDragFactor = Math.pow(1.0 / baitDragRatio, 0.25);
+  }
+
   const safeDepth = Math.max(1.0, Math.min(60, depthMeters));
   const safeCurrent = Math.max(0.0, Math.min(3.0, currentVelocityMps));
 
-  // 1. 미끼 유체 항력 계수 (기준 2.0 cm² = 1.0)
-  const baitDragRatio = Math.max(0.6, baitConfig.surfaceAreaCm2) / 2.0;
-  const hydroDragFactor = Math.pow(1.0 / baitDragRatio, 0.25);
-
   // 2. 정지 수역 수중 종단 침강 속도 (v_sink = 0.28 * sqrt(W_total) * hydroDrag)
   const rawSinkSpeed = 0.28 * Math.sqrt(safeTotalWeight) * hydroDragFactor;
-  const sinkSpeedMps = Math.round(Math.max(0.20, Math.min(3.5, rawSinkSpeed)) * 100) / 100;
+  const sinkSpeedMps = Math.round(Math.max(0.15, Math.min(4.0, rawSinkSpeed)) * 100) / 100;
 
   // 3. 조류에 의한 원줄(합사) 배불뚝이(Belly) 양력 감쇄 효과
   const currentRatio = safeCurrent / (0.6 * sinkSpeedMps);
@@ -481,10 +619,13 @@ export function getSavedTackleConfig(): TackleRigConfig {
   let pe = 1.0;
   let rodPower: RodPower = 'M';
   let rodLengthM = 2.6; // 기본 8.6ft = 2.6m
-  let baitType: BaitType = 'LIVE';
+  let baitType: BaitType = 'LURE';
   let baitLength = 2;
   let baitLengthCm = 6.0;
   let baitShape: LureShape = 'GRUB';
+  let castingBallHo = 3.0;
+  let jigheadWeightGrams = 1.0;
+  let metalWeightGrams = 28.0;
 
   if (typeof window !== 'undefined') {
     try {
@@ -497,6 +638,9 @@ export function getSavedTackleConfig(): TackleRigConfig {
       const savedBaitLen = localStorage.getItem(KEY_BAIT_LENGTH);
       const savedBaitLenCm = localStorage.getItem(KEY_BAIT_LENGTH_CM);
       const savedBaitShape = localStorage.getItem(KEY_BAIT_SHAPE) as LureShape | null;
+      const savedBallHo = localStorage.getItem(KEY_CASTING_BALL_HO);
+      const savedJH = localStorage.getItem(KEY_JIGHEAD_WEIGHT);
+      const savedMetalW = localStorage.getItem(KEY_METAL_WEIGHT);
 
       if (savedW) weight = parseFloat(savedW) || 25;
       if (savedPE) pe = parseFloat(savedPE) || 1.0;
@@ -515,12 +659,17 @@ export function getSavedTackleConfig(): TackleRigConfig {
         rodLengthM = Math.round(ft * 0.3048 * 10) / 10;
       }
 
-      if (savedBaitType === 'LIVE' || savedBaitType === 'LURE' || savedBaitType === 'METAL') baitType = savedBaitType;
+      if (savedBaitType === 'LIVE' || savedBaitType === 'LURE' || savedBaitType === 'CASTING_BALL' || savedBaitType === 'METAL') {
+        baitType = savedBaitType;
+      }
       if (savedBaitLen) baitLength = parseInt(savedBaitLen, 10) || 2;
       if (savedBaitLenCm) baitLengthCm = parseFloat(savedBaitLenCm) || 6.0;
       if (savedBaitShape && ['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'].includes(savedBaitShape)) {
         baitShape = savedBaitShape;
       }
+      if (savedBallHo) castingBallHo = parseFloat(savedBallHo) || 3.0;
+      if (savedJH) jigheadWeightGrams = parseFloat(savedJH) || 1.0;
+      if (savedMetalW) metalWeightGrams = parseFloat(savedMetalW) || 28.0;
     } catch {
       // ignore
     }
@@ -532,11 +681,27 @@ export function getSavedTackleConfig(): TackleRigConfig {
     if (!SURF_ROD_LENGTHS_M.includes(rodLengthM as any)) {
       rodLengthM = 4.2;
     }
+    baitType = 'LIVE'; // 원투대는 현행대로 생미끼
+    if (weight < 30) weight = 93.8; // 원투 봉돌 기본값 (25호)
   } else {
     rodLengthM = Math.max(1.6, Math.min(3.0, rodLengthM));
+    if (baitType === 'LIVE') baitType = 'LURE'; // 루어대에서는 루어가 기본
+    if (baitType === 'METAL') {
+      weight = metalWeightGrams;
+    } else if (baitType === 'CASTING_BALL') {
+      weight = Math.round((castingBallHo * 3.75 + jigheadWeightGrams) * 10) / 10;
+    }
   }
 
-  const baitConfig = getBaitSpecs(baitType, baitLength, baitShape, baitLengthCm);
+  const baitConfig = getBaitSpecs(
+    baitType,
+    baitLength,
+    baitShape,
+    baitLengthCm,
+    castingBallHo,
+    jigheadWeightGrams,
+    metalWeightGrams
+  );
 
   const { distanceMeters, elasticityEfficiency, lengthFactor, totalWeightGrams } = calculateCalibratedDistance(
     weight,
@@ -575,16 +740,19 @@ export function saveTackleConfig(
   baitType?: BaitType,
   baitLength?: number,
   baitShape?: LureShape,
-  baitLengthCm?: number
+  baitLengthCm?: number,
+  castingBallHo?: number,
+  jigheadWeightGrams?: number,
+  metalWeightGrams?: number
 ): TackleRigConfig {
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(KEY_RIG_WEIGHT, String(weightGrams));
-      localStorage.setItem(KEY_PE_LINE, String(peLineSize));
-
       let finalPower = rodPower;
       if (finalPower === ('XH' as any)) finalPower = 'SURF';
       if (finalPower) localStorage.setItem(KEY_ROD_POWER, finalPower);
+      else {
+        finalPower = (localStorage.getItem(KEY_ROD_POWER) as RodPower) || 'M';
+      }
 
       if (rodLength !== undefined) {
         let lengthM = rodLength;
@@ -595,14 +763,52 @@ export function saveTackleConfig(
         localStorage.setItem(KEY_ROD_LENGTH, String(Math.round(lengthM * 3.28084 * 10) / 10));
       }
 
-      if (baitType) localStorage.setItem(KEY_BAIT_TYPE, baitType);
+      let finalBaitType = baitType;
+      if (!finalBaitType) {
+        finalBaitType = (localStorage.getItem(KEY_BAIT_TYPE) as BaitType) || (finalPower === 'SURF' ? 'LIVE' : 'LURE');
+      }
+      if (finalPower === 'SURF') finalBaitType = 'LIVE';
+      else if (finalBaitType === 'LIVE') finalBaitType = 'LURE';
+      localStorage.setItem(KEY_BAIT_TYPE, finalBaitType);
+
       if (baitLength !== undefined) localStorage.setItem(KEY_BAIT_LENGTH, String(baitLength));
       if (baitLengthCm !== undefined) localStorage.setItem(KEY_BAIT_LENGTH_CM, String(baitLengthCm));
       if (baitShape) localStorage.setItem(KEY_BAIT_SHAPE, baitShape);
 
+      if (castingBallHo !== undefined) localStorage.setItem(KEY_CASTING_BALL_HO, String(castingBallHo));
+      if (jigheadWeightGrams !== undefined) localStorage.setItem(KEY_JIGHEAD_WEIGHT, String(jigheadWeightGrams));
+      if (metalWeightGrams !== undefined) localStorage.setItem(KEY_METAL_WEIGHT, String(metalWeightGrams));
+
+      // 미끼 타입에 따른 weightGrams 동기화
+      let finalWeight = weightGrams;
+      if (finalPower !== 'SURF') {
+        if (finalBaitType === 'METAL') {
+          const mWeight = metalWeightGrams !== undefined ? metalWeightGrams : (parseFloat(localStorage.getItem(KEY_METAL_WEIGHT) || '28') || 28);
+          finalWeight = mWeight;
+        } else if (finalBaitType === 'CASTING_BALL') {
+          const ho = castingBallHo !== undefined ? castingBallHo : (parseFloat(localStorage.getItem(KEY_CASTING_BALL_HO) || '3') || 3);
+          const jh = jigheadWeightGrams !== undefined ? jigheadWeightGrams : (parseFloat(localStorage.getItem(KEY_JIGHEAD_WEIGHT) || '1') || 1);
+          finalWeight = Math.round((ho * 3.75 + jh) * 10) / 10;
+        }
+      }
+      localStorage.setItem(KEY_RIG_WEIGHT, String(finalWeight));
+      localStorage.setItem(KEY_PE_LINE, String(peLineSize));
+
       window.dispatchEvent(
         new CustomEvent('exfish_tackle_updated', {
-          detail: { weightGrams, peLineSize, rodPower: finalPower, rodLength, baitType, baitLength, baitShape, baitLengthCm },
+          detail: {
+            weightGrams: finalWeight,
+            peLineSize,
+            rodPower: finalPower,
+            rodLength,
+            baitType: finalBaitType,
+            baitLength,
+            baitShape,
+            baitLengthCm,
+            castingBallHo,
+            jigheadWeightGrams,
+            metalWeightGrams,
+          },
         })
       );
     } catch {

@@ -37,6 +37,10 @@ import {
   LureShape,
   LURE_SHAPE_NAMES,
   getBaitSpecs,
+  CASTING_BALL_PRESETS,
+  JIGHEAD_PRESETS,
+  METAL_WEIGHT_PRESETS,
+  METAL_LENGTH_PRESETS,
 } from '../utils/tackleCalibration';
 import {
   getNativeLocation,
@@ -328,6 +332,40 @@ export const MapView: React.FC<MapViewProps> = ({
     if (current.weightGrams >= 11 && current.weightGrams <= 27) return 'JUKKUMI';
     return 'JIG';
   });
+  const [jigheadUnit, setJigheadUnit] = React.useState<'g' | 'oz'>('g');
+
+  const updateTackle = React.useCallback(
+    (updates: {
+      weightGrams?: number;
+      peLineSize?: number;
+      rodPower?: RodPower;
+      rodLengthM?: number;
+      baitType?: BaitType;
+      baitLength?: number;
+      baitShape?: LureShape;
+      baitLengthCm?: number;
+      castingBallHo?: number;
+      jigheadWeightGrams?: number;
+      metalWeightGrams?: number;
+    }) => {
+      const currentBait = tackleConfig.baitConfig;
+      const updated = saveTackleConfig(
+        updates.weightGrams ?? tackleConfig.weightGrams,
+        updates.peLineSize ?? tackleConfig.peLineSize,
+        updates.rodPower ?? tackleConfig.rodPower,
+        updates.rodLengthM ?? tackleConfig.rodLengthM,
+        updates.baitType ?? currentBait?.type,
+        updates.baitLength ?? currentBait?.lengthInches,
+        updates.baitShape ?? currentBait?.shape,
+        updates.baitLengthCm ?? currentBait?.lengthCm,
+        updates.castingBallHo ?? currentBait?.castingBallHo,
+        updates.jigheadWeightGrams ?? currentBait?.jigheadWeightGrams,
+        updates.metalWeightGrams ?? currentBait?.metalWeightGrams
+      );
+      setTackleConfig(updated);
+    },
+    [tackleConfig]
+  );
 
   React.useEffect(() => {
     const handleTackleUpdate = () => {
@@ -1204,7 +1242,12 @@ export const MapView: React.FC<MapViewProps> = ({
 
           // 수중 침강 물리 및 조류 연동 바닥 안착 소요 시간/흘림 계산
           const currentVel = marine?.currentVelocity ?? 0.3;
-          const sinkPhysics = calculateSinkingPhysics(tackleConfig.weightGrams, landingDepth, currentVel);
+          const sinkPhysics = calculateSinkingPhysics(
+            tackleConfig.weightGrams,
+            landingDepth,
+            currentVel,
+            tackleConfig.baitConfig
+          );
 
           const castingLines = (
             <React.Fragment key={`selected-casting-${selectedSpot.id}`}>
@@ -2226,18 +2269,22 @@ export const MapView: React.FC<MapViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const newPower: RodPower = 'ML';
-                      const newLenM = 2.6;
-                      const updated = saveTackleConfig(
-                        tackleConfig.weightGrams,
-                        tackleConfig.peLineSize,
-                        newPower,
-                        newLenM,
-                        tackleConfig.baitConfig?.type,
-                        tackleConfig.baitConfig?.lengthInches,
-                        tackleConfig.baitConfig?.shape
-                      );
-                      setTackleConfig(updated);
+                      const newPower: RodPower = tackleConfig.rodPower === 'SURF' ? 'ML' : tackleConfig.rodPower;
+                      const newLenM = tackleConfig.rodType === 'SURF' ? 2.6 : tackleConfig.rodLengthM;
+                      const nextBaitType = tackleConfig.baitConfig?.type === 'LIVE' ? 'LURE' : (tackleConfig.baitConfig?.type || 'LURE');
+                      const nextWeight = nextBaitType === 'METAL'
+                        ? (tackleConfig.baitConfig?.metalWeightGrams || 28)
+                        : nextBaitType === 'CASTING_BALL'
+                        ? Math.round(((tackleConfig.baitConfig?.castingBallHo || 3) * 3.75 + (tackleConfig.baitConfig?.jigheadWeightGrams || 1)) * 10) / 10
+                        : (tackleConfig.weightGrams >= 30 ? 10.6 : tackleConfig.weightGrams);
+
+                      updateTackle({
+                        weightGrams: nextWeight,
+                        rodPower: newPower,
+                        rodLengthM: newLenM,
+                        baitType: nextBaitType,
+                      });
+                      if (selectedWeightCategory === 'SURF') setSelectedWeightCategory('OZ');
                     }}
                     className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold rounded-md transition ${
                       tackleConfig.rodType === 'LURE'
@@ -2251,18 +2298,14 @@ export const MapView: React.FC<MapViewProps> = ({
                     type="button"
                     onClick={() => {
                       const newPower: RodPower = 'SURF';
-                      const newLenM = 4.2;
-                      const newW = tackleConfig.weightGrams < 20 ? 93.8 : tackleConfig.weightGrams;
-                      const updated = saveTackleConfig(
-                        newW,
-                        tackleConfig.peLineSize,
-                        newPower,
-                        newLenM,
-                        tackleConfig.baitConfig?.type,
-                        tackleConfig.baitConfig?.lengthInches,
-                        tackleConfig.baitConfig?.shape
-                      );
-                      setTackleConfig(updated);
+                      const newLenM = [2.7, 3.3, 4.2, 4.5, 5.4].includes(tackleConfig.rodLengthM as any) ? tackleConfig.rodLengthM : 4.2;
+                      const newW = tackleConfig.weightGrams < 30 ? 93.8 : tackleConfig.weightGrams;
+                      updateTackle({
+                        weightGrams: newW,
+                        rodPower: newPower,
+                        rodLengthM: newLenM,
+                        baitType: 'LIVE',
+                      });
                       setSelectedWeightCategory('SURF');
                     }}
                     className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold rounded-md transition ${
@@ -2289,18 +2332,7 @@ export const MapView: React.FC<MapViewProps> = ({
                         <button
                           key={p}
                           type="button"
-                          onClick={() => {
-                            const updated = saveTackleConfig(
-                              tackleConfig.weightGrams,
-                              tackleConfig.peLineSize,
-                              p,
-                              tackleConfig.rodLengthM,
-                              tackleConfig.baitConfig?.type,
-                              tackleConfig.baitConfig?.lengthInches,
-                              tackleConfig.baitConfig?.shape
-                            );
-                            setTackleConfig(updated);
-                          }}
+                          onClick={() => updateTackle({ rodPower: p })}
                           className={`py-1.5 rounded text-xs font-bold font-mono transition ${
                             tackleConfig.rodPower === p
                               ? 'bg-cyan-500 text-slate-950 shadow ring-1 ring-cyan-300'
@@ -2315,7 +2347,7 @@ export const MapView: React.FC<MapViewProps> = ({
                       * {ROD_POWER_SPECS[tackleConfig.rodPower]?.description}
                     </div>
 
-                    {/* [요구사항 2-6-4] 루어대 전장 버튼에 feet 표기 생략 (m만 표기) */}
+                    {/* 루어대 전장 버튼 (m 단위) */}
                     <div className="space-y-1.5 pt-1.5 border-t border-slate-800/80">
                       <div className="flex justify-between items-center text-xs sm:text-sm">
                         <span className="text-slate-300">루어대 전장:</span>
@@ -2330,19 +2362,7 @@ export const MapView: React.FC<MapViewProps> = ({
                           max={3.0}
                           step={0.1}
                           value={tackleConfig.rodLengthM}
-                          onChange={(e) => {
-                            const lenM = Number(e.target.value);
-                            const updated = saveTackleConfig(
-                              tackleConfig.weightGrams,
-                              tackleConfig.peLineSize,
-                              tackleConfig.rodPower,
-                              lenM,
-                              tackleConfig.baitConfig?.type,
-                              tackleConfig.baitConfig?.lengthInches,
-                              tackleConfig.baitConfig?.shape
-                            );
-                            setTackleConfig(updated);
-                          }}
+                          onChange={(e) => updateTackle({ rodLengthM: Number(e.target.value) })}
                           className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                         />
                       </div>
@@ -2351,18 +2371,7 @@ export const MapView: React.FC<MapViewProps> = ({
                           <button
                             key={mVal}
                             type="button"
-                            onClick={() => {
-                              const updated = saveTackleConfig(
-                                tackleConfig.weightGrams,
-                                tackleConfig.peLineSize,
-                                tackleConfig.rodPower,
-                                mVal,
-                                tackleConfig.baitConfig?.type,
-                                tackleConfig.baitConfig?.lengthInches,
-                                tackleConfig.baitConfig?.shape
-                              );
-                              setTackleConfig(updated);
-                            }}
+                            onClick={() => updateTackle({ rodLengthM: mVal })}
                             className={`px-2.5 py-1 rounded text-xs font-mono transition ${
                               Math.abs(tackleConfig.rodLengthM - mVal) < 0.05
                                 ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400/80 font-bold'
@@ -2376,7 +2385,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     </div>
                   </div>
                 ) : (
-                  /* [요구사항 2-6-2] 원투대: 고정 규격 전장 (각 버튼의 밑줄 feet 표기 생략) */
+                  /* 원투대: 고정 규격 전장 */
                   <div className="space-y-2 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
                     <div className="flex justify-between items-center text-xs sm:text-sm">
                       <span className="text-slate-300">원투대 규격 전장:</span>
@@ -2389,18 +2398,7 @@ export const MapView: React.FC<MapViewProps> = ({
                         <button
                           key={mVal}
                           type="button"
-                          onClick={() => {
-                            const updated = saveTackleConfig(
-                              tackleConfig.weightGrams,
-                              tackleConfig.peLineSize,
-                              'SURF',
-                              mVal,
-                              tackleConfig.baitConfig?.type,
-                              tackleConfig.baitConfig?.lengthInches,
-                              tackleConfig.baitConfig?.shape
-                            );
-                            setTackleConfig(updated);
-                          }}
+                          onClick={() => updateTackle({ rodPower: 'SURF', rodLengthM: mVal })}
                           className={`py-2 px-1 rounded flex items-center justify-center transition ${
                             Math.abs(tackleConfig.rodLengthM - mVal) < 0.05
                               ? 'bg-amber-500 text-slate-950 font-bold shadow ring-1 ring-amber-300'
@@ -2415,302 +2413,518 @@ export const MapView: React.FC<MapViewProps> = ({
                 )}
               </div>
 
-              {/* [요구사항 2-6-12] 미끼 선택 섹션 (생미끼, 루어: 길이 1~4인치 및 형상 선택) */}
-              <div className="space-y-2 pt-3">
-                <div className="flex justify-between items-center text-xs sm:text-sm">
-                  <span className="text-slate-300 font-medium">미끼 (Lure / Bait):</span>
-                  <span className="font-mono text-cyan-300 text-xs font-semibold">
-                    {tackleConfig.baitConfig?.type === 'LIVE'
-                      ? '생미끼 (2인치 그럽웜 가정)'
-                      : `${tackleConfig.baitConfig?.lengthInches}인치 ${LURE_SHAPE_NAMES[tackleConfig.baitConfig?.shape ?? 'GRUB']}`}
-                    <span className="text-slate-400 ml-1">
-                      (+{tackleConfig.baitConfig?.weightGrams ?? 2.5}g)
+              {/* 루어대 선택 시: 미끼 종류 (루어 / 캐스팅볼 / 메탈) 상세 설정 */}
+              {tackleConfig.rodType === 'LURE' ? (
+                <div className="space-y-3 pt-3">
+                  <div className="flex justify-between items-center text-xs sm:text-sm">
+                    <span className="text-slate-300 font-medium">미끼 종류:</span>
+                    <span className="font-mono text-cyan-300 text-xs font-semibold">
+                      {tackleConfig.baitConfig?.type === 'CASTING_BALL' ? (
+                        `캐스팅볼 ${tackleConfig.baitConfig.castingBallHo ?? 3}호 + 지그헤드 ${tackleConfig.baitConfig.jigheadWeightGrams ?? 1}g`
+                      ) : tackleConfig.baitConfig?.type === 'METAL' ? (
+                        `메탈 ${(tackleConfig.baitConfig.lengthCm ?? 6).toFixed(1)}cm (${tackleConfig.baitConfig.metalWeightGrams ?? 28}g)`
+                      ) : (
+                        `${tackleConfig.baitConfig?.lengthInches ?? 2}인치 ${LURE_SHAPE_NAMES[tackleConfig.baitConfig?.shape ?? 'GRUB']} (+${tackleConfig.baitConfig?.weightGrams ?? 2.5}g)`
+                      )}
                     </span>
-                  </span>
-                </div>
-
-                {/* [요구사항 4] 미끼 종류 탭 (생미끼 vs 루어 vs 메탈) */}
-                <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const updated = saveTackleConfig(
-                        tackleConfig.weightGrams,
-                        tackleConfig.peLineSize,
-                        tackleConfig.rodPower,
-                        tackleConfig.rodLengthM,
-                        'LIVE',
-                        2,
-                        'GRUB'
-                      );
-                      setTackleConfig(updated);
-                    }}
-                    className={`flex-1 py-1.5 text-center text-xs font-bold rounded-md transition ${
-                      tackleConfig.baitConfig?.type === 'LIVE'
-                        ? 'bg-cyan-500 text-slate-950 shadow'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    🪱 생미끼
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const updated = saveTackleConfig(
-                        tackleConfig.weightGrams,
-                        tackleConfig.peLineSize,
-                        tackleConfig.rodPower,
-                        tackleConfig.rodLengthM,
-                        'LURE',
-                        tackleConfig.baitConfig?.lengthInches || 2,
-                        tackleConfig.baitConfig?.shape || 'GRUB'
-                      );
-                      setTackleConfig(updated);
-                    }}
-                    className={`flex-1 py-1.5 text-center text-xs font-bold rounded-md transition ${
-                      tackleConfig.baitConfig?.type === 'LURE'
-                        ? 'bg-cyan-500 text-slate-950 shadow'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    🐟 루어
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const updated = saveTackleConfig(
-                        tackleConfig.weightGrams,
-                        tackleConfig.peLineSize,
-                        tackleConfig.rodPower,
-                        tackleConfig.rodLengthM,
-                        'METAL',
-                        undefined,
-                        undefined,
-                        tackleConfig.baitConfig?.lengthCm || 6.0
-                      );
-                      setTackleConfig(updated);
-                    }}
-                    className={`flex-1 py-1.5 text-center text-xs font-bold rounded-md transition ${
-                      tackleConfig.baitConfig?.type === 'METAL'
-                        ? 'bg-cyan-500 text-slate-950 shadow'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    ⚡ 메탈
-                  </button>
-                </div>
-
-                {/* 루어 선택 시: 길이(1~4인치) 및 형상(그럽웜/쉐드웜/스트레이트/미노우) */}
-                {tackleConfig.baitConfig?.type === 'LURE' && (
-                  <div className="p-2.5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
-                    <div>
-                      <div className="text-[11px] text-slate-400 mb-1">루어 길이:</div>
-                      <div className="grid grid-cols-4 gap-1">
-                        {[1, 2, 3, 4].map((len) => (
-                          <button
-                            key={len}
-                            type="button"
-                            onClick={() => {
-                              const updated = saveTackleConfig(
-                                tackleConfig.weightGrams,
-                                tackleConfig.peLineSize,
-                                tackleConfig.rodPower,
-                                tackleConfig.rodLengthM,
-                                'LURE',
-                                len,
-                                tackleConfig.baitConfig?.shape || 'GRUB'
-                              );
-                              setTackleConfig(updated);
-                            }}
-                            className={`py-1 rounded text-xs font-mono transition ${
-                              tackleConfig.baitConfig?.lengthInches === len
-                                ? 'bg-cyan-500 text-slate-950 font-bold shadow'
-                                : 'bg-slate-900 text-slate-400 border border-slate-800'
-                            }`}
-                          >
-                            {len}인치
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-[11px] text-slate-400 mb-1">루어 형상:</div>
-                      <div className="grid grid-cols-4 gap-1">
-                        {(['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'] as LureShape[]).map((shp) => (
-                          <button
-                            key={shp}
-                            type="button"
-                            onClick={() => {
-                              const updated = saveTackleConfig(
-                                tackleConfig.weightGrams,
-                                tackleConfig.peLineSize,
-                                tackleConfig.rodPower,
-                                tackleConfig.rodLengthM,
-                                'LURE',
-                                tackleConfig.baitConfig?.lengthInches || 2,
-                                shp
-                              );
-                              setTackleConfig(updated);
-                            }}
-                            className={`py-1 rounded text-[11px] font-medium transition ${
-                              tackleConfig.baitConfig?.shape === shp
-                                ? 'bg-cyan-500 text-slate-950 font-bold shadow'
-                                : 'bg-slate-900 text-slate-400 border border-slate-800'
-                            }`}
-                          >
-                            {LURE_SHAPE_NAMES[shp]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   </div>
-                )}
 
-                {/* [요구사항 4] 메탈 선택 시: 형상 없이 길이(2.5cm ~ 16cm)만 지정 */}
-                {tackleConfig.baitConfig?.type === 'METAL' && (
-                  <div className="p-2.5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-400">메탈 지그 길이:</span>
-                      <span className="font-mono font-bold text-cyan-300">
-                        {(tackleConfig.baitConfig.lengthCm ?? 6.0).toFixed(1)}cm
-                        <span className="text-[11px] text-slate-400 font-normal ml-1">
-                          (자중 약 {tackleConfig.baitConfig.weightGrams}g)
-                        </span>
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={2.5}
-                      max={16.0}
-                      step={0.5}
-                      value={tackleConfig.baitConfig.lengthCm ?? 6.0}
-                      onChange={(e) => {
-                        const lenCm = parseFloat(e.target.value);
-                        const updated = saveTackleConfig(
-                          tackleConfig.weightGrams,
-                          tackleConfig.peLineSize,
-                          tackleConfig.rodPower,
-                          tackleConfig.rodLengthM,
-                          'METAL',
-                          undefined,
-                          undefined,
-                          lenCm
-                        );
-                        setTackleConfig(updated);
-                      }}
-                      className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                    />
-                    <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                      <span>2.5cm</span>
-                      <span>6.0cm (표준)</span>
-                      <span>10.0cm</span>
-                      <span>16.0cm</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 2. 추 / 봉돌 무게 선택 (지그헤드->그램, 온스, 주꾸미, 원투봉돌) */}
-              <div className="space-y-1.5 pt-3">
-                <div className="flex justify-between items-center text-xs sm:text-sm">
-                  <span className="text-slate-300 font-medium">추/봉돌 무게:</span>
-                  <span className="font-mono font-bold text-cyan-300">
-                    {tackleConfig.weightGrams}g
-                    <span className="text-[10.5px] sm:text-xs text-slate-400 font-normal ml-1">
-                      ({getWeightDescription(tackleConfig.weightGrams)})
-                    </span>
-                  </span>
-                </div>
-
-                {/* [요구사항 2-6-5] 카테고리 탭: '지그헤드' -> '그램' */}
-                <div className="grid grid-cols-4 gap-1 p-0.5 bg-slate-900 rounded-lg border border-slate-800">
-                  {[
-                    { cat: 'JIG' as WeightCategory, label: '그램', desc: '1~5g' },
-                    { cat: 'OZ' as WeightCategory, label: '온스(oz)', desc: '1/32~2oz' },
-                    { cat: 'JUKKUMI' as WeightCategory, label: '주꾸미', desc: '3~7호' },
-                    { cat: 'SURF' as WeightCategory, label: '원투봉돌', desc: '16~40호' },
-                  ].map((tab) => (
+                  {/* 미끼 종류 3개 탭: 루어 vs 캐스팅볼 vs 메탈 */}
+                  <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
                     <button
-                      key={tab.cat}
                       type="button"
-                      onClick={() => setSelectedWeightCategory(tab.cat)}
-                      className={`py-1.5 rounded text-center transition ${
-                        selectedWeightCategory === tab.cat
-                          ? 'bg-slate-800 text-cyan-300 font-bold border border-cyan-500/50 shadow-xs'
+                      onClick={() => {
+                        const nextWeight = tackleConfig.weightGrams >= 30 ? 10.6 : tackleConfig.weightGrams;
+                        updateTackle({
+                          baitType: 'LURE',
+                          weightGrams: nextWeight,
+                        });
+                        if (selectedWeightCategory === 'SURF') setSelectedWeightCategory('OZ');
+                      }}
+                      className={`flex-1 py-1.5 text-center text-xs font-bold rounded-md transition ${
+                        tackleConfig.baitConfig?.type === 'LURE' || !tackleConfig.baitConfig?.type
+                          ? 'bg-cyan-500 text-slate-950 shadow'
                           : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      <div className="text-xs leading-tight">{tab.label}</div>
-                      <div className="text-[9.5px] opacity-75 font-mono leading-tight">{tab.desc}</div>
+                      🐟 루어
                     </button>
-                  ))}
-                </div>
-
-                {/* [요구사항 2-6-6, 2-6-7] 프리셋 버튼 목록: 온스는 oz만, 주꾸미는 호수만 표기 */}
-                <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1.5 bg-slate-900/70 rounded-lg border border-slate-800">
-                  {WEIGHT_PRESETS.filter((p) => p.category === selectedWeightCategory).map((preset) => (
                     <button
-                      key={preset.id}
                       type="button"
                       onClick={() => {
-                        const updated = saveTackleConfig(
-                          preset.weightGrams,
-                          tackleConfig.peLineSize,
-                          tackleConfig.rodPower,
-                          tackleConfig.rodLengthM,
-                          tackleConfig.baitConfig?.type,
-                          tackleConfig.baitConfig?.lengthInches,
-                          tackleConfig.baitConfig?.shape
-                        );
-                        setTackleConfig(updated);
+                        updateTackle({ baitType: 'CASTING_BALL' });
                       }}
-                      className={`px-2.5 py-1 rounded text-xs font-mono flex items-center gap-0.5 transition ${
-                        Math.abs(tackleConfig.weightGrams - preset.weightGrams) < 0.15
-                          ? 'bg-cyan-500 text-slate-950 font-bold shadow'
-                          : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                      className={`flex-1 py-1.5 text-center text-xs font-bold rounded-md transition ${
+                        tackleConfig.baitConfig?.type === 'CASTING_BALL'
+                          ? 'bg-cyan-500 text-slate-950 shadow'
+                          : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      <span>{preset.label}</span>
-                      {/* 그램 탭이나 원투일 때만 부가 레이블 표시, 온스와 주꾸미는 그램 표기 생략 */}
-                      {selectedWeightCategory !== 'OZ' && selectedWeightCategory !== 'JUKKUMI' && (
-                        <span className="text-[9.5px] opacity-75">({preset.subLabel})</span>
-                      )}
+                      ⚪ 캐스팅볼
                     </button>
-                  ))}
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateTackle({ baitType: 'METAL' });
+                      }}
+                      className={`flex-1 py-1.5 text-center text-xs font-bold rounded-md transition ${
+                        tackleConfig.baitConfig?.type === 'METAL'
+                          ? 'bg-cyan-500 text-slate-950 shadow'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      ⚡ 메탈
+                    </button>
+                  </div>
 
-                {/* [요구사항 10-1] 모바일 앱 스크롤 간섭 방지를 위해 슬라이더 안쪽 패딩 적용 */}
-                <div className="px-1 pt-1">
-                  <input
-                    type="range"
-                    min={1}
-                    max={150}
-                    step={1}
-                    value={Math.round(tackleConfig.weightGrams)}
-                    onChange={(e) => {
-                      const w = Number(e.target.value);
-                      const updated = saveTackleConfig(
-                        w,
-                        tackleConfig.peLineSize,
-                        tackleConfig.rodPower,
-                        tackleConfig.rodLengthM,
-                        tackleConfig.baitConfig?.type,
-                        tackleConfig.baitConfig?.lengthInches,
-                        tackleConfig.baitConfig?.shape
-                      );
-                      setTackleConfig(updated);
-                    }}
-                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
-                  <div className="flex justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono mt-0.5">
-                    <span>1g</span>
-                    <span>28g(1oz)</span>
-                    <span>75g(20호)</span>
-                    <span>150g(40호)</span>
+                  {/* 1) 루어 선택 시: 추/봉돌 무게(그램, 온스, 주꾸미) + 루어 길이 + 루어 형상 */}
+                  {(tackleConfig.baitConfig?.type === 'LURE' || !tackleConfig.baitConfig?.type) && (
+                    <div className="space-y-3 p-2.5 bg-slate-900/60 rounded-xl border border-slate-800">
+                      {/* 추/봉돌 무게 */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-300 font-medium">추/봉돌 무게:</span>
+                          <span className="font-mono font-bold text-cyan-300">
+                            {tackleConfig.weightGrams}g
+                            <span className="text-[10.5px] text-slate-400 font-normal ml-1">
+                              ({getWeightDescription(tackleConfig.weightGrams, tackleConfig.baitConfig)})
+                            </span>
+                          </span>
+                        </div>
+
+                        {/* 카테고리 탭 (그램, 온스, 주꾸미) - 원투봉돌 제외 */}
+                        <div className="grid grid-cols-3 gap-1 p-0.5 bg-slate-900 rounded-lg border border-slate-800">
+                          {[
+                            { cat: 'JIG' as WeightCategory, label: '그램', desc: '1~5g' },
+                            { cat: 'OZ' as WeightCategory, label: '온스(oz)', desc: '1/32~2oz' },
+                            { cat: 'JUKKUMI' as WeightCategory, label: '주꾸미', desc: '3~7호' },
+                          ].map((tab) => (
+                            <button
+                              key={tab.cat}
+                              type="button"
+                              onClick={() => setSelectedWeightCategory(tab.cat)}
+                              className={`py-1.5 rounded text-center transition ${
+                                selectedWeightCategory === tab.cat
+                                  ? 'bg-slate-800 text-cyan-300 font-bold border border-cyan-500/50 shadow-xs'
+                                  : 'text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              <div className="text-xs leading-tight">{tab.label}</div>
+                              <div className="text-[9.5px] opacity-75 font-mono leading-tight">{tab.desc}</div>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* 프리셋 버튼 목록 */}
+                        <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1.5 bg-slate-900/70 rounded-lg border border-slate-800">
+                          {WEIGHT_PRESETS.filter(
+                            (p) => p.category === (selectedWeightCategory === 'SURF' ? 'OZ' : selectedWeightCategory)
+                          ).map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => updateTackle({ weightGrams: preset.weightGrams })}
+                              className={`px-2.5 py-1 rounded text-xs font-mono flex items-center gap-0.5 transition ${
+                                Math.abs(tackleConfig.weightGrams - preset.weightGrams) < 0.15
+                                  ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                              }`}
+                            >
+                              <span>{preset.label}</span>
+                              {selectedWeightCategory !== 'OZ' && selectedWeightCategory !== 'JUKKUMI' && (
+                                <span className="text-[9.5px] opacity-75">({preset.subLabel})</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* 슬라이더 */}
+                        <div className="px-1 pt-0.5">
+                          <input
+                            type="range"
+                            min={1}
+                            max={60}
+                            step={1}
+                            value={Math.min(60, Math.round(tackleConfig.weightGrams))}
+                            onChange={(e) => updateTackle({ weightGrams: Number(e.target.value) })}
+                            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                          />
+                          <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
+                            <span>1g</span>
+                            <span>14g(1/2oz)</span>
+                            <span>28g(1oz)</span>
+                            <span>60g</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 루어 길이 */}
+                      <div className="pt-1.5 border-t border-slate-800/80">
+                        <div className="text-[11px] text-slate-400 mb-1">루어 길이:</div>
+                        <div className="grid grid-cols-4 gap-1">
+                          {[1, 2, 3, 4].map((len) => (
+                            <button
+                              key={len}
+                              type="button"
+                              onClick={() => updateTackle({ baitLength: len })}
+                              className={`py-1 rounded text-xs font-mono transition ${
+                                (tackleConfig.baitConfig?.lengthInches || 2) === len
+                                  ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                  : 'bg-slate-900 text-slate-400 border border-slate-800'
+                              }`}
+                            >
+                              {len}인치
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 루어 형상 */}
+                      <div>
+                        <div className="text-[11px] text-slate-400 mb-1">루어 형상:</div>
+                        <div className="grid grid-cols-4 gap-1">
+                          {(['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'] as LureShape[]).map((shp) => (
+                            <button
+                              key={shp}
+                              type="button"
+                              onClick={() => updateTackle({ baitShape: shp })}
+                              className={`py-1 rounded text-[11px] font-medium transition ${
+                                (tackleConfig.baitConfig?.shape || 'GRUB') === shp
+                                  ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                  : 'bg-slate-900 text-slate-400 border border-slate-800'
+                              }`}
+                            >
+                              {LURE_SHAPE_NAMES[shp]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2) 캐스팅볼 선택 시: 캐스팅볼 무게(호수 평가) + 지그헤드 무게(그램, 온스) + 루어 길이 + 루어 형상 */}
+                  {tackleConfig.baitConfig?.type === 'CASTING_BALL' && (
+                    <div className="space-y-3 p-2.5 bg-slate-900/60 rounded-xl border border-slate-800">
+                      {/* 캐스팅볼 무게: 호수로 평가 */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-300 font-medium">캐스팅볼 무게 (호수로 평가):</span>
+                          <span className="font-mono font-bold text-cyan-300">
+                            {tackleConfig.baitConfig.castingBallHo ?? 3.0}호
+                            <span className="text-[10.5px] text-slate-400 font-normal ml-1">
+                              ({(tackleConfig.baitConfig.castingBallWeightGrams ?? 11.3).toFixed(1)}g)
+                            </span>
+                          </span>
+                        </div>
+
+                        {/* 호수 프리셋 버튼 */}
+                        <div className="grid grid-cols-5 gap-1">
+                          {CASTING_BALL_PRESETS.map((preset) => (
+                            <button
+                              key={preset.ho}
+                              type="button"
+                              onClick={() => updateTackle({ castingBallHo: preset.ho })}
+                              className={`py-1 rounded text-xs font-mono transition text-center ${
+                                Math.abs((tackleConfig.baitConfig?.castingBallHo ?? 3.0) - preset.ho) < 0.1
+                                  ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                              }`}
+                            >
+                              <div className="font-bold">{preset.label}</div>
+                              <div className="text-[9.5px] opacity-75">{preset.weightGrams}g</div>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* 호수 슬라이더 (1~8호, 0.5단위) */}
+                        <div className="px-1 pt-0.5">
+                          <input
+                            type="range"
+                            min={1.0}
+                            max={8.0}
+                            step={0.5}
+                            value={tackleConfig.baitConfig.castingBallHo ?? 3.0}
+                            onChange={(e) => updateTackle({ castingBallHo: parseFloat(e.target.value) })}
+                            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                          />
+                          <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
+                            <span>1호(3.8g)</span>
+                            <span>3호(11.3g)</span>
+                            <span>5호(18.8g)</span>
+                            <span>8호(30g)</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 지그헤드 무게: 그램, 온스 */}
+                      <div className="space-y-1.5 pt-1.5 border-t border-slate-800/80">
+                        <div className="flex justify-between items-center text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-300 font-medium">지그헤드 무게:</span>
+                            <div className="flex rounded bg-slate-900 border border-slate-800 p-0.5">
+                              <button
+                                type="button"
+                                onClick={() => setJigheadUnit('g')}
+                                className={`px-1.5 py-0.5 text-[10px] rounded transition ${
+                                  jigheadUnit === 'g' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'
+                                }`}
+                              >
+                                그램
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setJigheadUnit('oz')}
+                                className={`px-1.5 py-0.5 text-[10px] rounded transition ${
+                                  jigheadUnit === 'oz' ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'
+                                }`}
+                              >
+                                온스
+                              </button>
+                            </div>
+                          </div>
+                          <span className="font-mono font-bold text-cyan-300">
+                            {tackleConfig.baitConfig.jigheadWeightGrams ?? 1.0}g
+                          </span>
+                        </div>
+
+                        {/* 지그헤드 프리셋 버튼 */}
+                        <div className="flex flex-wrap gap-1">
+                          {JIGHEAD_PRESETS.filter((p) => p.type === jigheadUnit).map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => updateTackle({ jigheadWeightGrams: preset.weightGrams })}
+                              className={`px-2.5 py-1 rounded text-xs font-mono transition ${
+                                Math.abs((tackleConfig.baitConfig?.jigheadWeightGrams ?? 1.0) - preset.weightGrams) < 0.1
+                                  ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* 지그헤드 슬라이더 */}
+                        <div className="px-1 pt-0.5">
+                          <input
+                            type="range"
+                            min={0.5}
+                            max={10.0}
+                            step={0.5}
+                            value={tackleConfig.baitConfig.jigheadWeightGrams ?? 1.0}
+                            onChange={(e) => updateTackle({ jigheadWeightGrams: parseFloat(e.target.value) })}
+                            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                          />
+                          <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
+                            <span>0.5g</span>
+                            <span>3.0g</span>
+                            <span>5.0g</span>
+                            <span>10.0g</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 루어 길이 */}
+                      <div className="pt-1.5 border-t border-slate-800/80">
+                        <div className="text-[11px] text-slate-400 mb-1">루어 길이:</div>
+                        <div className="grid grid-cols-4 gap-1">
+                          {[1, 2, 3, 4].map((len) => (
+                            <button
+                              key={len}
+                              type="button"
+                              onClick={() => updateTackle({ baitLength: len })}
+                              className={`py-1 rounded text-xs font-mono transition ${
+                                (tackleConfig.baitConfig?.lengthInches || 2) === len
+                                  ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                  : 'bg-slate-900 text-slate-400 border border-slate-800'
+                              }`}
+                            >
+                              {len}인치
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 루어 형상 */}
+                      <div>
+                        <div className="text-[11px] text-slate-400 mb-1">루어 형상:</div>
+                        <div className="grid grid-cols-4 gap-1">
+                          {(['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'] as LureShape[]).map((shp) => (
+                            <button
+                              key={shp}
+                              type="button"
+                              onClick={() => updateTackle({ baitShape: shp })}
+                              className={`py-1 rounded text-[11px] font-medium transition ${
+                                (tackleConfig.baitConfig?.shape || 'GRUB') === shp
+                                  ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                  : 'bg-slate-900 text-slate-400 border border-slate-800'
+                              }`}
+                            >
+                              {LURE_SHAPE_NAMES[shp]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="text-[10.5px] text-cyan-400/80 leading-tight">
+                        * 캐스팅볼(호수) + 지그헤드 + 웜 자중이 합산되어 원거리 비거리를 구현합니다.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3) 메탈 선택 시: 메탈 지그 길이 + 메탈 무게 (1~80g) */}
+                  {tackleConfig.baitConfig?.type === 'METAL' && (
+                    <div className="space-y-3 p-2.5 bg-slate-900/60 rounded-xl border border-slate-800">
+                      {/* 메탈 지그 길이 */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-300 font-medium">메탈 지그 길이:</span>
+                          <span className="font-mono font-bold text-cyan-300">
+                            {(tackleConfig.baitConfig.lengthCm ?? 6.0).toFixed(1)}cm
+                          </span>
+                        </div>
+                        <div className="px-1">
+                          <input
+                            type="range"
+                            min={2.5}
+                            max={16.0}
+                            step={0.5}
+                            value={tackleConfig.baitConfig.lengthCm ?? 6.0}
+                            onChange={(e) => updateTackle({ baitLengthCm: parseFloat(e.target.value) })}
+                            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {METAL_LENGTH_PRESETS.map((lenVal) => (
+                            <button
+                              key={lenVal}
+                              type="button"
+                              onClick={() => updateTackle({ baitLengthCm: lenVal })}
+                              className={`px-2 py-0.5 rounded text-xs font-mono transition ${
+                                Math.abs((tackleConfig.baitConfig?.lengthCm ?? 6.0) - lenVal) < 0.2
+                                  ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                              }`}
+                            >
+                              {lenVal.toFixed(1)}cm
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 메탈 무게: 1~80g */}
+                      <div className="space-y-1.5 pt-1.5 border-t border-slate-800/80">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-300 font-medium">메탈 무게 (1~80g):</span>
+                          <span className="font-mono font-bold text-cyan-300">
+                            {tackleConfig.baitConfig.metalWeightGrams ?? 28}g
+                          </span>
+                        </div>
+
+                        {/* 메탈 무게 퀵 프리셋 버튼 */}
+                        <div className="grid grid-cols-4 gap-1">
+                          {METAL_WEIGHT_PRESETS.map((wVal) => (
+                            <button
+                              key={wVal}
+                              type="button"
+                              onClick={() => updateTackle({ metalWeightGrams: wVal, weightGrams: wVal })}
+                              className={`py-1 rounded text-xs font-mono transition text-center ${
+                                (tackleConfig.baitConfig?.metalWeightGrams ?? 28) === wVal
+                                  ? 'bg-cyan-500 text-slate-950 font-bold shadow'
+                                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                              }`}
+                            >
+                              {wVal}g{wVal === 28 ? ' (1oz)' : ''}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* 메탈 무게 슬라이더 (1~80g) */}
+                        <div className="px-1 pt-0.5">
+                          <input
+                            type="range"
+                            min={1}
+                            max={80}
+                            step={1}
+                            value={tackleConfig.baitConfig.metalWeightGrams ?? 28}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              updateTackle({ metalWeightGrams: val, weightGrams: val });
+                            }}
+                            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                          />
+                          <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
+                            <span>1g</span>
+                            <span>20g</span>
+                            <span>40g</span>
+                            <span>60g</span>
+                            <span>80g</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-[10.5px] text-cyan-400/80 leading-tight">
+                        * 메탈 지그는 자체 중량과 우수한 공기역학으로 초원거리 캐스팅에 최적화되어 있습니다.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* 원투대 선택 시: 원투 봉돌 무게 선택 (현행대로) */
+                <div className="space-y-2 pt-3">
+                  <div className="flex justify-between items-center text-xs sm:text-sm">
+                    <span className="text-slate-300 font-medium">원투 봉돌 무게 선택:</span>
+                    <span className="font-mono font-bold text-amber-300">
+                      {tackleConfig.weightGrams}g
+                      <span className="text-[10.5px] text-slate-400 font-normal ml-1">
+                        (약 {Math.round((tackleConfig.weightGrams / 3.75) * 10) / 10}호)
+                      </span>
+                    </span>
+                  </div>
+
+                  {/* 원투 봉돌 퀵 프리셋 버튼 (16~40호) */}
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 p-1 bg-slate-900/70 rounded-lg border border-slate-800">
+                    {WEIGHT_PRESETS.filter((p) => p.category === 'SURF').map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => updateTackle({ weightGrams: preset.weightGrams })}
+                        className={`py-1.5 px-1 rounded text-xs font-mono text-center transition ${
+                          Math.abs(tackleConfig.weightGrams - preset.weightGrams) < 0.15
+                            ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                            : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                        }`}
+                      >
+                        <div className="font-bold">{preset.label}</div>
+                        <div className="text-[9.5px] opacity-75">{preset.subLabel}</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 원투 봉돌 슬라이더 (10호~40호) */}
+                  <div className="px-1 pt-0.5">
+                    <input
+                      type="range"
+                      min={37.5}
+                      max={150}
+                      step={3.75}
+                      value={tackleConfig.weightGrams}
+                      onChange={(e) => updateTackle({ weightGrams: Number(e.target.value) })}
+                      className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
+                      <span>10호(38g)</span>
+                      <span>20호(75g)</span>
+                      <span>30호(113g)</span>
+                      <span>40호(150g)</span>
+                    </div>
+                  </div>
+                  <div className="text-[10.5px] text-amber-400/80 leading-tight">
+                    * 원투 전용 고중량 봉돌과 표준 생미끼(+2.5g)를 결합하여 비거리를 산출합니다.
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* 3. 합사 라인 호수 슬라이더 (0.4~3.0호) */}
               <div className="space-y-1.5 pt-3">
@@ -2725,19 +2939,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     max={3.0}
                     step={0.1}
                     value={tackleConfig.peLineSize}
-                    onChange={(e) => {
-                      const pe = Number(e.target.value);
-                      const updated = saveTackleConfig(
-                        tackleConfig.weightGrams,
-                        pe,
-                        tackleConfig.rodPower,
-                        tackleConfig.rodLengthM,
-                        tackleConfig.baitConfig?.type,
-                        tackleConfig.baitConfig?.lengthInches,
-                        tackleConfig.baitConfig?.shape
-                      );
-                      setTackleConfig(updated);
-                    }}
+                    onChange={(e) => updateTackle({ peLineSize: Number(e.target.value) })}
                     className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                   />
                   <div className="flex justify-between text-[10px] sm:text-[11px] text-slate-400 font-mono mt-0.5">
