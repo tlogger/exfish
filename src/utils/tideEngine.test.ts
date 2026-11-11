@@ -123,4 +123,33 @@ describe('tideEngine astronomical and tidal calculations', () => {
     expect(tide.lunarDateStr).toBe('음력 10.02');
     expect(tide.threeDays[0].mulText).toBe('8물');
   });
+
+  it('accurately predicts high and low tide times matching Badatime within minutes without 1-hour delay', () => {
+    // 2026-11-11 인천: 바다타임 공식 기준 만조 05:35 / 18:00, 간조 11:46
+    const nov11Date = new Date('2026-11-11T12:00:00+09:00');
+    const incheonTide = calculateTideDay(37.452, 126.592, nov11Date);
+
+    expect(incheonTide.highTides.length).toBeGreaterThanOrEqual(1);
+    expect(incheonTide.lowTides.length).toBeGreaterThanOrEqual(1);
+
+    const high1 = incheonTide.highTides[0];
+    const [h1Hour, h1Min] = high1.time.split(':').map(Number);
+    const h1Minutes = h1Hour * 60 + h1Min;
+    // 05:35 is 335 minutes. Must be within 10 minutes of Badatime (not 06:40)
+    expect(Math.abs(h1Minutes - 335)).toBeLessThanOrEqual(10);
+
+    const low1 = incheonTide.lowTides[0];
+    const [l1Hour, l1Min] = low1.time.split(':').map(Number);
+    const l1Minutes = l1Hour * 60 + l1Min;
+    // 11:46 is 706 minutes. Must be within 10 minutes of Badatime (not 13:06)
+    expect(Math.abs(l1Minutes - 706)).toBeLessThanOrEqual(10);
+
+    if (incheonTide.highTides.length >= 2) {
+      const high2 = incheonTide.highTides[1];
+      const [h2Hour, h2Min] = high2.time.split(':').map(Number);
+      const h2Minutes = h2Hour * 60 + h2Min;
+      // 18:00 is 1080 minutes. Must be within 10 minutes of Badatime (not 19:33)
+      expect(Math.abs(h2Minutes - 1080)).toBeLessThanOrEqual(10);
+    }
+  });
 });

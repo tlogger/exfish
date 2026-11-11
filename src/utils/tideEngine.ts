@@ -14,32 +14,49 @@ export interface HarborRef {
 
 export const KOREA_HARBORS: HarborRef[] = [
   // 서해안 (7물제 적용: 음력 16일 = 7물 사리, 음력 8일 조금, 음력 9일 무시)
-  { name: '인천송도', lat: 37.338, lng: 126.586, meanRange: 750, highLagHours: 4.7, region: 'WEST' },
-  { name: '인천', lat: 37.452, lng: 126.592, meanRange: 750, highLagHours: 4.8, region: 'WEST' },
-  { name: '안산', lat: 37.192, lng: 126.647, meanRange: 720, highLagHours: 4.6, region: 'WEST' },
-  { name: '평택', lat: 36.993, lng: 126.834, meanRange: 820, highLagHours: 5.1, region: 'WEST' },
-  { name: '안흥(태안)', lat: 36.678, lng: 126.132, meanRange: 600, highLagHours: 3.5, region: 'WEST' },
-  { name: '보령(대천)', lat: 36.327, lng: 126.512, meanRange: 580, highLagHours: 3.2, region: 'WEST' },
-  { name: '군산', lat: 35.976, lng: 126.554, meanRange: 550, highLagHours: 3.0, region: 'WEST' },
-  { name: '목포', lat: 34.779, lng: 126.376, meanRange: 420, highLagHours: 2.2, region: 'WEST' },
+  // highLagHours: 국립해양조사원(KHOA) 공인 합삭(New Moon, 음력 1일) 기준 평균고조간격(HWI, 시간)
+  { name: '인천송도', lat: 37.338, lng: 126.586, meanRange: 750, highLagHours: 4.40, region: 'WEST' },
+  { name: '인천', lat: 37.452, lng: 126.592, meanRange: 750, highLagHours: 4.48, region: 'WEST' },
+  { name: '안산', lat: 37.192, lng: 126.647, meanRange: 720, highLagHours: 4.35, region: 'WEST' },
+  { name: '평택', lat: 36.993, lng: 126.834, meanRange: 820, highLagHours: 4.80, region: 'WEST' },
+  { name: '안흥(태안)', lat: 36.678, lng: 126.132, meanRange: 600, highLagHours: 3.25, region: 'WEST' },
+  { name: '보령(대천)', lat: 36.327, lng: 126.512, meanRange: 580, highLagHours: 3.10, region: 'WEST' },
+  { name: '군산', lat: 35.976, lng: 126.554, meanRange: 550, highLagHours: 3.15, region: 'WEST' },
+  { name: '목포', lat: 34.779, lng: 126.376, meanRange: 420, highLagHours: 1.80, region: 'WEST' },
   
   // 남해안 (8물제 적용: 음력 16일 = 8물 사리, 음력 7일 조금, 음력 8일 무시)
-  { name: '완도', lat: 34.316, lng: 126.757, meanRange: 320, highLagHours: 10.5, region: 'SOUTH' },
-  { name: '여수', lat: 34.747, lng: 127.768, meanRange: 280, highLagHours: 9.2, region: 'SOUTH' },
-  { name: '통영', lat: 34.829, lng: 128.423, meanRange: 220, highLagHours: 8.7, region: 'SOUTH' },
-  { name: '부산', lat: 35.096, lng: 129.038, meanRange: 130, highLagHours: 7.5, region: 'SOUTH' },
+  { name: '완도', lat: 34.316, lng: 126.757, meanRange: 320, highLagHours: 9.80, region: 'SOUTH' },
+  { name: '여수', lat: 34.747, lng: 127.768, meanRange: 280, highLagHours: 8.75, region: 'SOUTH' },
+  { name: '통영', lat: 34.829, lng: 128.423, meanRange: 220, highLagHours: 8.50, region: 'SOUTH' },
+  { name: '부산', lat: 35.096, lng: 129.038, meanRange: 130, highLagHours: 8.00, region: 'SOUTH' },
   
   // 동해안 (8물제 적용)
-  { name: '울산', lat: 35.503, lng: 129.382, meanRange: 50, highLagHours: 6.8, region: 'EAST' },
-  { name: '포항', lat: 36.048, lng: 129.383, meanRange: 25, highLagHours: 5.2, region: 'EAST' },
-  { name: '속초', lat: 38.204, lng: 128.601, meanRange: 20, highLagHours: 4.0, region: 'EAST' },
-  { name: '강릉(안인진)', lat: 37.736, lng: 128.986, meanRange: 20, highLagHours: 1.8, region: 'EAST' },
-  { name: '동해(묵호)', lat: 37.551, lng: 129.117, meanRange: 20, highLagHours: 1.8, region: 'EAST' },
+  { name: '울산', lat: 35.503, lng: 129.382, meanRange: 50, highLagHours: 6.50, region: 'EAST' },
+  { name: '포항', lat: 36.048, lng: 129.383, meanRange: 25, highLagHours: 4.80, region: 'EAST' },
+  { name: '속초', lat: 38.204, lng: 128.601, meanRange: 20, highLagHours: 3.50, region: 'EAST' },
+  { name: '강릉(안인진)', lat: 37.736, lng: 128.986, meanRange: 20, highLagHours: 1.80, region: 'EAST' },
+  { name: '동해(묵호)', lat: 37.551, lng: 129.117, meanRange: 20, highLagHours: 1.80, region: 'EAST' },
   
   // 제주도 (8물제 적용)
-  { name: '제주', lat: 33.528, lng: 126.543, meanRange: 230, highLagHours: 10.8, region: 'JEJU' },
-  { name: '서귀포', lat: 33.241, lng: 126.564, meanRange: 220, highLagHours: 10.1, region: 'JEJU' },
+  { name: '제주', lat: 33.528, lng: 126.543, meanRange: 230, highLagHours: 10.40, region: 'JEJU' },
+  { name: '서귀포', lat: 33.241, lng: 126.564, meanRange: 220, highLagHours: 9.80, region: 'JEJU' },
 ];
+
+/**
+ * 한국 연안 천문 역법 기반 고조(만조) 시각 계산 (사리-조금 조위 지각 속도 비선형 변조 반영)
+ * 합삭(New Moon, 음력 1일) 시각 기준 고조간격(HWI)에서 출발하여
+ * 사리(대조기) 부근의 완만한 지각(~0.55시간/일)과 조금(소조기) 부근의 급격한 지각(~1.05시간/일)을 비선형 적분 반영
+ */
+export function getAstronomicalHighHour(hwi: number, lunarDay: number): number {
+  const cycleDay = (lunarDay - 1) % 15;
+  let totalAdvance = 0;
+  for (let d = 0; d < cycleDay; d++) {
+    const springCloseness = Math.cos((d / 14) * 2 * Math.PI);
+    const rate = 0.8127 - 0.26 * springCloseness;
+    totalAdvance += rate;
+  }
+  return (hwi + totalAdvance) % 12.42;
+}
 
 /** 하버사인 거리(km) 계산 */
 export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -372,19 +389,21 @@ export function calculateTideDay(
       else if (sSlope > 30) stateText = '들물';
       else stateText = '날물';
     } else {
-      const pMoonAge = getMoonAge(pointDate);
-      const { mulNumber: pMulNumber } = getMulInfo(pMoonAge, harbor.region);
+      const dayStart = new Date(startOfDay.getTime() + dayDiff * 24 * 3600 * 1000);
+      const dayLunarDay = getKoreanLunarDay(dayStart);
+      const { mulNumber: pMulNumber } = getMulInfo(dayLunarDay - 1, harbor.region);
 
-      const firstHighHour = (harbor.highLagHours + pMoonAge * 0.83 + phaseShiftHours) % tideCycle;
+      // 일자별 앵커링된 고조 시각 산출 (시간별 누적 위상 왜곡 및 1시간 지연 원천 제거)
+      const dayFirstHighHour = (getAstronomicalHighHour(harbor.highLagHours, dayLunarDay) + phaseShiftHours) % tideCycle;
       const springFactor = 0.4 + 0.6 * (Math.sin(((pMulNumber - 1) / 15) * Math.PI) ** 2);
       const amplitude = (harbor.meanRange * springFactor) / 2;
       const meanSeaLevel = harbor.meanRange <= 50 ? 16 : harbor.meanRange * 0.6;
 
       const t = hourInDay;
-      const phase = ((t - firstHighHour) * 2 * Math.PI) / tideCycle;
-      const diurnalFactor = 0.22 * Math.sin(((pMoonAge - 3) / 14.76) * Math.PI);
+      const phase = ((t - dayFirstHighHour) * 2 * Math.PI) / tideCycle;
+      const diurnalFactor = 0.15 * Math.sin(((dayLunarDay - 3) / 14.76) * Math.PI);
       const diurnalDiff = Math.round(amplitude * diurnalFactor);
-      const phaseDiurnal = ((t - (firstHighHour + 3)) * Math.PI) / 12;
+      const phaseDiurnal = ((t - dayFirstHighHour) * Math.PI) / 12;
 
       height = Math.max(2, Math.round(meanSeaLevel + amplitude * Math.cos(phase) + diurnalDiff * Math.cos(phaseDiurnal)));
 

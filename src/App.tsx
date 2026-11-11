@@ -22,6 +22,7 @@ import type {
 } from './types';
 import { calculateTideDay, getDistanceKm } from './utils/tideEngine';
 import { getKhoaTideForecast } from './utils/tideService';
+import type { KhoaSwtcWeeklyResult } from './utils/khoaSwtcApi';
 import { fetchMarineData, fetchWeatherData, formatWindSpeed, getCompassDirection, getWeatherText } from './utils/weatherApi';
 import { calculateBiteScore } from './utils/biteScore';
 import { extractExifFromImage } from './utils/exifExtractor';
@@ -121,6 +122,7 @@ export function App() {
   const [weather, setWeather] = React.useState<WeatherData | null>(null);
   const [marine, setMarine] = React.useState<MarineData | null>(null);
   const [tide, setTide] = React.useState<TideDayInfo | null>(null);
+  const activeSwtcWeeklyRef = React.useRef<KhoaSwtcWeeklyResult | null>(null);
   const [biteScore, setBiteScore] = React.useState<BiteScoreBreakdown | null>(null);
 
   // 단위 변환 설정 상태 (사용자 프로필 설정과 동기화)
@@ -480,6 +482,7 @@ export function App() {
         setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: isSurf ? 14 : 15 });
       }
 
+      activeSwtcWeeklyRef.current = null;
       // 1. 단일 마스터 시계열 조위 엔진 정밀 계산 (곡선 및 시간표 100% 완전 동기화)
       const tideData = calculateTideDay(spot.lat, spot.lng, new Date());
       setTide(tideData);
@@ -488,7 +491,12 @@ export function App() {
       getKhoaTideForecast(spot.lat, spot.lng, new Date())
         .then((kForecast) => {
           if (kForecast?.tideDayInfo) {
+            activeSwtcWeeklyRef.current = kForecast.swtcWeekly || null;
             setTide(kForecast.tideDayInfo);
+            if (weather && marine) {
+              const score = calculateBiteScore(spot, weather, marine, kForecast.tideDayInfo, currentUser?.favoriteSpecies);
+              setBiteScore(score);
+            }
           }
         })
         .catch(() => {});
@@ -512,18 +520,20 @@ export function App() {
         console.error('Error fetching marine/weather data:', err);
       }
     },
-    [currentUser?.favoriteSpecies]
+    [currentUser?.favoriteSpecies, weather, marine]
   );
 
-  // 선택된 포인트의 실시간 물때 곡선 및 입질 지수 10초 주기 로컬 갱신 (원격 API 호출 배제, 배터리 절약)
+  // 선택된 포인트의 실시간 물때 곡선 및 입질 지수 10초 주기 로컬 갱신 (원격 API 호출 배제, 배터리 절약, KHOA 공식 데이터 보존)
   React.useEffect(() => {
     if (!selectedSpot) return;
 
     const intervalId = setInterval(() => {
       try {
         const now = new Date();
-        // 원격 API 호출 없이 로컬 시계열 재연산 (조위/입질지수/피딩타임 실시간 정밀 동기화)
-        const tideData = calculateTideDay(selectedSpot.lat, selectedSpot.lng, now);
+        // 원격 API 호출 없이 로컬 시계열 재연산 (조위/입질지수/피딩타임 실시간 정밀 동기화, KHOA 공식 SWTC 캐시 보존)
+        const tideData = calculateTideDay(selectedSpot.lat, selectedSpot.lng, now, {
+          swtcWeekly: activeSwtcWeeklyRef.current,
+        });
         setTide(tideData);
 
         if (weather && marine) {
