@@ -106,4 +106,34 @@ describe('tackleCalibration physics engine', () => {
     const sink = calculateSinkingPhysics(40.0, 10, 0.5, metalBait);
     expect(sink.sinkSpeedMps).toBeGreaterThan(1.5); // 메탈은 고속 침강
   });
+
+  it('calculates jukkumi egi + sinker rig physics including 0g no-sinker squid casting', () => {
+    // 1. 무늬오징어/문어 에기 15g 단독 (0g 노싱커)
+    const noSinkerBait = getBaitSpecs('LURE', 3, 'MINNOW', 8.5, 1.0, 1.0, 28, 'JUKKUMI', 'REAL_BALL', 10, 15.0, 0.0);
+    expect(noSinkerBait.egiWeightGrams).toBe(15.0);
+    expect(noSinkerBait.sinkerWeightGrams).toBe(0.0);
+
+    const noSinkerDist = calculateCalibratedDistance(15.0, 0.8, 'ML', 2.6, noSinkerBait);
+    expect(noSinkerDist.totalWeightGrams).toBe(15.0);
+    expect(noSinkerDist.distanceMeters).toBeGreaterThan(25);
+
+    // 2. 주꾸미 에기 10g + 5호 봉돌(18.8g) = 총 28.8g
+    const weightedBait = getBaitSpecs('LURE', 3, 'MINNOW', 8.5, 1.0, 1.0, 28, 'JUKKUMI', 'REAL_BALL', 10, 10.0, 18.8);
+    const weightedDist = calculateCalibratedDistance(28.8, 0.8, 'ML', 2.6, weightedBait);
+    expect(weightedDist.totalWeightGrams).toBe(28.8);
+    expect(weightedDist.distanceMeters).toBeGreaterThan(noSinkerDist.distanceMeters);
+  });
+
+  it('compares real casting ball vs variant float (구멍찌) aerodynamics and weight', () => {
+    // 진짜 캐스팅볼 15g + 지그헤드 1g + 2인치 그럽(2.5g) = 총 18.5g
+    const realBall = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 1.0, 1.0, 28, 'OZ', 'REAL_BALL', 15.0);
+    const realResult = calculateCalibratedDistance(16.0, 0.8, 'ML', 2.6, realBall);
+    expect(realResult.totalWeightGrams).toBeCloseTo(18.5, 1);
+
+    // 변태채비 구멍찌 2호(7.5g) + 지그헤드 1g + 2인치 그럽(2.5g) = 총 11.0g
+    const variantFloat = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 2.0, 1.0, 28, 'OZ', 'VARIANT_FLOAT');
+    const variantResult = calculateCalibratedDistance(8.5, 0.8, 'ML', 2.6, variantFloat);
+    expect(variantResult.totalWeightGrams).toBeCloseTo(11.0, 1);
+    expect(variantFloat.castingBallHo).toBe(2.0);
+  });
 });
