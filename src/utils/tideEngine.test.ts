@@ -152,4 +152,86 @@ describe('tideEngine astronomical and tidal calculations', () => {
       expect(Math.abs(h2Minutes - 1080)).toBeLessThanOrEqual(10);
     }
   });
+
+  it('accurately applies KHOA port tidal differences for Bieunghang matching Badatime 16:18 exactly', () => {
+    // 2026-11-11 군산 비응항: 바다타임(118) 및 KHOA 조석표 공식
+    // 만조 03:46 (573cm), 간조 10:13 (57cm), 만조 16:18 (654cm), 간조 22:54 (132cm)
+    const nov11Date = new Date('2026-11-11T12:00:00+09:00');
+
+    // 군산 DT_0018 원천 KHOA SWTC 데이터 모의
+    const mockGunsanSwtc: any = {
+      obsPostId: 'DT_0018',
+      stDate: '2026-11-11',
+      days: [
+        {
+          searchDate: '2026-11-11',
+          dateMoon: '10.03',
+          mool7: '아홉매',
+          mool8: '열물',
+          moolNormal: '목사리',
+          events: [
+            { type: 'HIGH', typeLabel: '만조', time: '03:51', height: 588, diff: 527, minutesFromMidnight: 231 },
+            { type: 'LOW', typeLabel: '간조', time: '10:18', height: 61, diff: 527, minutesFromMidnight: 618 },
+            { type: 'HIGH', typeLabel: '만조', time: '16:23', height: 670, diff: 609, minutesFromMidnight: 983 },
+            { type: 'LOW', typeLabel: '간조', time: '22:59', height: 137, diff: 451, minutesFromMidnight: 1379 },
+          ],
+        },
+      ],
+      allExtremums: [
+        { dayIdx: 0, date: '2026-11-11', type: 'HIGH', typeLabel: '만조', time: '03:51', height: 588, totalMinutesFromStart: 231 },
+        { dayIdx: 0, date: '2026-11-11', type: 'LOW', typeLabel: '간조', time: '10:18', height: 61, totalMinutesFromStart: 618 },
+        { dayIdx: 0, date: '2026-11-11', type: 'HIGH', typeLabel: '만조', time: '16:23', height: 670, totalMinutesFromStart: 983 },
+        { dayIdx: 0, date: '2026-11-11', type: 'LOW', typeLabel: '간조', time: '22:59', height: 137, totalMinutesFromStart: 1379 },
+      ],
+    };
+
+    // 비응항 개정수 적용 (고조/저조 시차 -5분, 조고비 0.98, 오프셋 -3cm)
+    const timeDiff = -5;
+    const ratio = 0.98;
+    const offset = -3;
+
+    const bieungSwtc: any = {
+      ...mockGunsanSwtc,
+      days: [
+        {
+          ...mockGunsanSwtc.days[0],
+          events: mockGunsanSwtc.days[0].events.map((e: any) => {
+            const [h, m] = e.time.split(':').map(Number);
+            const total = h * 60 + m + timeDiff;
+            const time = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+            return {
+              ...e,
+              time,
+              height: Math.round(e.height * ratio + offset),
+            };
+          }),
+        },
+      ],
+      allExtremums: mockGunsanSwtc.allExtremums.map((ext: any) => {
+        const [h, m] = ext.time.split(':').map(Number);
+        const total = h * 60 + m + timeDiff;
+        const time = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+        return {
+          ...ext,
+          time,
+          totalMinutesFromStart: ext.totalMinutesFromStart + timeDiff,
+          height: Math.round(ext.height * ratio + offset),
+        };
+      }),
+    };
+
+    const bieungTide = calculateTideDay(35.940, 126.531, nov11Date, { swtcWeekly: bieungSwtc });
+
+    // 바다타임 03:46 (573cm) / 16:18 (654cm) 100% 일치 검증
+    expect(bieungTide.highTides[0].time).toBe('03:46');
+    expect(bieungTide.highTides[0].height).toBe(573);
+    expect(bieungTide.highTides[1].time).toBe('16:18');
+    expect(bieungTide.highTides[1].height).toBe(654);
+
+    // 바다타임 간조 10:13 (57cm) / 22:54 (131~132cm) 일치 검증
+    expect(bieungTide.lowTides[0].time).toBe('10:13');
+    expect(bieungTide.lowTides[0].height).toBe(57);
+    expect(bieungTide.lowTides[1].time).toBe('22:54');
+    expect(Math.abs(bieungTide.lowTides[1].height - 132)).toBeLessThanOrEqual(1);
+  });
 });

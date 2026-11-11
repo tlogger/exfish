@@ -20,7 +20,7 @@ export interface KhoaTideStation {
 export const KHOA_TIDE_STATIONS: KhoaTideStation[] = [
   // 1. 서해안 조위관측소 (7물제 적용: 음력 16일 = 7물 사리, 음력 8일 조금, 음력 9일 무시)
   { code: 'DT_0032', name: '강화대교', region: 'WEST', lat: 37.7319, lng: 126.5222, meanRange: 680, highLagHours: 4.60, datumZ0: 4.20 },
-  { code: 'DT_0018', name: '군산', region: 'WEST', lat: 35.9755, lng: 126.5631, meanRange: 550, highLagHours: 3.15, datumZ0: 3.80 },
+  { code: 'DT_0018', name: '군산', region: 'WEST', lat: 35.9755, lng: 126.5631, meanRange: 550, highLagHours: 2.70, datumZ0: 3.80 },
   { code: 'DT_0017', name: '대산', region: 'WEST', lat: 37.0075, lng: 126.3528, meanRange: 650, highLagHours: 3.80, datumZ0: 4.10 },
   { code: 'DT_0065', name: '덕적도', region: 'WEST', lat: 37.2263, lng: 126.1565, meanRange: 620, highLagHours: 4.10, datumZ0: 4.00 },
   { code: 'DT_0025', name: '보령', region: 'WEST', lat: 36.4064, lng: 126.4861, meanRange: 580, highLagHours: 3.10, datumZ0: 3.90 },
@@ -129,7 +129,158 @@ export interface KhoaTideForecastResult {
   swtcWeekly?: KhoaSwtcWeeklyResult | null;
 }
 
-const CACHE_KEY_PREFIX = 'exfish_khoa_forecast_result_v4_';
+/**
+ * 국립해양조사원(KHOA) 공인 항포구별 조석 개정수(Tidal Differences)
+ * 표준항(조위관측소) 대비 특정 항포구(비응항, 왜목마을 등 종속항)의
+ * 고조시차(분), 저조시차(분), 조고비, 기준면 보정치를 적용하여 정밀 국지 조석을 산출
+ */
+export interface PortTidalCorrection {
+  name: string;
+  baseStationCode: string;
+  lat: number;
+  lng: number;
+  radiusKm: number;
+  highTimeDiffMinutes: number; // 고조시차 (분, 예: -5)
+  lowTimeDiffMinutes: number;  // 저조시차 (분, 예: -5)
+  heightRatio: number;         // 조고비 (예: 0.98)
+  heightOffsetCm: number;      // 수위 오프셋 (cm, 예: -3)
+}
+
+export const PORT_TIDAL_CORRECTIONS: PortTidalCorrection[] = [
+  // 1. 군산 비응항 (군산외항/새만금 방조제 북단): KHOA 고시 고조시차 -5분, 저조시차 -5분, 조고비 0.98, 오프셋 -3cm
+  {
+    name: '비응항',
+    baseStationCode: 'DT_0018',
+    lat: 35.940,
+    lng: 126.531,
+    radiusKm: 9.0,
+    highTimeDiffMinutes: -5,
+    lowTimeDiffMinutes: -5,
+    heightRatio: 0.98,
+    heightOffsetCm: -3,
+  },
+  // 2. 새만금 신시도/야미도: 군산 DT_0018 기준 시차 -12분, 조고비 0.96
+  {
+    name: '신시도/야미도',
+    baseStationCode: 'DT_0018',
+    lat: 35.815,
+    lng: 126.495,
+    radiusKm: 10.0,
+    highTimeDiffMinutes: -12,
+    lowTimeDiffMinutes: -12,
+    heightRatio: 0.96,
+    heightOffsetCm: -5,
+  },
+  // 3. 고군산군도 선유도/무녀도: 군산 DT_0018 기준 시차 -18분, 조고비 0.94
+  {
+    name: '선유도/무녀도',
+    baseStationCode: 'DT_0018',
+    lat: 35.811,
+    lng: 126.415,
+    radiusKm: 10.0,
+    highTimeDiffMinutes: -18,
+    lowTimeDiffMinutes: -18,
+    heightRatio: 0.94,
+    heightOffsetCm: -8,
+  },
+  // 4. 당진 왜목마을/장고항: 대산 DT_0017 기준 시차 -6분, 조고비 0.99
+  {
+    name: '왜목마을/장고항',
+    baseStationCode: 'DT_0017',
+    lat: 37.026,
+    lng: 126.514,
+    radiusKm: 8.0,
+    highTimeDiffMinutes: -6,
+    lowTimeDiffMinutes: -6,
+    heightRatio: 0.99,
+    heightOffsetCm: 0,
+  },
+  // 5. 화성 궁평항: 안산 DT_0008 기준 시차 +4분, 조고비 1.01
+  {
+    name: '궁평항',
+    baseStationCode: 'DT_0008',
+    lat: 37.115,
+    lng: 126.681,
+    radiusKm: 8.0,
+    highTimeDiffMinutes: 4,
+    lowTimeDiffMinutes: 4,
+    heightRatio: 1.01,
+    heightOffsetCm: 0,
+  },
+];
+
+export function findPortCorrection(lat: number, lng: number): PortTidalCorrection | null {
+  let matched: PortTidalCorrection | null = null;
+  let minD = Infinity;
+  for (const corr of PORT_TIDAL_CORRECTIONS) {
+    const d = getDistanceKm(lat, lng, corr.lat, corr.lng);
+    if (d <= corr.radiusKm && d < minD) {
+      minD = d;
+      matched = corr;
+    }
+  }
+  return matched;
+}
+
+export function applyPortCorrectionToSwtc(
+  swtc: KhoaSwtcWeeklyResult,
+  correction: PortTidalCorrection
+): KhoaSwtcWeeklyResult {
+  const timeDiffHigh = correction.highTimeDiffMinutes;
+  const timeDiffLow = correction.lowTimeDiffMinutes;
+  const ratio = correction.heightRatio;
+  const offset = correction.heightOffsetCm;
+
+  const adjustTime = (timeStr: string, diffMin: number) => {
+    const [hh, mm] = timeStr.split(':').map(Number);
+    let total = (hh || 0) * 60 + (mm || 0) + diffMin;
+    while (total < 0) total += 1440;
+    total = total % 1440;
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return {
+      time: `${padZero(h)}:${padZero(m)}`,
+      minutesFromMidnight: total,
+    };
+  };
+
+  const days = swtc.days.map((day) => ({
+    ...day,
+    events: day.events.map((ev) => {
+      const diffMin = ev.type === 'HIGH' ? timeDiffHigh : timeDiffLow;
+      const { time, minutesFromMidnight } = adjustTime(ev.time, diffMin);
+      const height = Math.round(ev.height * ratio + offset);
+      return {
+        ...ev,
+        time,
+        minutesFromMidnight,
+        height,
+      };
+    }),
+  }));
+
+  const allExtremums = swtc.allExtremums.map((ext) => {
+    const diffMin = ext.type === 'HIGH' ? timeDiffHigh : timeDiffLow;
+    const { time } = adjustTime(ext.time, diffMin);
+    const totalMinutesFromStart = Math.max(0, ext.totalMinutesFromStart + diffMin);
+    const height = Math.round(ext.height * ratio + offset);
+    return {
+      ...ext,
+      time,
+      totalMinutesFromStart,
+      height,
+    };
+  });
+
+  return {
+    ...swtc,
+    obsPostId: `${swtc.obsPostId}_${correction.name}`,
+    days,
+    allExtremums,
+  };
+}
+
+const CACHE_KEY_PREFIX = 'exfish_khoa_forecast_result_v5_';
 
 /**
  * 국가 공인 국립해양조사원(KHOA) 조위 정보 취득 및 캐싱 엔진
@@ -142,17 +293,37 @@ export async function getKhoaTideForecast(
   lng: number,
   baseDate: Date = new Date()
 ): Promise<KhoaTideForecastResult> {
-  const { station, distanceKm } = findNearestKhoaStation(lat, lng);
-  const dateKey = `${baseDate.getFullYear()}-${padZero(baseDate.getMonth() + 1)}-${padZero(baseDate.getDate())}`;
-  const cacheKey = `${CACHE_KEY_PREFIX}${station.code}_${dateKey}`;
+  const correction = findPortCorrection(lat, lng);
+  const { station: nearestStation, distanceKm: nearestDist } = findNearestKhoaStation(lat, lng);
 
-  // 1. 결과 캐시 검사
+  // 개정수 대상 항포구인 경우 해당 기준항 관측소를 목표 관측소로 채택
+  const baseStation = correction
+    ? (KHOA_TIDE_STATIONS.find((s) => s.code === correction.baseStationCode) || nearestStation)
+    : nearestStation;
+
+  const station: KhoaTideStation = correction
+    ? {
+        ...baseStation,
+        name: `${correction.name} (${baseStation.name} 관측소 개정)`,
+        lat: correction.lat,
+        lng: correction.lng,
+      }
+    : baseStation;
+
+  const distanceKm = correction
+    ? Math.round(getDistanceKm(lat, lng, correction.lat, correction.lng) * 10) / 10
+    : nearestDist;
+
+  const dateKey = `${baseDate.getFullYear()}-${padZero(baseDate.getMonth() + 1)}-${padZero(baseDate.getDate())}`;
+  const cacheKey = `${CACHE_KEY_PREFIX}${correction ? `${correction.name}_` : ''}${baseStation.code}_${dateKey}`;
+
+  // 1. 결과 캐시 검사 (단, 구형 KHOA_HARMONIC 또는 swtcWeekly 누락 캐시는 우회하여 공식 데이터 갱신)
   if (typeof window !== 'undefined') {
     try {
       const raw = localStorage.getItem(cacheKey);
       if (raw) {
         const cached = JSON.parse(raw);
-        if (cached && cached.expireAt > Date.now()) {
+        if (cached && cached.expireAt > Date.now() && cached.data?.swtcWeekly) {
           return {
             ...cached.data,
             station,
@@ -182,8 +353,11 @@ export async function getKhoaTideForecast(
 
   // 3. 국립해양조사원(KHOA) 스마트조석예보 공식 시스템(swtc) 주간 7일치 공식 극점 데이터 연동 (Supabase DB 캐시)
   try {
-    const swtcWeekly = await fetchKhoaSwtcWeekly(station.code, baseDate);
+    let swtcWeekly = await fetchKhoaSwtcWeekly(baseStation.code, baseDate);
     if (swtcWeekly && swtcWeekly.days && swtcWeekly.days.length >= 1 && swtcWeekly.allExtremums.length >= 2) {
+      if (correction) {
+        swtcWeekly = applyPortCorrectionToSwtc(swtcWeekly, correction);
+      }
       const todaySw = swtcWeekly.days[0];
 
       // KHOA 공식 만조/간조 이벤트 (오차 0분, 0cm)
@@ -263,7 +437,7 @@ export async function getKhoaTideForecast(
   }
 
   // 4. KHOA surveyTideLevel 공식 1일 시계열 데이터 취득 시도 (2차 폴백)
-  const series = await getCachedKhoaTideSeries(station.code, dateKey);
+  const series = await getCachedKhoaTideSeries(baseStation.code, dateKey);
 
   let events: TideForecastEvent[] = [];
   let hourlyCurve: TideHourlyPoint[] = [];
@@ -367,10 +541,10 @@ export async function getKhoaTideForecast(
   if (events.length === 0 || hourlyCurve.length === 0) {
     source = 'KHOA_HARMONIC';
     const tideCycle = 12.42;
-    const firstHighHour = getAstronomicalHighHour(station.highLagHours, lunarDay);
+    const firstHighHour = (getAstronomicalHighHour(baseStation.highLagHours, lunarDay) + (correction ? correction.highTimeDiffMinutes / 60 : 0) + tideCycle) % tideCycle;
     const springFactor = 0.4 + 0.6 * (Math.sin(((lunarDay - 1) / 15) * Math.PI) ** 2);
-    const amplitude = (station.meanRange * springFactor) / 2;
-    const meanSeaLevel = Math.round(station.datumZ0 * 100);
+    const amplitude = ((correction ? baseStation.meanRange * correction.heightRatio : baseStation.meanRange) * springFactor) / 2;
+    const meanSeaLevel = Math.round(baseStation.datumZ0 * 100);
 
     // 일조부등(Diurnal Inequality): 태음일주조(O1)와 일월일주조(K1)의 기조력에 의한 오전/오후 조위 증감차
     // 달의 적위 및 삭망월 주기에 따라 최대 15~35%의 조위차가 제1만조와 제2만조 사이에 발생

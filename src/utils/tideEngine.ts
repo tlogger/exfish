@@ -21,7 +21,9 @@ export const KOREA_HARBORS: HarborRef[] = [
   { name: '평택', lat: 36.993, lng: 126.834, meanRange: 820, highLagHours: 4.80, region: 'WEST' },
   { name: '안흥(태안)', lat: 36.678, lng: 126.132, meanRange: 600, highLagHours: 3.25, region: 'WEST' },
   { name: '보령(대천)', lat: 36.327, lng: 126.512, meanRange: 580, highLagHours: 3.10, region: 'WEST' },
-  { name: '군산', lat: 35.976, lng: 126.554, meanRange: 550, highLagHours: 3.15, region: 'WEST' },
+  { name: '군산', lat: 35.976, lng: 126.554, meanRange: 550, highLagHours: 2.70, region: 'WEST' },
+  { name: '비응항', lat: 35.940, lng: 126.531, meanRange: 540, highLagHours: 2.62, region: 'WEST' },
+  { name: '선유도', lat: 35.811, lng: 126.415, meanRange: 520, highLagHours: 2.40, region: 'WEST' },
   { name: '목포', lat: 34.779, lng: 126.376, meanRange: 420, highLagHours: 1.80, region: 'WEST' },
   
   // 남해안 (8물제 적용: 음력 16일 = 8물 사리, 음력 7일 조금, 음력 8일 무시)
