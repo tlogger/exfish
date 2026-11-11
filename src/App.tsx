@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronUp, Crosshair, Filter, HelpCircle, List, Loader2, LogIn, Navigation2, Plus, Search, User, X } from 'lucide-react';
+import { ChevronUp, Crosshair, Download, Filter, HelpCircle, List, Loader2, LogIn, Navigation2, Plus, Search, Smartphone, User, X } from 'lucide-react';
 import { MapView } from './components/MapView';
 import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
@@ -152,6 +152,18 @@ export function App() {
   const [isChecklistModalOpen, setIsChecklistModalOpen] = React.useState(false);
   // 모바일 앱 초기 1초 스플래시 스크린 표시 상태 (웹 환경은 스플래시 생략)
   const [showSplash, setShowSplash] = React.useState(() => isNativePlatform());
+
+  // 모바일 웹 방문자용 안드로이드 APK 앱 다운로드 안내 배너
+  const [showMobileAppBanner, setShowMobileAppBanner] = React.useState(() => {
+    if (isNativePlatform()) return false;
+    if (typeof window === 'undefined') return false;
+    return !sessionStorage.getItem('exfish_dismiss_app_banner');
+  });
+
+  const handleDismissAppBanner = () => {
+    setShowMobileAppBanner(false);
+    sessionStorage.setItem('exfish_dismiss_app_banner', 'true');
+  };
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
   const [microAdjustSpot, setMicroAdjustSpot] = React.useState<FishingSpot | null>(null);
@@ -793,6 +805,39 @@ export function App() {
         <SplashScreen onFinish={() => setShowSplash(false)} durationMs={1000} />
       )}
 
+      {/* 모바일 웹 방문자용 안드로이드 APK 앱 다운로드 안내 배너 */}
+      {showMobileAppBanner && !isNativePlatform() && (
+        <div className="bg-gradient-to-r from-emerald-950/95 via-slate-900 to-teal-950/95 border-b border-emerald-500/40 px-3 py-1.5 flex items-center justify-between text-xs shrink-0 z-40 shadow-sm">
+          <div className="flex items-center gap-2 min-w-0 pr-2">
+            <div className="w-6 h-6 rounded-md bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+              <Smartphone size={13} className="text-emerald-400" />
+            </div>
+            <p className="text-slate-200 text-[11px] truncate">
+              <strong className="text-emerald-300">ExFish 안드로이드 전용 앱</strong>으로 현장에서 실시간 조석·비거리를 확인하세요!
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <a
+              href="./exfish.apk"
+              download="exfish.apk"
+              className="px-2.5 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white rounded-md text-[11px] font-bold shadow flex items-center gap-1 active:scale-95 transition"
+              title="ExFish APK 다운로드"
+            >
+              <Download size={11} />
+              <span>앱 설치</span>
+            </a>
+            <button
+              onClick={handleDismissAppBanner}
+              className="text-slate-400 hover:text-white p-1 rounded transition"
+              title="닫기"
+              aria-label="안내 배너 닫기"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 글로벌 상단 헤더 & 내비게이션 바 */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 shadow-md gap-2">
         {/* 로고 (ExFish 브랜딩 및 버전 정보 표시, 클릭 시 페이지 새로고침) */}
@@ -966,8 +1011,23 @@ export function App() {
             )}
         </div>
 
-        {/* 툴바: PC 웹 로그인 / 회원 정보 버튼 (아이콘 전용) */}
+        {/* 툴바: PC 웹 로그인 / 회원 정보 버튼 및 최신 APK 다운로드 버튼 */}
         <div className="flex items-center gap-1.5 shrink-0 text-xs">
+          {!isNativePlatform() && (
+            <a
+              href="./exfish.apk"
+              download="exfish.apk"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 hover:text-white font-bold text-xs shadow-sm transition active:scale-95 cursor-pointer"
+              title="최신 ExFish Android APK 직접 다운로드"
+            >
+              <Download size={14} className="text-emerald-400" />
+              <span>APK 다운로드</span>
+              <span className="text-[9.5px] font-mono px-1 py-0.2 rounded bg-emerald-900/80 text-emerald-300 border border-emerald-500/40">
+                .apk
+              </span>
+            </a>
+          )}
+
           <button
             onClick={() => setIsLoginModalOpen(true)}
             className={`hidden md:flex items-center justify-center p-2 rounded-lg border text-xs font-semibold transition ${
@@ -1024,6 +1084,19 @@ export function App() {
               <User size={13} />
               <span>내 포인트만 보기</span>
             </button>
+
+            {/* 모바일 화면 전용 APK 다운로드 버튼 */}
+            {!isNativePlatform() && (
+              <a
+                href="./exfish.apk"
+                download="exfish.apk"
+                className="sm:hidden flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-bold text-xs active:scale-95 transition"
+                title="최신 ExFish Android APK 다운로드"
+              >
+                <Download size={12} className="text-emerald-400" />
+                <span>APK</span>
+              </a>
+            )}
 
             {/* 모바일 화면 전용 로그인 버튼 (아이콘 전용) */}
             <button

@@ -2746,9 +2746,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               {/* 모바일 앱 다운로드 (exfish.apk) 링크 */}
               <div className="pt-2 border-t border-slate-800/80">
                 <a
-                  href="https://tlogger.github.io/exfish/exfish.apk"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href="./exfish.apk"
+                  download="exfish.apk"
                   className="w-full p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-between shadow-md group cursor-pointer"
                   title="최신 ExFish Android APK 다운로드"
                 >

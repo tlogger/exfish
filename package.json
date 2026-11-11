@@ -9,9 +9,10 @@
     "cap:build": "npm run build && npx cap sync android",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
-    "build:apk": "cd android && .\\gradlew.bat assembleRelease && cd .. && powershell -Command \"Copy-Item android/app/build/outputs/apk/release/exfish.apk public/exfish.apk -Force\" && npm run build",
-    "build:release": "npm run build && npx cap sync android && cd android && .\\gradlew.bat assembleRelease && .\\gradlew.bat bundleRelease && cd .. && powershell -Command \"Copy-Item android/app/build/outputs/apk/release/exfish.apk public/exfish.apk -Force\" && npm run build",
-    "sync:apk": "powershell -Command \"Copy-Item android/app/build/outputs/apk/release/exfish.apk public/exfish.apk -Force; Copy-Item public/exfish.apk dist/exfish.apk -Force\"",
+    "build:apk": "npm run build && npx cap sync android && cd android && .\\gradlew.bat assembleRelease && cd ..",
+    "publish:apk": "npm run build:apk && git add public/exfish.apk && git commit -m \"chore(release): auto-publish updated apk to homepage\" && git push origin main",
+    "build:release": "npm run build && npx cap sync android && cd android && .\\gradlew.bat assembleRelease && .\\gradlew.bat bundleRelease && cd ..",
+    "sync:apk": "cd android && .\\gradlew.bat copyReleaseApkToWeb && cd ..",
     "lint": "oxlint",
     "test": "vitest run",
     "preview": "vite preview"

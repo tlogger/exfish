@@ -42,6 +42,38 @@ android {
     }
 }
 
+// 릴리즈 APK 빌드 완료 시 웹 다운로드 경로(public/ 및 dist/)로 자동 동기화
+tasks.register('copyReleaseApkToWeb') {
+    description = "Automatically copies built release APK to public/ and dist/ folders for homepage download."
+    doLast {
+        def apkFile = file("${projectDir}/build/outputs/apk/release/exfish.apk")
+        if (apkFile.exists()) {
+            def publicDir = file("${rootDir}/../public")
+            def distDir = file("${rootDir}/../dist")
+            if (!publicDir.exists()) publicDir.mkdirs()
+            copy {
+                from apkFile
+                into publicDir
+            }
+            if (distDir.exists()) {
+                copy {
+                    from apkFile
+                    into distDir
+                }
+            }
+            println ">>> [ExFish Auto-Deploy] Successfully mirrored release APK to public/ and dist/ (${apkFile.length()} bytes)"
+        }
+    }
+}
+
+afterEvaluate {
+    if (tasks.findByName('assembleRelease')) {
+        tasks.named('assembleRelease').configure {
+            finalizedBy 'copyReleaseApkToWeb'
+        }
+    }
+}
+
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
