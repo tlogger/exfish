@@ -116,16 +116,16 @@ export function isNativeApp(): boolean {
 export function getOAuthMainRedirectUri(): string {
   if (isNativeApp()) {
     // 모바일 앱 환경에서는 Google OAuth의 허용 도메인인 공식 Vercel URL을 리다이렉트 URI로 제공
-    return 'https://exfish.vercel.app/';
+    return 'https://exfish.vercel.app';
   }
   const isLocalDevWithPort =
     typeof window !== 'undefined' &&
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
     Boolean(window.location.port);
   if (isLocalDevWithPort) {
-    return `${window.location.origin}/`;
+    return window.location.origin;
   }
-  return 'https://exfish.vercel.app/';
+  return 'https://exfish.vercel.app';
 }
 
 /** 소셜 공급자별 OAuth2 인가 URL 생성 */
@@ -381,7 +381,7 @@ export async function processOAuthCallbackResult(callbackData: {
 
   let providerUserId = directUser?.id || `${provider}_${Math.floor(100000 + Math.random() * 900000)}`;
   let userName = directUser?.name || (provider === 'naver' ? '네이버 조사' : provider === 'kakao' ? '카카오 조사' : '구글 조사');
-  let userEmail = directUser?.email || `${providerUserId}@exfish.kr`;
+  let userEmail = directUser?.email || (provider === 'kakao' ? '' : `${providerUserId}@exfish.kr`);
   let userPhoto = directUser?.profile_image || '';
 
   // 1. 카카오 code 직접 수신 처리

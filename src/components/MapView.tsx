@@ -32,6 +32,7 @@ import {
   BaitType,
   LureSubMode,
   LureShape,
+  LURE_SHAPES,
   LURE_SHAPE_NAMES,
   getBaitSpecs,
   JIGHEAD_PRESETS,
@@ -39,6 +40,7 @@ import {
   EGI_WEIGHT_PRESETS,
   JUKKUMI_SINKER_PRESETS,
   VARIANT_FLOAT_HO_PRESETS,
+  getVariantFloatWeightByHo,
   REAL_CASTING_BALL_PRESETS,
   TackleUpdateParams,
 } from '../utils/tackleCalibration';
@@ -2040,60 +2042,60 @@ export const MapView: React.FC<MapViewProps> = ({
         }`}
       >
         {/* 보조 액션 단일 머티리얼 툴바 패널 (채비 캘리브레이션 & 찜한 포인트 필터 & GPS 내 위치 & 줌) */}
-        <div className="flex items-center bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-1 shadow-2xl divide-x divide-slate-800/80">
-          <div className="flex items-center gap-0.5 pr-1">
+        <div className="flex items-center bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-0.5 shadow-2xl divide-x divide-slate-800/80">
+          <div className="flex items-center gap-0 pr-0.5">
             {/* 공기역학 채비 비거리 예측 버튼 */}
             <button
               onClick={() => setIsTacklePopoverOpen(!isTacklePopoverOpen)}
-              className={`p-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
+              className={`p-1.5 rounded-xl flex items-center justify-center transition active:scale-95 ${
                 isTacklePopoverOpen
                   ? 'bg-cyan-600 text-white shadow-md shadow-cyan-500/30'
                   : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
               }`}
               title="채비 비거리 예측 (루어 무게 & PE 라인 호수 설정)"
             >
-              <Sliders size={17} className={isTacklePopoverOpen ? 'text-white' : 'text-slate-400'} />
+              <Sliders size={16} className={isTacklePopoverOpen ? 'text-white' : 'text-slate-400'} />
             </button>
 
             {/* 찜한 포인트만 보기 필터 */}
             <button
               onClick={() => setViewOnlyFavorites(!viewOnlyFavorites)}
-              className={`p-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
+              className={`p-1.5 rounded-xl flex items-center justify-center transition active:scale-95 ${
                 viewOnlyFavorites
                   ? 'bg-amber-500/20 text-amber-300 shadow-md shadow-amber-500/20'
                   : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
               }`}
               title={viewOnlyFavorites ? '전체 포인트 보기' : '내가 찜한 포인트만 보기'}
             >
-              <Star size={17} className={viewOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''} />
+              <Star size={16} className={viewOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''} />
             </button>
           </div>
 
-          <div className="pl-1">
+          <div className="px-0.5">
             {/* GPS 내 위치 바로가기 버튼 (간결하고 직관적인 Material Locate 아이콘) */}
             <button
               onClick={handleLocateMe}
               disabled={isLocating}
               title="내 현재 GPS 위치 찾기 (고정밀 GPS)"
-              className="p-2 hover:bg-slate-800 text-cyan-400 rounded-xl flex items-center justify-center transition active:scale-95"
+              className="p-1.5 hover:bg-slate-800 text-cyan-400 rounded-xl flex items-center justify-center transition active:scale-95"
             >
               {isLocating ? (
-                <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <LocateFixed size={18} className="text-cyan-400" />
+                <LocateFixed size={17} className="text-cyan-400" />
               )}
             </button>
           </div>
 
-          <div className="pl-1 flex items-center gap-0.5">
+          <div className="pl-0.5 flex items-center gap-0">
             {/* [요구사항 1] 지도 확대 (카카오 기본 레벨1 초과 시 2단계 추가 디지털 줌) */}
             <button
               onClick={handleZoomIn}
-              className="p-2 hover:bg-slate-800 text-slate-200 hover:text-cyan-300 rounded-xl flex items-center justify-center transition active:scale-95"
+              className="p-1.5 hover:bg-slate-800 text-slate-200 hover:text-cyan-300 rounded-xl flex items-center justify-center transition active:scale-95"
               title={level === 1 ? '디지털 슈퍼 줌인 (2단계 추가 확대)' : '지도 확대'}
               aria-label="확대"
             >
-              <Plus size={16} />
+              <Plus size={15} />
             </button>
             {digitalZoom > 1.0 && (
               <span className="text-[10px] font-black font-mono text-cyan-300 px-1 py-0.5 rounded bg-cyan-950/90 border border-cyan-500/60 shadow-sm animate-pulse">
@@ -2102,11 +2104,11 @@ export const MapView: React.FC<MapViewProps> = ({
             )}
             <button
               onClick={handleZoomOut}
-              className="p-2 hover:bg-slate-800 text-slate-200 hover:text-cyan-300 rounded-xl flex items-center justify-center transition active:scale-95"
+              className="p-1.5 hover:bg-slate-800 text-slate-200 hover:text-cyan-300 rounded-xl flex items-center justify-center transition active:scale-95"
               title="지도 축소"
               aria-label="축소"
             >
-              <Minus size={16} />
+              <Minus size={15} />
             </button>
           </div>
         </div>
@@ -2315,15 +2317,15 @@ export const MapView: React.FC<MapViewProps> = ({
                     <span className="font-mono text-cyan-300 text-xs font-semibold">
                       {tackleConfig.baitConfig?.type === 'CASTING_BALL' ? (
                         tackleConfig.baitConfig.castingBallSubMode === 'VARIANT_FLOAT' ? (
-                          `구멍찌 ${tackleConfig.baitConfig.castingBallHo ?? 1.0}호(${((tackleConfig.baitConfig.castingBallHo ?? 1.0) * 3.75).toFixed(1)}g) + 지그헤드 ${tackleConfig.baitConfig.jigheadWeightGrams ?? 1.0}g`
+                          `구멍찌 ${tackleConfig.baitConfig.castingBallHo ?? 1.0}호(${tackleConfig.baitConfig.castingBallWeightGrams ?? getVariantFloatWeightByHo(tackleConfig.baitConfig.castingBallHo ?? 1.0)}g) + 지그헤드 ${tackleConfig.baitConfig.jigheadWeightGrams ?? 1.0}g`
                         ) : (
-                          `캐스팅볼 ${(tackleConfig.baitConfig.castingBallWeightGrams ?? 10.0).toFixed(1)}g + 지그헤드 ${tackleConfig.baitConfig.jigheadWeightGrams ?? 1.0}g`
+                          `던질찌 ${tackleConfig.baitConfig.castingBallWeightGrams ?? 10.0}g + 지그헤드 ${tackleConfig.baitConfig.jigheadWeightGrams ?? 1.0}g`
                         )
                       ) : tackleConfig.baitConfig?.type === 'METAL' ? (
                         `메탈 ${tackleConfig.baitConfig.metalWeightGrams ?? 20}g`
                       ) : tackleConfig.baitConfig?.lureSubMode === 'JUKKUMI' ? (
                         (tackleConfig.baitConfig.sinkerWeightGrams ?? 0) === 0
-                          ? `에기 ${tackleConfig.baitConfig.egiWeightGrams ?? 15}g (노싱커)`
+                          ? `에기 ${tackleConfig.baitConfig.egiWeightGrams ?? 15}g (0g)`
                           : `에기 ${tackleConfig.baitConfig.egiWeightGrams ?? 15}g + 봉돌 ${tackleConfig.baitConfig.sinkerWeightGrams}g`
                       ) : (
                         `${tackleConfig.baitConfig?.lengthInches ?? 2}인치 ${LURE_SHAPE_NAMES[tackleConfig.baitConfig?.shape ?? 'GRUB']} (${tackleConfig.weightGrams}g)`
@@ -2378,7 +2380,7 @@ export const MapView: React.FC<MapViewProps> = ({
                           <span className="font-mono font-bold text-cyan-300">
                             {tackleConfig.baitConfig?.lureSubMode === 'JUKKUMI' ? (
                               (tackleConfig.baitConfig.sinkerWeightGrams ?? 0) === 0
-                                ? `총 ${(tackleConfig.baitConfig.egiWeightGrams ?? 15)}g (노싱커)`
+                                ? `총 ${(tackleConfig.baitConfig.egiWeightGrams ?? 15)}g (0g)`
                                 : `총 ${(tackleConfig.baitConfig.egiWeightGrams ?? 15) + (tackleConfig.baitConfig.sinkerWeightGrams ?? 0)}g`
                             ) : (
                               `${tackleConfig.weightGrams}g (${getWeightDescription(tackleConfig.weightGrams, tackleConfig.baitConfig)})`
@@ -2460,32 +2462,34 @@ export const MapView: React.FC<MapViewProps> = ({
                             </div>
                           </div>
 
-                          {/* 추(봉돌) 무게: 0g (노싱커) 가능 */}
+                          {/* 추(봉돌) 무게: 0g ~ 6호(22.5g) */}
                           <div className="space-y-1.5 pt-1.5 border-t border-slate-800/80">
                             <div className="flex justify-between items-center text-xs">
                               <span className="text-slate-300 font-medium">추/봉돌 무게:</span>
                               <span className="font-mono font-bold text-cyan-300">
-                                {(tackleConfig.baitConfig.sinkerWeightGrams ?? 15) === 0 ? (
-                                  <span className="text-emerald-400">0g (노싱커 - 무늬·한치 캐스팅)</span>
+                                {(tackleConfig.baitConfig.sinkerWeightGrams ?? 0) === 0 ? (
+                                  <span className="text-emerald-400">0g</span>
                                 ) : (
-                                  `${tackleConfig.baitConfig.sinkerWeightGrams ?? 15}g (약 ${Math.round(((tackleConfig.baitConfig.sinkerWeightGrams ?? 15) / 3.75) * 10) / 10}호)`
+                                  `${tackleConfig.baitConfig.sinkerWeightGrams ?? 0}g (약 ${Math.round(((tackleConfig.baitConfig.sinkerWeightGrams ?? 0) / 3.75) * 10) / 10}호)`
                                 )}
                               </span>
                             </div>
-                            <div className="flex flex-wrap gap-1">
+                            <div className="grid grid-cols-5 gap-1">
                               {JUKKUMI_SINKER_PRESETS.map((preset) => (
                                 <button
                                   key={preset.ho}
                                   type="button"
                                   onClick={() => updateTackle({ sinkerWeightGrams: preset.weightGrams })}
-                                  className={`px-2 py-1 rounded text-xs font-mono transition text-center ${
-                                    Math.abs((tackleConfig.baitConfig?.sinkerWeightGrams ?? 15) - preset.weightGrams) < 0.2
+                                  className={`py-1 rounded text-xs font-mono transition text-center ${
+                                    Math.abs((tackleConfig.baitConfig?.sinkerWeightGrams ?? 0) - preset.weightGrams) < 0.2
                                       ? 'bg-cyan-500 text-slate-950 font-bold shadow'
                                       : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
                                   }`}
                                 >
                                   <div className="font-bold">{preset.label}</div>
-                                  <div className="text-[9.5px] opacity-75">{preset.weightGrams}g</div>
+                                  {preset.ho > 0 && (
+                                    <div className="text-[9.5px] opacity-75">{preset.weightGrams}g</div>
+                                  )}
                                 </button>
                               ))}
                             </div>
@@ -2493,24 +2497,24 @@ export const MapView: React.FC<MapViewProps> = ({
                               <input
                                 type="range"
                                 min={0}
-                                max={60}
-                                step={1}
-                                value={tackleConfig.baitConfig.sinkerWeightGrams ?? 15}
-                                onChange={(e) => updateTackle({ sinkerWeightGrams: parseInt(e.target.value, 10) })}
+                                max={22.5}
+                                step={0.5}
+                                value={Math.min(22.5, tackleConfig.baitConfig.sinkerWeightGrams ?? 0)}
+                                onChange={(e) => updateTackle({ sinkerWeightGrams: parseFloat(e.target.value) })}
                                 className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                               />
                               <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
-                                <span className="text-emerald-400">0g(노싱커)</span>
+                                <span className="text-emerald-400">0g</span>
                                 <span>11.3g(3호)</span>
-                                <span>30g(8호)</span>
-                                <span>45g(12호)</span>
-                                <span>60g(16호)</span>
+                                <span>15g(4호)</span>
+                                <span>18.8g(5호)</span>
+                                <span>22.5g(6호)</span>
                               </div>
                             </div>
                           </div>
 
                           <div className="text-[10.5px] text-cyan-400/80 leading-tight">
-                            * 주꾸미·갑오징어는 봉돌(3~16호), 무늬오징어·한치는 0g 노싱커(에기 단독) 채비로 캐스팅 비거리와 침강 속도가 계산됩니다.
+                            * 주꾸미·갑오징어는 봉돌(3~6호), 무늬오징어·한치는 0g(에기 단독) 채비로 캐스팅 비거리와 침강 속도가 계산됩니다.
                           </div>
                         </div>
                       ) : (
@@ -2585,8 +2589,8 @@ export const MapView: React.FC<MapViewProps> = ({
                           {/* 루어 형상 */}
                           <div>
                             <div className="text-[11px] text-slate-400 mb-1">루어 형상:</div>
-                            <div className="grid grid-cols-4 gap-1">
-                              {(['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'] as LureShape[]).map((shp) => (
+                            <div className="grid grid-cols-3 gap-1">
+                              {LURE_SHAPES.map((shp) => (
                                 <button
                                   key={shp}
                                   type="button"
@@ -2607,10 +2611,10 @@ export const MapView: React.FC<MapViewProps> = ({
                     </div>
                   )}
 
-                  {/* 2) 캐스팅볼 선택 시: 진짜 캐스팅볼 vs 변태채비 (구멍찌) 선택 + 지그헤드 무게 + 루어 길이 + 루어 형상 */}
+                  {/* 2) 캐스팅볼 선택 시: 던질찌 vs 구멍찌 선택 + 지그헤드 무게 + 루어 길이 + 루어 형상 */}
                   {tackleConfig.baitConfig?.type === 'CASTING_BALL' && (
                     <div className="space-y-3 p-2.5 bg-slate-900/60 rounded-xl border border-slate-800">
-                      {/* 서브모드 탭: 진짜 캐스팅볼 vs 변태채비 (구멍찌) */}
+                      {/* 서브모드 탭: 던질찌 vs 구멍찌 */}
                       <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
                         <button
                           type="button"
@@ -2621,7 +2625,7 @@ export const MapView: React.FC<MapViewProps> = ({
                               : 'text-slate-400 hover:text-slate-200'
                           }`}
                         >
-                          ⚪ 진짜 캐스팅볼
+                          ⚪ 던질찌
                         </button>
                         <button
                           type="button"
@@ -2632,32 +2636,33 @@ export const MapView: React.FC<MapViewProps> = ({
                               : 'text-slate-400 hover:text-slate-200'
                           }`}
                         >
-                          🎯 변태채비 (구멍찌)
+                          🎯 구멍찌
                         </button>
                       </div>
 
-                      {/* 2.1 변태채비 (구멍찌): 구멍찌 호수 (1호당 3.75g, 0.5~3호 버튼 + 슬라이더) */}
+                      {/* 2.1 구멍찌: 0.5~3.0호 규격표 + 1~40g 슬라이더 */}
                       {tackleConfig.baitConfig.castingBallSubMode === 'VARIANT_FLOAT' ? (
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           <div className="flex justify-between items-center text-xs">
-                            <span className="text-slate-300 font-medium">구멍찌 호수 (1호=3.75g):</span>
+                            <span className="text-slate-300 font-medium">구멍찌 규격 / 무게:</span>
                             <span className="font-mono font-bold text-cyan-300">
-                              {tackleConfig.baitConfig.castingBallHo ?? 1.0}호
+                              {tackleConfig.baitConfig.castingBallWeightGrams ?? getVariantFloatWeightByHo(tackleConfig.baitConfig.castingBallHo ?? 1.0)}g
                               <span className="text-[10.5px] text-slate-400 font-normal ml-1">
-                                ({((tackleConfig.baitConfig.castingBallHo ?? 1.0) * 3.75).toFixed(1)}g)
+                                ({tackleConfig.baitConfig.castingBallHo ?? 1.0}호 기준)
                               </span>
                             </span>
                           </div>
 
-                          {/* 0.5~3호 버튼 */}
-                          <div className="grid grid-cols-4 sm:grid-cols-7 gap-1">
+                          {/* 0.5~3.0호 버튼 */}
+                          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
                             {VARIANT_FLOAT_HO_PRESETS.map((preset) => (
                               <button
                                 key={preset.ho}
                                 type="button"
                                 onClick={() => updateTackle({ castingBallHo: preset.ho, castingBallWeightGrams: preset.weightGrams })}
                                 className={`py-1 rounded text-xs font-mono transition text-center ${
-                                  Math.abs((tackleConfig.baitConfig?.castingBallHo ?? 1.0) - preset.ho) < 0.05
+                                  Math.abs((tackleConfig.baitConfig?.castingBallHo ?? 1.0) - preset.ho) < 0.05 &&
+                                  Math.abs((tackleConfig.baitConfig?.castingBallWeightGrams ?? preset.weightGrams) - preset.weightGrams) < 0.1
                                     ? 'bg-cyan-500 text-slate-950 font-bold shadow'
                                     : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
                                 }`}
@@ -2668,39 +2673,79 @@ export const MapView: React.FC<MapViewProps> = ({
                             ))}
                           </div>
 
-                          {/* 호수 슬라이더 (0.5~3.0호) */}
+                          {/* 구멍찌 규격 참조표 */}
+                          <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/70">
+                            <table className="w-full text-[10px] font-mono text-center border-collapse">
+                              <thead>
+                                <tr className="bg-slate-900/90 text-slate-400 border-b border-slate-800">
+                                  <th className="py-1 px-1 font-semibold">호수</th>
+                                  <th className="py-1 px-1 font-semibold">무게(g)</th>
+                                  <th className="py-1 px-1 font-semibold">부력</th>
+                                  <th className="py-1 px-1 font-semibold">길이/직경</th>
+                                  <th className="py-1 px-1 font-semibold">고무봉돌</th>
+                                  <th className="py-1 px-1 font-semibold">봉돌무게</th>
+                                  <th className="py-1 px-1 font-semibold">지그헤드</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/70">
+                                {VARIANT_FLOAT_HO_PRESETS.map((row) => {
+                                  const isRowSelected =
+                                    Math.abs((tackleConfig.baitConfig?.castingBallHo ?? 1.0) - row.ho) < 0.05 &&
+                                    Math.abs((tackleConfig.baitConfig?.castingBallWeightGrams ?? row.weightGrams) - row.weightGrams) < 0.1;
+                                  return (
+                                    <tr
+                                      key={row.ho}
+                                      onClick={() => updateTackle({ castingBallHo: row.ho, castingBallWeightGrams: row.weightGrams })}
+                                      className={`cursor-pointer transition ${
+                                        isRowSelected
+                                          ? 'bg-cyan-500/20 text-cyan-200 font-bold'
+                                          : 'text-slate-300 hover:bg-slate-800/60'
+                                      }`}
+                                    >
+                                      <td className="py-1 px-1">{row.ho.toFixed(1)}</td>
+                                      <td className="py-1 px-1">{row.weightGrams}</td>
+                                      <td className="py-1 px-1">{row.buoyancyG}</td>
+                                      <td className="py-1 px-1">{row.sizeSpec}</td>
+                                      <td className="py-1 px-1">{row.recSinker}</td>
+                                      <td className="py-1 px-1">{row.recSinkerWeightG}</td>
+                                      <td className="py-1 px-1 text-emerald-300">{row.recJighead}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* 무게 슬라이더 (1~40g) */}
                           <div className="px-1 pt-0.5">
                             <input
                               type="range"
-                              min={0.5}
-                              max={3.0}
-                              step={0.1}
-                              value={tackleConfig.baitConfig.castingBallHo ?? 1.0}
+                              min={1}
+                              max={40}
+                              step={0.5}
+                              value={Math.max(1, Math.min(40, tackleConfig.baitConfig.castingBallWeightGrams ?? getVariantFloatWeightByHo(tackleConfig.baitConfig.castingBallHo ?? 1.0)))}
                               onChange={(e) => {
-                                const ho = parseFloat(e.target.value);
-                                updateTackle({ castingBallHo: ho, castingBallWeightGrams: ho * 3.75 });
+                                const val = parseFloat(e.target.value);
+                                updateTackle({ castingBallWeightGrams: val });
                               }}
                               className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                             />
                             <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
-                              <span>0.5호(1.9g)</span>
-                              <span>1.0호(3.8g)</span>
-                              <span>1.5호(5.6g)</span>
-                              <span>2.0호(7.5g)</span>
-                              <span>3.0호(11.3g)</span>
+                              <span>1g</span>
+                              <span>10g</span>
+                              <span>20g</span>
+                              <span>30g</span>
+                              <span>40g</span>
                             </div>
                           </div>
                         </div>
                       ) : (
-                        /* 2.1 진짜 캐스팅볼: 슬라이더 범위 0~30g + 퀵 프리셋 */
+                        /* 2.1 던질찌: 버튼 3/5/7/10/20g (호수 미표기) + 슬라이더 1~40g */
                         <div className="space-y-1.5">
                           <div className="flex justify-between items-center text-xs">
-                            <span className="text-slate-300 font-medium">캐스팅볼 무게:</span>
+                            <span className="text-slate-300 font-medium">던질찌 무게:</span>
                             <span className="font-mono font-bold text-cyan-300">
-                              {(tackleConfig.baitConfig.castingBallWeightGrams ?? 10.0).toFixed(1)}g
-                              <span className="text-[10.5px] text-slate-400 font-normal ml-1">
-                                (약 {((tackleConfig.baitConfig.castingBallWeightGrams ?? 10.0) / 3.75).toFixed(1)}호)
-                              </span>
+                              {tackleConfig.baitConfig.castingBallWeightGrams ?? 10.0}g
                             </span>
                           </div>
 
@@ -2710,38 +2755,38 @@ export const MapView: React.FC<MapViewProps> = ({
                               <button
                                 key={wVal}
                                 type="button"
-                                onClick={() => updateTackle({ castingBallWeightGrams: wVal, castingBallHo: wVal / 3.75 })}
-                                className={`py-1 rounded text-xs font-mono transition text-center ${
+                                onClick={() => updateTackle({ castingBallWeightGrams: wVal })}
+                                className={`py-1.5 rounded text-xs font-mono transition text-center ${
                                   Math.abs((tackleConfig.baitConfig?.castingBallWeightGrams ?? 10.0) - wVal) < 0.2
                                     ? 'bg-cyan-500 text-slate-950 font-bold shadow'
                                     : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
                                 }`}
                               >
                                 <div className="font-bold">{wVal}g</div>
-                                <div className="text-[9.5px] opacity-75">약 {(wVal / 3.75).toFixed(1)}호</div>
                               </button>
                             ))}
                           </div>
 
-                          {/* 슬라이더 (0~30g) */}
+                          {/* 슬라이더 (1~40g) */}
                           <div className="px-1 pt-0.5">
                             <input
                               type="range"
-                              min={0}
-                              max={30}
-                              step={0.5}
-                              value={tackleConfig.baitConfig.castingBallWeightGrams ?? 10.0}
+                              min={1}
+                              max={40}
+                              step={1}
+                              value={Math.max(1, Math.min(40, tackleConfig.baitConfig.castingBallWeightGrams ?? 10.0))}
                               onChange={(e) => {
                                 const val = parseFloat(e.target.value);
-                                updateTackle({ castingBallWeightGrams: val, castingBallHo: val / 3.75 });
+                                updateTackle({ castingBallWeightGrams: val });
                               }}
                               className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                             />
                             <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
-                              <span>0g</span>
+                              <span>1g</span>
                               <span>10g</span>
                               <span>20g</span>
                               <span>30g</span>
+                              <span>40g</span>
                             </div>
                           </div>
                         </div>
@@ -2779,13 +2824,13 @@ export const MapView: React.FC<MapViewProps> = ({
                         </div>
 
                         {/* 지그헤드 프리셋 버튼 */}
-                        <div className="flex flex-wrap gap-1">
+                        <div className={`grid ${jigheadUnit === 'g' ? 'grid-cols-4' : 'grid-cols-5'} gap-1`}>
                           {JIGHEAD_PRESETS.filter((p) => p.type === jigheadUnit).map((preset) => (
                             <button
                               key={preset.id}
                               type="button"
                               onClick={() => updateTackle({ jigheadWeightGrams: preset.weightGrams })}
-                              className={`px-2.5 py-1 rounded text-xs font-mono transition ${
+                              className={`py-1 rounded text-xs font-mono transition text-center ${
                                 Math.abs((tackleConfig.baitConfig?.jigheadWeightGrams ?? 1.0) - preset.weightGrams) < 0.1
                                   ? 'bg-cyan-500 text-slate-950 font-bold shadow'
                                   : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
@@ -2796,22 +2841,23 @@ export const MapView: React.FC<MapViewProps> = ({
                           ))}
                         </div>
 
-                        {/* 지그헤드 슬라이더 */}
+                        {/* 지그헤드 슬라이더 (0.5~20g) */}
                         <div className="px-1 pt-0.5">
                           <input
                             type="range"
                             min={0.5}
-                            max={10.0}
+                            max={20.0}
                             step={0.5}
-                            value={tackleConfig.baitConfig.jigheadWeightGrams ?? 1.0}
+                            value={Math.max(0.5, Math.min(20.0, tackleConfig.baitConfig.jigheadWeightGrams ?? 1.0))}
                             onChange={(e) => updateTackle({ jigheadWeightGrams: parseFloat(e.target.value) })}
                             className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                           />
                           <div className="flex justify-between text-[10px] text-slate-400 font-mono mt-0.5">
                             <span>0.5g</span>
-                            <span>3.0g</span>
-                            <span>5.0g</span>
-                            <span>10.0g</span>
+                            <span>5g</span>
+                            <span>10g</span>
+                            <span>15g</span>
+                            <span>20g</span>
                           </div>
                         </div>
                       </div>
@@ -2840,8 +2886,8 @@ export const MapView: React.FC<MapViewProps> = ({
                       {/* 루어 형상 */}
                       <div>
                         <div className="text-[11px] text-slate-400 mb-1">루어 형상:</div>
-                        <div className="grid grid-cols-4 gap-1">
-                          {(['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'] as LureShape[]).map((shp) => (
+                        <div className="grid grid-cols-3 gap-1">
+                          {LURE_SHAPES.map((shp) => (
                             <button
                               key={shp}
                               type="button"
@@ -2860,8 +2906,8 @@ export const MapView: React.FC<MapViewProps> = ({
 
                       <div className="text-[10.5px] text-cyan-400/80 leading-tight">
                         * {tackleConfig.baitConfig.castingBallSubMode === 'VARIANT_FLOAT'
-                          ? '구멍찌(1호=3.75g, 공기저항계수 Cd 0.52)'
-                          : '슬림 캐스팅볼(공기저항계수 Cd 0.36)'} + 지그헤드 + 웜 자중이 전체 채비 무게로 합산되어 공기역학적 비거리가 계산됩니다.
+                          ? '구멍찌(공기저항계수 Cd 0.52)'
+                          : '던질찌(공기저항계수 Cd 0.36)'} + 지그헤드 + 웜 자중이 전체 채비 무게로 합산되어 공기역학적 비거리가 계산됩니다.
                       </div>
                     </div>
                   )}

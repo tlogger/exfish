@@ -6,11 +6,12 @@
 export type RodType = 'LURE' | 'SURF';
 export type RodPower = 'UL' | 'L' | 'ML' | 'M' | 'MH' | 'H' | 'SURF';
 
-// 미끼 선택 모델: 생미끼(원투용), 루어(지그헤드/싱커+웜/에기), 캐스팅볼(진짜캐스팅볼/변태채비구멍찌), 메탈(메탈지그 1~80g)
+// 미끼 선택 모델: 생미끼(원투용), 루어(지그헤드/싱커+웜/에기), 캐스팅볼(던질찌/구멍찌), 메탈(메탈지그 1~80g)
 export type BaitType = 'LIVE' | 'LURE' | 'CASTING_BALL' | 'METAL';
 export type LureSubMode = 'JIG' | 'OZ' | 'JUKKUMI';
 export type CastingBallSubMode = 'REAL_BALL' | 'VARIANT_FLOAT';
 export type LureShape = 'GRUB' | 'SHAD' | 'STRAIGHT' | 'MINNOW';
+export const LURE_SHAPES: LureShape[] = ['GRUB', 'SHAD', 'STRAIGHT'];
 
 export interface BaitConfig {
   type: BaitType;
@@ -26,10 +27,10 @@ export interface BaitConfig {
   sinkerWeightGrams?: number; // 추가 봉돌 무게 (0g 허용!)
 
   // 캐스팅볼 전용
-  castingBallSubMode?: CastingBallSubMode; // 'REAL_BALL' (진짜 캐스팅볼) vs 'VARIANT_FLOAT' (변태채비 구멍찌)
-  castingBallWeightGrams?: number; // 진짜 캐스팅볼 자중 (0~30g)
-  castingBallHo?: number; // 변태채비 구멍찌 호수 (0.5호~3호, 1호=3.75g)
-  jigheadWeightGrams?: number; // 지그헤드 무게 (g)
+  castingBallSubMode?: CastingBallSubMode; // 'REAL_BALL' (던질찌) vs 'VARIANT_FLOAT' (구멍찌)
+  castingBallWeightGrams?: number; // 던질찌 / 구멍찌 자중 (1~40g)
+  castingBallHo?: number; // 구멍찌 호수 (0.5호~3.0호)
+  jigheadWeightGrams?: number; // 지그헤드 무게 (0.5~20g)
 
   // 메탈 지그 전용
   metalWeightGrams?: number; // 메탈 무게 (1~80g)
@@ -67,37 +68,53 @@ export interface SinkerPreset {
 }
 
 export const JUKKUMI_SINKER_PRESETS: SinkerPreset[] = [
-  { ho: 0, label: '0g (노싱커)', weightGrams: 0, desc: '에기 단독' },
+  { ho: 0, label: '0g', weightGrams: 0, desc: '에기 단독' },
   { ho: 3, label: '3호', weightGrams: 11.3, desc: '11.3g' },
   { ho: 4, label: '4호', weightGrams: 15.0, desc: '15.0g' },
   { ho: 5, label: '5호', weightGrams: 18.8, desc: '18.8g' },
   { ho: 6, label: '6호', weightGrams: 22.5, desc: '22.5g' },
-  { ho: 8, label: '8호', weightGrams: 30.0, desc: '30.0g' },
-  { ho: 10, label: '10호', weightGrams: 37.5, desc: '37.5g' },
-  { ho: 12, label: '12호', weightGrams: 45.0, desc: '45.0g' },
-  { ho: 16, label: '16호', weightGrams: 60.0, desc: '60.0g' },
 ];
 
-// 변태채비 구멍찌 호수 프리셋 (0.5호 ~ 3호, 1호당 3.75g)
+// 구멍찌 규격 프리셋 (0.5호 ~ 3.0호 실측 규격표)
 export interface VariantFloatPreset {
   ho: number;
   label: string;
   weightGrams: number;
+  buoyancyG: number;
+  sizeSpec: string;
+  recSinker: string;
+  recSinkerWeightG: number;
+  recJighead: string;
+  recJigheadWeightG?: number;
   desc: string;
 }
 
 export const VARIANT_FLOAT_HO_PRESETS: VariantFloatPreset[] = [
-  { ho: 0.5, label: '0.5호', weightGrams: 1.9, desc: '1.9g' },
-  { ho: 0.8, label: '0.8호', weightGrams: 3.0, desc: '3.0g' },
-  { ho: 1.0, label: '1.0호', weightGrams: 3.8, desc: '3.8g' },
-  { ho: 1.5, label: '1.5호', weightGrams: 5.6, desc: '5.6g' },
-  { ho: 2.0, label: '2.0호', weightGrams: 7.5, desc: '7.5g' },
-  { ho: 2.5, label: '2.5호', weightGrams: 9.4, desc: '9.4g' },
-  { ho: 3.0, label: '3.0호', weightGrams: 11.3, desc: '11.3g' },
+  { ho: 0.5, label: '0.5호', weightGrams: 20.46, buoyancyG: 3.5, sizeSpec: '5.1/3', recSinker: '4B',    recSinkerWeightG: 1.2,  recJighead: '-',           desc: '20.46g / 부력 3.5g' },
+  { ho: 1.0, label: '1.0호', weightGrams: 18.32, buoyancyG: 5.0, sizeSpec: '-',     recSinker: '0.8호', recSinkerWeightG: 3.0,  recJighead: '1/8 (3.5g)',  recJigheadWeightG: 3.5,  desc: '18.32g / 부력 5.0g' },
+  { ho: 1.5, label: '1.5호', weightGrams: 16.79, buoyancyG: 6.0, sizeSpec: '-',     recSinker: '1.0호', recSinkerWeightG: 3.75, recJighead: '1/8 (3.5g)',  recJigheadWeightG: 3.5,  desc: '16.79g / 부력 6.0g' },
+  { ho: 2.0, label: '2.0호', weightGrams: 15.15, buoyancyG: 7.5, sizeSpec: '-',     recSinker: '1.5호', recSinkerWeightG: 5.62, recJighead: '1/4 (7g)',    recJigheadWeightG: 7.0,  desc: '15.15g / 부력 7.5g' },
+  { ho: 2.5, label: '2.5호', weightGrams: 14.42, buoyancyG: 8.0, sizeSpec: '-',     recSinker: '2.0호', recSinkerWeightG: 7.5,  recJighead: '1/4 (7g)',    recJigheadWeightG: 7.0,  desc: '14.42g / 부력 8.0g' },
+  { ho: 3.0, label: '3.0호', weightGrams: 13.92, buoyancyG: 10,  sizeSpec: '-',     recSinker: '2.5호', recSinkerWeightG: 9.38, recJighead: '3/8 (10.5g)', recJigheadWeightG: 10.5, desc: '13.92g / 부력 10g' },
 ];
 
-// 진짜 캐스팅볼 규격 프리셋 (0~30g 범위 퀵 프리셋)
-export const REAL_CASTING_BALL_PRESETS = [5, 7, 10, 13, 15, 18, 20, 25, 30] as const;
+export function getVariantFloatWeightByHo(ho: number): number {
+  const exact = VARIANT_FLOAT_HO_PRESETS.find((p) => Math.abs(p.ho - ho) < 0.05);
+  if (exact) return exact.weightGrams;
+  let best = VARIANT_FLOAT_HO_PRESETS[1];
+  let minDiff = Infinity;
+  for (const p of VARIANT_FLOAT_HO_PRESETS) {
+    const d = Math.abs(p.ho - ho);
+    if (d < minDiff) {
+      minDiff = d;
+      best = p;
+    }
+  }
+  return best.weightGrams;
+}
+
+// 던질찌 규격 프리셋 (버튼: 3, 5, 7, 10, 20g / 슬라이더: 1~40g)
+export const REAL_CASTING_BALL_PRESETS = [3, 5, 7, 10, 20] as const;
 
 // 레거시 호환용 캐스팅볼 규격 프리셋 (1호 ~ 8호)
 export interface CastingBallPreset {
@@ -128,16 +145,19 @@ export interface JigheadPreset {
 }
 
 export const JIGHEAD_PRESETS: JigheadPreset[] = [
-  { id: 'jh-0.5g', type: 'g', label: '0.5g', weightGrams: 0.5 },
-  { id: 'jh-1g',   type: 'g', label: '1g',   weightGrams: 1.0 },
-  { id: 'jh-1.5g', type: 'g', label: '1.5g', weightGrams: 1.5 },
-  { id: 'jh-2g',   type: 'g', label: '2g',   weightGrams: 2.0 },
-  { id: 'jh-3g',   type: 'g', label: '3g',   weightGrams: 3.0 },
-  { id: 'jh-5g',   type: 'g', label: '5g',   weightGrams: 5.0 },
+  { id: 'jh-0.5g', type: 'g',  label: '0.5g', weightGrams: 0.5 },
+  { id: 'jh-1g',   type: 'g',  label: '1g',   weightGrams: 1.0 },
+  { id: 'jh-1.5g', type: 'g',  label: '1.5g', weightGrams: 1.5 },
+  { id: 'jh-2g',   type: 'g',  label: '2g',   weightGrams: 2.0 },
+  { id: 'jh-3g',   type: 'g',  label: '3g',   weightGrams: 3.0 },
+  { id: 'jh-5g',   type: 'g',  label: '5g',   weightGrams: 5.0 },
+  { id: 'jh-7g',   type: 'g',  label: '7g',   weightGrams: 7.0 },
+  { id: 'jh-10g',  type: 'g',  label: '10g',  weightGrams: 10.0 },
   { id: 'jh-1-32', type: 'oz', label: '1/32oz', weightGrams: 0.9 },
   { id: 'jh-1-16', type: 'oz', label: '1/16oz', weightGrams: 1.8 },
   { id: 'jh-1-8',  type: 'oz', label: '1/8oz',  weightGrams: 3.5 },
   { id: 'jh-1-4',  type: 'oz', label: '1/4oz',  weightGrams: 7.1 },
+  { id: 'jh-3-8',  type: 'oz', label: '3/8oz',  weightGrams: 10.6 },
 ];
 
 // 메탈 지그 무게 퀵 프리셋 (버튼: 10, 20, 30, 40g / 슬라이더: 1~80g)
@@ -188,7 +208,7 @@ export function getBaitSpecs(
 
   if (type === 'CASTING_BALL') {
     const safeLen = Math.max(1, Math.min(4, Math.round(lengthInches)));
-    const safeJighead = Math.max(0.2, Math.min(20, Math.round(jigheadWeightGrams * 10) / 10));
+    const safeJighead = Math.max(0.5, Math.min(20, Math.round(jigheadWeightGrams * 10) / 10));
     const weightTable: Record<LureShape, Record<number, number>> = {
       GRUB: { 1: 1.0, 2: 2.5, 3: 5.0, 4: 9.0 },
       SHAD: { 1: 1.2, 2: 3.2, 3: 6.8, 4: 12.5 },
@@ -205,9 +225,11 @@ export function getBaitSpecs(
     const wormArea = areaTable[shape]?.[safeLen] ?? 2.0;
 
     if (castingBallSubMode === 'VARIANT_FLOAT') {
-      // 변태채비 (구멍찌 0.5호~3호, 1호=3.75g)
+      // 구멍찌 (규격표 0.5호~3.0호 또는 1~40g 슬라이더)
       const safeHo = Math.max(0.5, Math.min(3.0, Math.round(castingBallHo * 10) / 10));
-      const floatWeight = Math.round(safeHo * 3.75 * 10) / 10;
+      const floatWeight = castingBallWeightGrams !== undefined
+        ? Math.max(1, Math.min(40, Math.round(castingBallWeightGrams * 100) / 100))
+        : getVariantFloatWeightByHo(safeHo);
       const floatArea = Math.round((Math.PI * Math.pow(Math.cbrt(floatWeight) * 0.9 + 0.8, 2)) * 10) / 10;
 
       return {
@@ -223,10 +245,10 @@ export function getBaitSpecs(
         surfaceAreaCm2: Math.round((floatArea + wormArea * 0.3) * 10) / 10,
       };
     } else {
-      // 진짜 캐스팅볼 (0~30g 슬라이더 선택)
+      // 던질찌 (1~40g 슬라이더 선택)
       const safeBallWeight = castingBallWeightGrams !== undefined
-        ? Math.max(0, Math.min(30, Math.round(castingBallWeightGrams * 10) / 10))
-        : Math.round(castingBallHo * 3.75 * 10) / 10;
+        ? Math.max(1, Math.min(40, Math.round(castingBallWeightGrams * 100) / 100))
+        : Math.max(1, Math.min(40, Math.round(castingBallHo * 3.75 * 10) / 10));
       const safeHo = castingBallWeightGrams !== undefined
         ? Math.round((safeBallWeight / 3.75) * 10) / 10
         : castingBallHo;
@@ -249,8 +271,8 @@ export function getBaitSpecs(
 
   // 루어 (JIG / OZ / JUKKUMI)
   if (lureSubMode === 'JUKKUMI') {
-    const safeEgiWeight = Math.max(5.0, Math.min(30.0, Math.round(egiWeightGrams * 10) / 10));
-    const safeSinkerWeight = Math.max(0.0, Math.min(60.0, Math.round(sinkerWeightGrams * 10) / 10)); // 0g 가능!
+    const safeEgiWeight = Math.max(5.0, Math.min(35.0, Math.round(egiWeightGrams * 10) / 10));
+    const safeSinkerWeight = Math.max(0.0, Math.min(22.5, Math.round(sinkerWeightGrams * 10) / 10)); // 0g ~ 6호(22.5g)
     const egiArea = 4.2; // 에기 기본 단면적
     const sinkerArea = safeSinkerWeight > 0 ? Math.round((Math.PI * Math.pow(Math.cbrt(safeSinkerWeight) * 0.45, 2)) * 10) / 10 : 0;
 
@@ -382,12 +404,13 @@ export function getWeightDescription(weightGrams: number, baitConfig?: BaitConfi
     if (baitConfig.type === 'CASTING_BALL') {
       if (baitConfig.castingBallSubMode === 'VARIANT_FLOAT') {
         const ho = baitConfig.castingBallHo ?? 1.0;
+        const bw = baitConfig.castingBallWeightGrams ?? getVariantFloatWeightByHo(ho);
         const jh = baitConfig.jigheadWeightGrams ?? 1.0;
-        return `구멍찌 ${ho}호(${Math.round(ho * 3.75 * 10) / 10}g) + 지그헤드 ${jh}g`;
+        return `구멍찌 ${ho}호(${bw}g) + 지그헤드 ${jh}g`;
       } else {
         const bw = baitConfig.castingBallWeightGrams ?? 10.0;
         const jh = baitConfig.jigheadWeightGrams ?? 1.0;
-        return `캐스팅볼 ${bw}g + 지그헤드 ${jh}g`;
+        return `던질찌 ${bw}g + 지그헤드 ${jh}g`;
       }
     }
     if (baitConfig.type === 'METAL') {
@@ -397,7 +420,7 @@ export function getWeightDescription(weightGrams: number, baitConfig?: BaitConfi
     if (baitConfig.lureSubMode === 'JUKKUMI') {
       const ew = baitConfig.egiWeightGrams ?? 15;
       const sw = baitConfig.sinkerWeightGrams ?? 0;
-      return sw === 0 ? `에기 ${ew}g (노싱커)` : `에기 ${ew}g + 추 ${sw}g (총 ${ew + sw}g)`;
+      return sw === 0 ? `에기 ${ew}g (0g)` : `에기 ${ew}g + 추 ${sw}g (총 ${ew + sw}g)`;
     }
   }
 
@@ -472,14 +495,14 @@ export function calculateCalibratedDistance(
   if (baitConfig.type === 'CASTING_BALL') {
     const isVariant = baitConfig.castingBallSubMode === 'VARIANT_FLOAT';
     const ballW = isVariant
-      ? ((baitConfig.castingBallHo ?? 1.0) * 3.75)
+      ? (baitConfig.castingBallWeightGrams ?? getVariantFloatWeightByHo(baitConfig.castingBallHo ?? 1.0))
       : (baitConfig.castingBallWeightGrams ?? 10.0);
     const jhW = baitConfig.jigheadWeightGrams ?? 1.0;
     const wormW = baitConfig.weightGrams ?? 2.5;
     safeTotalWeight = Math.max(0.5, Math.min(200, ballW + jhW + wormW));
     // 공기역학적 영향:
-    // 진짜 캐스팅볼은 유선형 구조로 공기저항을 줄여 비거리 증가 (1.08)
-    // 변태채비 구멍찌는 큰 체적과 바람저항으로 비거리 감쇄 (0.92)
+    // 던질찌는 유선형 구조로 공기저항을 줄여 비거리 증가 (1.08)
+    // 구멍찌는 큰 체적과 바람저항으로 비거리 감쇄 (0.92)
     baitAirFactor = isVariant ? 0.92 : 1.08;
   } else if (baitConfig.type === 'METAL') {
     const metalW = baitConfig.metalWeightGrams ?? weightGrams;
@@ -562,7 +585,7 @@ export function calculateCalibratedDistance(
     distanceMeters,
     elasticityEfficiency: Math.round(elasticityEfficiency * 100) / 100,
     lengthFactor: Math.round(lengthFactor * 100) / 100,
-    totalWeightGrams: Math.round(safeTotalWeight * 10) / 10,
+    totalWeightGrams: Math.round(safeTotalWeight * 100) / 100,
   };
 }
 
@@ -677,7 +700,7 @@ export function calculateSinkingPhysics(
   if (baitConfig.type === 'CASTING_BALL') {
     const isVariant = baitConfig.castingBallSubMode === 'VARIANT_FLOAT';
     const ballW = isVariant
-      ? ((baitConfig.castingBallHo ?? 1.0) * 3.75)
+      ? (baitConfig.castingBallWeightGrams ?? getVariantFloatWeightByHo(baitConfig.castingBallHo ?? 1.0))
       : (baitConfig.castingBallWeightGrams ?? 10.0);
     const jhW = baitConfig.jigheadWeightGrams ?? 1.0;
     const wormW = baitConfig.weightGrams ?? 2.5;
@@ -717,7 +740,7 @@ export function calculateSinkingPhysics(
     effSinkSpeedMps,
     fallTimeSec,
     driftDistanceM,
-    totalWeightGrams: Math.round(safeTotalWeight * 10) / 10,
+    totalWeightGrams: Math.round(safeTotalWeight * 100) / 100,
   };
 }
 
@@ -813,14 +836,19 @@ function readInitialTackleStateFromStorage(): InternalTackleState {
     }
     if (savedBaitLen) s.baitLength = parseInt(savedBaitLen, 10) || 2;
     if (savedBaitLenCm) s.baitLengthCm = parseFloat(savedBaitLenCm) || 6.0;
-    if (savedBaitShape && ['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'].includes(savedBaitShape)) {
+    if (savedBaitShape && ['GRUB', 'SHAD', 'STRAIGHT'].includes(savedBaitShape)) {
       s.baitShape = savedBaitShape;
+    } else if (savedBaitShape === 'MINNOW') {
+      s.baitShape = 'GRUB';
     }
     if (savedBallWeight) {
       const parsed = parseFloat(savedBallWeight);
       if (!Number.isNaN(parsed)) s.castingBallWeightGrams = parsed;
     }
     if (savedBallHo) s.castingBallHo = parseFloat(savedBallHo) || 1.0;
+    if (s.castingBallSubMode === 'VARIANT_FLOAT' && !savedBallWeight) {
+      s.castingBallWeightGrams = getVariantFloatWeightByHo(s.castingBallHo);
+    }
     if (savedJH) s.jigheadWeightGrams = parseFloat(savedJH) || 1.0;
     if (savedMetalW) s.metalWeightGrams = parseFloat(savedMetalW) || 20.0;
     if (savedEgiW) s.egiWeightGrams = parseFloat(savedEgiW) || 15.0;
@@ -836,6 +864,9 @@ function readInitialTackleStateFromStorage(): InternalTackleState {
 
 function normalizeTackleState(raw: InternalTackleState): InternalTackleState {
   const s: InternalTackleState = { ...raw };
+  if (s.baitShape === 'MINNOW') {
+    s.baitShape = 'GRUB';
+  }
   if (s.rodPower === 'SURF') {
     if (!SURF_ROD_LENGTHS_M.includes(s.rodLengthM as any)) {
       s.rodLengthM = 4.2;
@@ -849,12 +880,11 @@ function normalizeTackleState(raw: InternalTackleState): InternalTackleState {
       s.metalWeightGrams = Math.max(1, Math.min(80, s.metalWeightGrams));
       s.weightGrams = s.metalWeightGrams;
     } else if (s.baitType === 'CASTING_BALL') {
-      if (s.castingBallSubMode === 'VARIANT_FLOAT') {
-        s.weightGrams = Math.round((s.castingBallHo * 3.75 + s.jigheadWeightGrams) * 10) / 10;
-      } else {
-        s.weightGrams = Math.round((s.castingBallWeightGrams + s.jigheadWeightGrams) * 10) / 10;
-      }
+      s.castingBallWeightGrams = Math.max(1, Math.min(40, Math.round(s.castingBallWeightGrams * 100) / 100));
+      s.jigheadWeightGrams = Math.max(0.5, Math.min(20, Math.round(s.jigheadWeightGrams * 10) / 10));
+      s.weightGrams = Math.round((s.castingBallWeightGrams + s.jigheadWeightGrams) * 100) / 100;
     } else if (s.baitType === 'LURE' && s.lureSubMode === 'JUKKUMI') {
+      s.sinkerWeightGrams = Math.max(0, Math.min(22.5, Math.round(s.sinkerWeightGrams * 10) / 10));
       s.weightGrams = Math.round((s.egiWeightGrams + s.sinkerWeightGrams) * 10) / 10;
     }
   }
@@ -1075,6 +1105,28 @@ export function saveTackleConfig(
       next.metalWeightGrams = Math.max(1, Math.min(80, params.weightGrams));
     }
     next.weightGrams = next.metalWeightGrams;
+  } else if (next.rodPower !== 'SURF' && next.baitType === 'CASTING_BALL') {
+    if (next.castingBallSubMode === 'VARIANT_FLOAT') {
+      if (params.castingBallHo !== undefined && params.castingBallWeightGrams === undefined) {
+        next.castingBallWeightGrams = getVariantFloatWeightByHo(next.castingBallHo);
+      } else if (
+        params.castingBallSubMode === 'VARIANT_FLOAT' &&
+        prev.castingBallSubMode !== 'VARIANT_FLOAT' &&
+        params.castingBallWeightGrams === undefined
+      ) {
+        if (!VARIANT_FLOAT_HO_PRESETS.some((p) => Math.abs(p.ho - next.castingBallHo) < 0.05)) {
+          next.castingBallHo = 1.0;
+        }
+        next.castingBallWeightGrams = getVariantFloatWeightByHo(next.castingBallHo);
+      }
+    } else if (
+      next.castingBallSubMode === 'REAL_BALL' &&
+      params.castingBallSubMode === 'REAL_BALL' &&
+      prev.castingBallSubMode !== 'REAL_BALL' &&
+      params.castingBallWeightGrams === undefined
+    ) {
+      next.castingBallWeightGrams = 10.0;
+    }
   } else if (next.rodPower !== 'SURF' && next.baitType === 'LURE' && params.weightGrams === undefined) {
     if (params.lureSubMode === 'JIG') {
       const matchesJig = WEIGHT_PRESETS.some(

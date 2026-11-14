@@ -5,11 +5,17 @@ import {
   calculateSinkingPhysics,
   getBaitSpecs,
   getSavedTackleConfig,
+  getVariantFloatWeightByHo,
   getWeightDescription,
+  JIGHEAD_PRESETS,
+  JUKKUMI_SINKER_PRESETS,
+  LURE_SHAPES,
   METAL_WEIGHT_PRESETS,
+  REAL_CASTING_BALL_PRESETS,
   resetTackleConfigState,
   ROD_POWER_SPECS,
   saveTackleConfig,
+  VARIANT_FLOAT_HO_PRESETS,
 } from './tackleCalibration';
 
 describe('tackleCalibration physics engine', () => {
@@ -129,17 +135,18 @@ describe('tackleCalibration physics engine', () => {
     expect(weightedDist.distanceMeters).toBeGreaterThan(noSinkerDist.distanceMeters);
   });
 
-  it('compares real casting ball vs variant float (구멍찌) aerodynamics and weight', () => {
-    // 진짜 캐스팅볼 15g + 지그헤드 1g + 2인치 그럽(2.5g) = 총 18.5g
+  it('compares real casting ball (던질찌) vs variant float (구멍찌) aerodynamics and weight', () => {
+    // 던질찌 15g + 지그헤드 1g + 2인치 그럽(2.5g) = 총 18.5g
     const realBall = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 1.0, 1.0, 28, 'OZ', 'REAL_BALL', 15.0);
     const realResult = calculateCalibratedDistance(16.0, 0.8, 'ML', 2.6, realBall);
     expect(realResult.totalWeightGrams).toBeCloseTo(18.5, 1);
 
-    // 변태채비 구멍찌 2호(7.5g) + 지그헤드 1g + 2인치 그럽(2.5g) = 총 11.0g
+    // 구멍찌 2.0호(15.15g) + 지그헤드 1g + 2인치 그럽(2.5g) = 총 18.65g
     const variantFloat = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 2.0, 1.0, 28, 'OZ', 'VARIANT_FLOAT');
-    const variantResult = calculateCalibratedDistance(8.5, 0.8, 'ML', 2.6, variantFloat);
-    expect(variantResult.totalWeightGrams).toBeCloseTo(11.0, 1);
+    const variantResult = calculateCalibratedDistance(16.15, 0.8, 'ML', 2.6, variantFloat);
+    expect(variantResult.totalWeightGrams).toBeCloseTo(18.65, 1);
     expect(variantFloat.castingBallHo).toBe(2.0);
+    expect(variantFloat.castingBallWeightGrams).toBe(15.15);
   });
 });
 
@@ -172,7 +179,42 @@ describe('tackleConfig state management & UI requirements', () => {
     });
     expect(variantFloat.baitConfig?.type).toBe('CASTING_BALL');
     expect(variantFloat.baitConfig?.castingBallSubMode).toBe('VARIANT_FLOAT');
-    expect(variantFloat.weightGrams).toBeCloseTo(8.5, 1);
+    expect(variantFloat.baitConfig?.castingBallWeightGrams).toBe(15.15);
+    expect(variantFloat.weightGrams).toBeCloseTo(16.15, 2);
+
+    // 구멍찌 1~40g 슬라이더 사용자 지정 무게 지원 및 던질찌 3/5/7/10/20g / 1~40g 지원 검증
+    const customFloat = saveTackleConfig({ castingBallWeightGrams: 35.5, jigheadWeightGrams: 10.6 });
+    expect(customFloat.baitConfig?.castingBallWeightGrams).toBe(35.5);
+    expect(customFloat.weightGrams).toBeCloseTo(46.1, 1);
+
+    const customJighead = saveTackleConfig({ jigheadWeightGrams: 20 });
+    expect(customJighead.baitConfig?.jigheadWeightGrams).toBe(20);
+  });
+
+  it('matches updated presets (no MINNOW, jukkumi 0g~6호, real ball, variant float table, jighead 7g/10g/3/8oz)', () => {
+    expect(LURE_SHAPES).toEqual(['GRUB', 'SHAD', 'STRAIGHT']);
+    const normalizedMinnow = saveTackleConfig({ baitType: 'LURE', baitShape: 'MINNOW' });
+    expect(normalizedMinnow.baitConfig?.shape).toBe('GRUB');
+
+    expect(JUKKUMI_SINKER_PRESETS.map((p) => p.label)).toEqual(['0g', '3호', '4호', '5호', '6호']);
+    const jukZero = saveTackleConfig({ baitType: 'LURE', lureSubMode: 'JUKKUMI', egiWeightGrams: 15, sinkerWeightGrams: 0 });
+    expect(getWeightDescription(jukZero.weightGrams, jukZero.baitConfig)).toBe('에기 15g (0g)');
+
+    expect([...REAL_CASTING_BALL_PRESETS]).toEqual([3, 5, 7, 10, 20]);
+    expect(VARIANT_FLOAT_HO_PRESETS.map((p) => [p.ho, p.weightGrams])).toEqual([
+      [0.5, 20.46],
+      [1.0, 18.32],
+      [1.5, 16.79],
+      [2.0, 15.15],
+      [2.5, 14.42],
+      [3.0, 13.92],
+    ]);
+    expect(getVariantFloatWeightByHo(0.5)).toBe(20.46);
+    expect(getVariantFloatWeightByHo(3.0)).toBe(13.92);
+
+    expect(JIGHEAD_PRESETS.filter((p) => p.type === 'g').map((p) => p.label)).toContain('7g');
+    expect(JIGHEAD_PRESETS.filter((p) => p.type === 'g').map((p) => p.label)).toContain('10g');
+    expect(JIGHEAD_PRESETS.filter((p) => p.type === 'oz').map((p) => p.label)).toContain('3/8oz');
   });
 
   it('transitions cleanly across LURE sub-modes (JIG, OZ, JUKKUMI) and weight presets', () => {

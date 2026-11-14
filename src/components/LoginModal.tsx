@@ -374,7 +374,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                           <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-950 text-blue-300 border border-blue-500/50 font-bold">Google</span>
                         )}
                       </div>
-                      <span className="font-mono text-[11px] text-slate-400">{currentUser.email}</span>
+                      {currentUser.provider !== 'kakao' && currentUser.email && (
+                        <span className="font-mono text-[11px] text-slate-400">{currentUser.email}</span>
+                      )}
                     </div>
                   </div>
                 </div>
