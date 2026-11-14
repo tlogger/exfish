@@ -43,6 +43,58 @@ export const LURE_SHAPE_NAMES: Record<LureShape, string> = {
   MINNOW: '미노우',
 };
 
+// 루어 형상별 공기 항력 계수 (Cd_air: 슬림 직선형 < 그럽 컬테일 < 쉐드 패들테일)
+export const LURE_AIR_DRAG_CD: Record<LureShape, number> = {
+  STRAIGHT: 0.28,
+  GRUB: 0.42,
+  SHAD: 0.56,
+  MINNOW: 0.34,
+};
+
+// 루어 형상별 수중 유체 항력 계수 (Cd_water: 스트레이트 < 그럽웜 < 쉐드웜)
+export const LURE_HYDRO_DRAG_CD: Record<LureShape, number> = {
+  STRAIGHT: 0.82,
+  GRUB: 1.12,
+  SHAD: 1.42,
+  MINNOW: 1.00,
+};
+
+// 본체(던질찌, 구멍찌, 메탈지그) 형상별 공기·유체 항력 계수
+export const BODY_AIR_DRAG_CD = {
+  REAL_BALL: 0.34,     // 던질찌 (유선형 슬림 캐스팅 바디)
+  VARIANT_FLOAT: 0.54, // 구멍찌 (부피가 큰 구형/타원형 바디)
+  METAL_JIG: 0.22,     // 메탈지그 (고밀도 유선형 금속 바디)
+} as const;
+
+export const BODY_HYDRO_DRAG_CD = {
+  REAL_BALL: 0.95,
+  VARIANT_FLOAT: 1.15,
+  METAL_JIG: 0.35,     // 메탈지그 최소 수중 형상 저항 (고속 폴링)
+} as const;
+
+const WORM_WEIGHT_TABLE: Record<LureShape, Record<number, number>> = {
+  GRUB: { 1: 1.0, 2: 2.5, 3: 5.0, 4: 9.0 },
+  SHAD: { 1: 1.2, 2: 3.2, 3: 6.8, 4: 12.5 },
+  STRAIGHT: { 1: 0.8, 2: 1.8, 3: 3.6, 4: 6.2 },
+  MINNOW: { 1: 1.6, 2: 4.2, 3: 8.8, 4: 15.5 },
+};
+
+const WORM_AREA_TABLE: Record<LureShape, Record<number, number>> = {
+  GRUB: { 1: 1.2, 2: 2.0, 3: 3.5, 4: 5.2 },
+  SHAD: { 1: 1.4, 2: 2.6, 3: 4.8, 4: 7.5 },
+  STRAIGHT: { 1: 0.9, 2: 1.5, 3: 2.4, 4: 3.5 },
+  MINNOW: { 1: 1.8, 2: 3.2, 3: 5.6, 4: 8.8 },
+};
+
+function getWormGeometry(shape: LureShape, lengthInches: number): { safeLen: number; weightGrams: number; areaCm2: number } {
+  const safeLen = Math.max(1, Math.min(4, Math.round(lengthInches)));
+  return {
+    safeLen,
+    weightGrams: WORM_WEIGHT_TABLE[shape]?.[safeLen] ?? 2.5,
+    areaCm2: WORM_AREA_TABLE[shape]?.[safeLen] ?? 2.0,
+  };
+}
+
 // 에기 규격 프리셋 (2.0호 ~ 4.0호)
 export interface EgiPreset {
   ho: number;
@@ -193,7 +245,7 @@ export function getBaitSpecs(
   if (type === 'METAL') {
     const safeCm = Math.max(2.5, Math.min(16.0, Math.round(lengthCm * 2) / 2));
     const safeMetalWeight = Math.max(1, Math.min(80, Math.round(metalWeightGrams * 10) / 10));
-    const surfaceAreaCm2 = Math.round((0.012 * safeCm * safeCm + 0.6) * 10) / 10;
+    const surfaceAreaCm2 = Math.round((0.35 * Math.pow(safeMetalWeight, 2 / 3) + 0.3) * 10) / 10;
 
     return {
       type: 'METAL',
@@ -207,22 +259,8 @@ export function getBaitSpecs(
   }
 
   if (type === 'CASTING_BALL') {
-    const safeLen = Math.max(1, Math.min(4, Math.round(lengthInches)));
     const safeJighead = Math.max(0.5, Math.min(20, Math.round(jigheadWeightGrams * 10) / 10));
-    const weightTable: Record<LureShape, Record<number, number>> = {
-      GRUB: { 1: 1.0, 2: 2.5, 3: 5.0, 4: 9.0 },
-      SHAD: { 1: 1.2, 2: 3.2, 3: 6.8, 4: 12.5 },
-      STRAIGHT: { 1: 0.8, 2: 1.8, 3: 3.6, 4: 6.2 },
-      MINNOW: { 1: 1.6, 2: 4.2, 3: 8.8, 4: 15.5 },
-    };
-    const areaTable: Record<LureShape, Record<number, number>> = {
-      GRUB: { 1: 1.2, 2: 2.0, 3: 3.5, 4: 5.2 },
-      SHAD: { 1: 1.4, 2: 2.6, 3: 4.8, 4: 7.5 },
-      STRAIGHT: { 1: 0.9, 2: 1.5, 3: 2.4, 4: 3.5 },
-      MINNOW: { 1: 1.8, 2: 3.2, 3: 5.6, 4: 8.8 },
-    };
-    const wormWeight = weightTable[shape]?.[safeLen] ?? 2.5;
-    const wormArea = areaTable[shape]?.[safeLen] ?? 2.0;
+    const { safeLen, weightGrams: wormWeight, areaCm2: wormArea } = getWormGeometry(shape, lengthInches);
 
     if (castingBallSubMode === 'VARIANT_FLOAT') {
       // 구멍찌 (규격표 0.5호~3.0호 또는 1~40g 슬라이더)
@@ -290,23 +328,7 @@ export function getBaitSpecs(
   }
 
   // 일반 웜 루어 (JIG / OZ)
-  const safeLen = Math.max(1, Math.min(4, Math.round(lengthInches)));
-  const weightTable: Record<LureShape, Record<number, number>> = {
-    GRUB: { 1: 1.0, 2: 2.5, 3: 5.0, 4: 9.0 },
-    SHAD: { 1: 1.2, 2: 3.2, 3: 6.8, 4: 12.5 },
-    STRAIGHT: { 1: 0.8, 2: 1.8, 3: 3.6, 4: 6.2 },
-    MINNOW: { 1: 1.6, 2: 4.2, 3: 8.8, 4: 15.5 },
-  };
-
-  const areaTable: Record<LureShape, Record<number, number>> = {
-    GRUB: { 1: 1.2, 2: 2.0, 3: 3.5, 4: 5.2 },
-    SHAD: { 1: 1.4, 2: 2.6, 3: 4.8, 4: 7.5 },
-    STRAIGHT: { 1: 0.9, 2: 1.5, 3: 2.4, 4: 3.5 },
-    MINNOW: { 1: 1.8, 2: 3.2, 3: 5.6, 4: 8.8 },
-  };
-
-  const weightGrams = weightTable[shape]?.[safeLen] ?? 2.5;
-  const surfaceAreaCm2 = areaTable[shape]?.[safeLen] ?? 2.0;
+  const { safeLen, weightGrams, areaCm2: surfaceAreaCm2 } = getWormGeometry(shape, lengthInches);
 
   return {
     type: 'LURE',
@@ -490,6 +512,7 @@ export function calculateCalibratedDistance(
   totalWeightGrams: number;
 } {
   let safeTotalWeight: number;
+  let ballisticWeightG: number;
   let baitAirFactor = 1.0;
 
   if (baitConfig.type === 'CASTING_BALL') {
@@ -500,26 +523,44 @@ export function calculateCalibratedDistance(
     const jhW = baitConfig.jigheadWeightGrams ?? 1.0;
     const wormW = baitConfig.weightGrams ?? 2.5;
     safeTotalWeight = Math.max(0.5, Math.min(200, ballW + jhW + wormW));
-    // 공기역학적 영향:
-    // 던질찌는 유선형 구조로 공기저항을 줄여 비거리 증가 (1.08)
-    // 구멍찌는 큰 체적과 바람저항으로 비거리 감쇄 (0.92)
-    baitAirFactor = isVariant ? 0.92 : 1.08;
+    // 캐스팅 추진 주체는 본체(던질찌/구멍찌)+지그헤드이며 웜 트레일러는 공기저항 성분으로 작용
+    ballisticWeightG = Math.max(0.5, Math.min(200, ballW + jhW));
+
+    const { areaCm2: wormArea } = getWormGeometry(baitConfig.shape, baitConfig.lengthInches);
+    const wormAirCd = LURE_AIR_DRAG_CD[baitConfig.shape] ?? LURE_AIR_DRAG_CD.GRUB;
+    const bodyAirTerm = isVariant
+      ? BODY_AIR_DRAG_CD.VARIANT_FLOAT * 1.35 // 부력체 구형/타원형 체적 저항 (0.729)
+      : BODY_AIR_DRAG_CD.REAL_BALL * 0.90;    // 유선형 고비중 던질찌 저항 (0.306)
+    const trailerAirTerm = (0.24 * wormAirCd * wormArea) / Math.pow(Math.max(4, ballisticWeightG), 0.35);
+    const combinedDragIndex = bodyAirTerm + trailerAirTerm;
+    baitAirFactor = Math.pow(0.52 / Math.max(0.25, combinedDragIndex), 0.16);
   } else if (baitConfig.type === 'METAL') {
     const metalW = baitConfig.metalWeightGrams ?? weightGrams;
     safeTotalWeight = Math.max(1.0, Math.min(200, metalW));
-    baitAirFactor = 1.15; // 메탈 지그의 극도로 낮은 공기 저항 및 높은 관성
+    ballisticWeightG = safeTotalWeight;
+    const areaPerMassExp = Math.max(0.5, baitConfig.surfaceAreaCm2) / Math.pow(Math.max(1, metalW), 2 / 3);
+    const metalDragIndex = BODY_AIR_DRAG_CD.METAL_JIG * (0.75 + 0.04 * areaPerMassExp);
+    baitAirFactor = Math.pow(0.52 / Math.max(0.12, metalDragIndex), 0.11);
   } else {
     // 루어 (JIG / OZ / JUKKUMI)
     if (baitConfig.lureSubMode === 'JUKKUMI') {
       const egiW = baitConfig.egiWeightGrams ?? 15.0;
       const sinkerW = Math.max(0.0, baitConfig.sinkerWeightGrams ?? 0.0); // 0g 가능!
       safeTotalWeight = Math.max(1.0, Math.min(200, egiW + sinkerW));
-      baitAirFactor = sinkerW === 0 ? 0.95 : (sinkerW >= 15 ? 1.04 : 0.98);
+      ballisticWeightG = safeTotalWeight;
+      baitAirFactor = sinkerW === 0
+        ? 0.95
+        : Math.min(1.06, 0.95 + 0.11 * (sinkerW / (sinkerW + 8.0)));
     } else {
       const safeSinkerWeight = Math.max(0.5, Math.min(160, weightGrams));
       safeTotalWeight = Math.max(0.5, Math.min(180, safeSinkerWeight + baitConfig.weightGrams));
-      const baitDragRatio = Math.max(0.5, baitConfig.surfaceAreaCm2) / 2.0;
-      baitAirFactor = Math.pow(1.0 / baitDragRatio, 0.08);
+      // 소프트웜은 저밀도·플랩 항력으로 인해 비거리 추진에는 납 싱커가 주체, 형상/길이 공기저항 정밀 반영
+      ballisticWeightG = safeSinkerWeight;
+      const { areaCm2: tableArea } = getWormGeometry(baitConfig.shape, baitConfig.lengthInches);
+      const effectiveWormArea = Math.max(0.5, baitConfig.surfaceAreaCm2 || tableArea);
+      const wormAirCd = LURE_AIR_DRAG_CD[baitConfig.shape] ?? LURE_AIR_DRAG_CD.GRUB;
+      const wormDragProduct = wormAirCd * effectiveWormArea; // 2인치 그럽웜 기준: 0.42 * 2.0 = 0.84
+      baitAirFactor = Math.pow(0.84 / Math.max(0.2, wormDragProduct), 0.12);
     }
   }
 
@@ -532,8 +573,8 @@ export function calculateCalibratedDistance(
     const lengthFactor = Math.pow(safeSurfLengthM / 4.2, 0.70);
     const optWeight = 95.0;
     const weightFactor =
-      Math.pow(safeTotalWeight / optWeight, 0.35) *
-      Math.exp(-Math.pow(Math.log(safeTotalWeight) - Math.log(optWeight), 2) / (2 * 0.95 * 0.95));
+      Math.pow(ballisticWeightG / optWeight, 0.35) *
+      Math.exp(-Math.pow(Math.log(ballisticWeightG) - Math.log(optWeight), 2) / (2 * 0.95 * 0.95));
 
     const lineFactor = Math.pow(1.5 / safePE, 0.20);
     const rawDist = 95.0 * lengthFactor * weightFactor * lineFactor * baitAirFactor;
@@ -552,7 +593,7 @@ export function calculateCalibratedDistance(
   const safeLengthFt = Math.max(5.0, Math.min(11.0, rodLengthFt));
 
   const lengthFactor = Math.pow(safeLengthFt / 8.6, 0.65);
-  const massPotential = 78.0 * (1 - Math.exp(-0.31 * Math.pow(safeTotalWeight, 0.58)));
+  const massPotential = 78.0 * (1 - Math.exp(-0.31 * Math.pow(ballisticWeightG, 0.58)));
 
   const spec = ROD_POWER_SPECS[rodPower] || ROD_POWER_SPECS.M;
   const optW = spec.optWeightG;
@@ -564,15 +605,15 @@ export function calculateCalibratedDistance(
     sigma = 0.62;
   }
 
-  const logRatio = Math.log(safeTotalWeight) - Math.log(optW);
+  const logRatio = Math.log(ballisticWeightG) - Math.log(optW);
   const elasticityEfficiency = Math.exp(-(logRatio * logRatio) / (2 * sigma * sigma));
   const rodEfficiencyFactor = 0.62 + 0.38 * elasticityEfficiency;
 
   const lineAirFactor = Math.pow(0.8 / safePE, 0.18);
 
   let spoolGuideFactor = 1.0;
-  if (safeTotalWeight < 5.5) {
-    const lightDeficit = (5.5 - safeTotalWeight) / 5.0;
+  if (ballisticWeightG < 5.5) {
+    const lightDeficit = (5.5 - ballisticWeightG) / 5.0;
     const lineStiffnessPenalty = Math.max(0, safePE - 0.3) / 0.5;
     const loss = 0.38 * Math.pow(lightDeficit, 1.1) * Math.pow(lineStiffnessPenalty, 0.85);
     spoolGuideFactor = Math.max(0.20, 1.0 - loss);
@@ -694,45 +735,51 @@ export function calculateSinkingPhysics(
   driftDistanceM: number;
   totalWeightGrams: number;
 } {
-  let safeTotalWeight: number;
+  let sinkingWeightG: number;
   let hydroDragFactor: number;
 
   if (baitConfig.type === 'CASTING_BALL') {
-    const isVariant = baitConfig.castingBallSubMode === 'VARIANT_FLOAT';
-    const ballW = isVariant
-      ? (baitConfig.castingBallWeightGrams ?? getVariantFloatWeightByHo(baitConfig.castingBallHo ?? 1.0))
-      : (baitConfig.castingBallWeightGrams ?? 10.0);
+    // 2.1 구멍찌/던질찌 제외: 착수 후 수중 침강은 지그헤드 무게와 트레일러(길이·형상) 저항만으로 계산
     const jhW = baitConfig.jigheadWeightGrams ?? 1.0;
-    const wormW = baitConfig.weightGrams ?? 2.5;
-    safeTotalWeight = Math.max(0.5, Math.min(200, ballW + jhW + wormW));
-    hydroDragFactor = isVariant ? 0.40 : 0.65;
+    sinkingWeightG = Math.max(0.3, Math.min(30, jhW));
+    const { areaCm2: wormArea } = getWormGeometry(baitConfig.shape, baitConfig.lengthInches);
+    const wormHydroCd = LURE_HYDRO_DRAG_CD[baitConfig.shape] ?? LURE_HYDRO_DRAG_CD.GRUB;
+    const wormHydroDrag = wormHydroCd * wormArea; // 2인치 그럽 기준: 1.12 * 2.0 = 2.24
+    hydroDragFactor = Math.pow(2.24 / Math.max(0.5, wormHydroDrag), 0.24);
   } else if (baitConfig.type === 'METAL') {
     const metalW = baitConfig.metalWeightGrams ?? weightGrams;
-    safeTotalWeight = Math.max(1.0, Math.min(200, metalW));
-    hydroDragFactor = 1.45;
+    sinkingWeightG = Math.max(1.0, Math.min(200, metalW));
+    const areaPerMassExp = Math.max(0.5, baitConfig.surfaceAreaCm2) / Math.pow(Math.max(1, metalW), 2 / 3);
+    const metalHydroDrag = BODY_HYDRO_DRAG_CD.METAL_JIG * (0.85 + 0.10 * areaPerMassExp);
+    hydroDragFactor = Math.pow(0.75 / Math.max(0.15, metalHydroDrag), 0.35);
   } else {
     if (baitConfig.lureSubMode === 'JUKKUMI') {
       const egiW = baitConfig.egiWeightGrams ?? 15.0;
       const sinkerW = Math.max(0.0, baitConfig.sinkerWeightGrams ?? 0.0);
-      safeTotalWeight = Math.max(1.0, Math.min(200, egiW + sinkerW));
-      hydroDragFactor = sinkerW === 0 ? 0.55 : 1.15;
+      // 에기 부력 상쇄 후 유효 수중 침강 중량(~25%) + 납 봉돌(100%)
+      sinkingWeightG = Math.max(1.5, Math.min(200, 0.25 * egiW + sinkerW));
+      hydroDragFactor = 0.65 + 0.45 * (sinkerW / (sinkerW + 8.0));
     } else {
+      // 일반 루어(JIG/OZ): 소프트웜은 해수 비중(~1.03)과 유사하여 싱커/지그헤드 무게만 침강 동력으로 작용하고 웜 길이·형상은 유체저항으로만 작용
       const safeSinkerWeight = Math.max(0.5, Math.min(160, weightGrams));
-      safeTotalWeight = Math.max(0.5, Math.min(180, safeSinkerWeight + baitConfig.weightGrams));
-      const baitDragRatio = Math.max(0.6, baitConfig.surfaceAreaCm2) / 2.0;
-      hydroDragFactor = Math.pow(1.0 / baitDragRatio, 0.25);
+      sinkingWeightG = safeSinkerWeight;
+      const { areaCm2: tableArea } = getWormGeometry(baitConfig.shape, baitConfig.lengthInches);
+      const effectiveWormArea = Math.max(0.5, baitConfig.surfaceAreaCm2 || tableArea);
+      const wormHydroCd = LURE_HYDRO_DRAG_CD[baitConfig.shape] ?? LURE_HYDRO_DRAG_CD.GRUB;
+      const wormHydroDrag = wormHydroCd * effectiveWormArea;
+      hydroDragFactor = Math.pow(2.24 / Math.max(0.5, wormHydroDrag), 0.24);
     }
   }
 
   const safeDepth = Math.max(1.0, Math.min(60, depthMeters));
   const safeCurrent = Math.max(0.0, Math.min(3.0, currentVelocityMps));
 
-  const rawSinkSpeed = 0.28 * Math.sqrt(safeTotalWeight) * hydroDragFactor;
-  const sinkSpeedMps = Math.round(Math.max(0.15, Math.min(4.0, rawSinkSpeed)) * 100) / 100;
+  const rawSinkSpeed = 0.26 * Math.sqrt(sinkingWeightG) * hydroDragFactor;
+  const sinkSpeedMps = Math.round(Math.max(0.08, Math.min(4.0, rawSinkSpeed)) * 100) / 100;
 
-  const currentRatio = safeCurrent / (0.6 * sinkSpeedMps);
-  const effSinkSpeedMps = Math.round((sinkSpeedMps / Math.sqrt(1 + currentRatio * currentRatio)) * 100) / 100;
-  const fallTimeSec = Math.max(1, Math.round(safeDepth / Math.max(0.15, effSinkSpeedMps)));
+  const currentRatio = safeCurrent / (0.8 * sinkSpeedMps);
+  const effSinkSpeedMps = Math.round(Math.max(0.06, sinkSpeedMps / Math.sqrt(1 + currentRatio * currentRatio)) * 100) / 100;
+  const fallTimeSec = Math.max(0.5, Math.round((safeDepth / Math.max(0.06, effSinkSpeedMps)) * 10) / 10);
   const driftDistanceM = Math.round(safeCurrent * fallTimeSec * 10) / 10;
 
   return {
@@ -740,7 +787,7 @@ export function calculateSinkingPhysics(
     effSinkSpeedMps,
     fallTimeSec,
     driftDistanceM,
-    totalWeightGrams: Math.round(safeTotalWeight * 100) / 100,
+    totalWeightGrams: Math.round(sinkingWeightG * 100) / 100,
   };
 }
 

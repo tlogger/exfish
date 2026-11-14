@@ -1264,14 +1264,15 @@ export const MapView: React.FC<MapViewProps> = ({
           let windElements = null;
           if (weather) {
             const windVectorDeg = (weather.windDirection + 180) % 360;
-            const rigWeight = tackleConfig.weightGrams;
+            const rigWeight = tackleConfig.totalWeightGrams ?? tackleConfig.weightGrams;
+            const wormLenInches = tackleConfig.baitConfig?.lengthInches ?? 2;
             const peLine = tackleConfig.peLineSize;
 
             // 공략각 시점, 중간, 종점 3개 포인트에 대한 정밀 편류(Drift) 물리 계산
             const midDeg = (startDeg + span / 2) % 360;
-            const driftStart = calculateAerodynamicCastingDrift(startDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, 2.0);
-            const driftMid = calculateAerodynamicCastingDrift(midDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, 2.0);
-            const driftEnd = calculateAerodynamicCastingDrift(endDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, 2.0);
+            const driftStart = calculateAerodynamicCastingDrift(startDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches);
+            const driftMid = calculateAerodynamicCastingDrift(midDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches);
+            const driftEnd = calculateAerodynamicCastingDrift(endDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches);
 
             // 공략각 시점~종점 전체 구간에서 바람/합사줄에 의해 밀린 실제 착수 지점들을 이은 오렌지색 arc 폴리라인 생성
             const orangeArcPts: { lat: number; lng: number }[] = [];
@@ -1279,7 +1280,7 @@ export const MapView: React.FC<MapViewProps> = ({
             const arcStep = Math.max(1, Math.min(3, Math.round(span / 30)));
             for (let offset = 0; offset <= span; offset += arcStep) {
               const b = (startDeg + offset) % 360;
-              const dRes = calculateAerodynamicCastingDrift(b, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, 2.0);
+              const dRes = calculateAerodynamicCastingDrift(b, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches);
               // 실제 밀린 착수 좌표
               const [pActualLat, pActualLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, dRes.actualBearingDeg, dRes.actualDistanceM);
               orangeArcPts.push({ lat: pActualLat, lng: pActualLng });
@@ -2640,7 +2641,7 @@ export const MapView: React.FC<MapViewProps> = ({
                         </button>
                       </div>
 
-                      {/* 2.1 구멍찌: 0.5~3.0호 규격표 + 1~40g 슬라이더 */}
+                      {/* 2.1 구멍찌: 규격표 직접 선택 (호수/무게/여부력/추천 지그헤드) + 1~40g 슬라이더 */}
                       {tackleConfig.baitConfig.castingBallSubMode === 'VARIANT_FLOAT' ? (
                         <div className="space-y-2">
                           <div className="flex justify-between items-center text-xs">
@@ -2648,43 +2649,20 @@ export const MapView: React.FC<MapViewProps> = ({
                             <span className="font-mono font-bold text-cyan-300">
                               {tackleConfig.baitConfig.castingBallWeightGrams ?? getVariantFloatWeightByHo(tackleConfig.baitConfig.castingBallHo ?? 1.0)}g
                               <span className="text-[10.5px] text-slate-400 font-normal ml-1">
-                                ({tackleConfig.baitConfig.castingBallHo ?? 1.0}호 기준)
+                                ({tackleConfig.baitConfig.castingBallHo ?? 1.0}호)
                               </span>
                             </span>
                           </div>
 
-                          {/* 0.5~3.0호 버튼 */}
-                          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
-                            {VARIANT_FLOAT_HO_PRESETS.map((preset) => (
-                              <button
-                                key={preset.ho}
-                                type="button"
-                                onClick={() => updateTackle({ castingBallHo: preset.ho, castingBallWeightGrams: preset.weightGrams })}
-                                className={`py-1 rounded text-xs font-mono transition text-center ${
-                                  Math.abs((tackleConfig.baitConfig?.castingBallHo ?? 1.0) - preset.ho) < 0.05 &&
-                                  Math.abs((tackleConfig.baitConfig?.castingBallWeightGrams ?? preset.weightGrams) - preset.weightGrams) < 0.1
-                                    ? 'bg-cyan-500 text-slate-950 font-bold shadow'
-                                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
-                                }`}
-                              >
-                                <div className="font-bold">{preset.label}</div>
-                                <div className="text-[9.5px] opacity-75">{preset.weightGrams}g</div>
-                              </button>
-                            ))}
-                          </div>
-
-                          {/* 구멍찌 규격 참조표 */}
+                          {/* 구멍찌 규격 선택 표 (버튼 없이 표 행 클릭으로 선택) */}
                           <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/70">
-                            <table className="w-full text-[10px] font-mono text-center border-collapse">
+                            <table className="w-full text-[11px] font-mono text-center border-collapse">
                               <thead>
                                 <tr className="bg-slate-900/90 text-slate-400 border-b border-slate-800">
-                                  <th className="py-1 px-1 font-semibold">호수</th>
-                                  <th className="py-1 px-1 font-semibold">무게(g)</th>
-                                  <th className="py-1 px-1 font-semibold">부력</th>
-                                  <th className="py-1 px-1 font-semibold">길이/직경</th>
-                                  <th className="py-1 px-1 font-semibold">고무봉돌</th>
-                                  <th className="py-1 px-1 font-semibold">봉돌무게</th>
-                                  <th className="py-1 px-1 font-semibold">지그헤드</th>
+                                  <th className="py-1.5 px-1.5 font-semibold">호수</th>
+                                  <th className="py-1.5 px-1.5 font-semibold">무게</th>
+                                  <th className="py-1.5 px-1.5 font-semibold">여부력</th>
+                                  <th className="py-1.5 px-1.5 font-semibold">추천 지그헤드</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-800/70">
@@ -2698,17 +2676,14 @@ export const MapView: React.FC<MapViewProps> = ({
                                       onClick={() => updateTackle({ castingBallHo: row.ho, castingBallWeightGrams: row.weightGrams })}
                                       className={`cursor-pointer transition ${
                                         isRowSelected
-                                          ? 'bg-cyan-500/20 text-cyan-200 font-bold'
+                                          ? 'bg-cyan-500/25 text-cyan-200 font-bold'
                                           : 'text-slate-300 hover:bg-slate-800/60'
                                       }`}
                                     >
-                                      <td className="py-1 px-1">{row.ho.toFixed(1)}</td>
-                                      <td className="py-1 px-1">{row.weightGrams}</td>
-                                      <td className="py-1 px-1">{row.buoyancyG}</td>
-                                      <td className="py-1 px-1">{row.sizeSpec}</td>
-                                      <td className="py-1 px-1">{row.recSinker}</td>
-                                      <td className="py-1 px-1">{row.recSinkerWeightG}</td>
-                                      <td className="py-1 px-1 text-emerald-300">{row.recJighead}</td>
+                                      <td className="py-1.5 px-1.5">{row.ho.toFixed(1)}호</td>
+                                      <td className="py-1.5 px-1.5">{row.weightGrams}g</td>
+                                      <td className="py-1.5 px-1.5">{row.buoyancyG}g</td>
+                                      <td className="py-1.5 px-1.5 text-emerald-300">{row.recJighead}</td>
                                     </tr>
                                   );
                                 })}

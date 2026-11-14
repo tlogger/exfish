@@ -92,8 +92,8 @@ describe('tackleCalibration physics engine', () => {
     expect(lure.weightGrams).toBe(6.8);
   });
 
-  it('calculates casting ball distance and sinking physics correctly', () => {
-    // 캐스팅볼 3호(11.3g) + 지그헤드 1g + 2인치 그럽웜(2.5g) = 총 14.8g
+  it('calculates casting ball distance and jighead-only sinking physics correctly', () => {
+    // 던질찌 11.3g + 지그헤드 1g + 2인치 그럽웜(2.5g) = 총 캐스팅 중량 14.8g, 수중 침강 중량 1.0g(지그헤드 단독)
     const bait = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 3.0, 1.0);
     const result = calculateCalibratedDistance(12.3, 0.8, 'ML', 2.6, bait);
 
@@ -102,7 +102,7 @@ describe('tackleCalibration physics engine', () => {
     expect(result.distanceMeters).toBeLessThan(100);
 
     const sink = calculateSinkingPhysics(12.3, 5, 0.3, bait);
-    expect(sink.totalWeightGrams).toBeCloseTo(14.8, 1);
+    expect(sink.totalWeightGrams).toBeCloseTo(1.0, 1);
     expect(sink.fallTimeSec).toBeGreaterThan(0);
   });
 
@@ -334,5 +334,93 @@ describe('tackleConfig state management & UI requirements', () => {
     expect(updated.weightGrams).toBeCloseTo(22, 1);
     expect(getSavedTackleConfig().baitConfig?.type).toBe('CASTING_BALL');
     expect(getSavedTackleConfig().weightGrams).toBeCloseTo(22, 1);
+  });
+
+  it('verifies 2.1: CASTING_BALL (던질찌/구멍찌) sink time depends ONLY on jighead weight and excludes float/ball weight', () => {
+    const rbLight = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 1.0, 3.5, 20, 'OZ', 'REAL_BALL', 3.0);
+    const rbHeavy = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 1.0, 3.5, 20, 'OZ', 'REAL_BALL', 40.0);
+    const vfSmall = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 0.5, 3.5, 20, 'OZ', 'VARIANT_FLOAT');
+    const vfLarge = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 3.0, 3.5, 20, 'OZ', 'VARIANT_FLOAT', 40.0);
+
+    const sRbLight = calculateSinkingPhysics(6.5, 10, 0.3, rbLight);
+    const sRbHeavy = calculateSinkingPhysics(43.5, 10, 0.3, rbHeavy);
+    const sVfSmall = calculateSinkingPhysics(23.96, 10, 0.3, vfSmall);
+    const sVfLarge = calculateSinkingPhysics(43.5, 10, 0.3, vfLarge);
+
+    expect(sRbLight.totalWeightGrams).toBe(3.5);
+    expect(sRbHeavy.totalWeightGrams).toBe(3.5);
+    expect(sVfSmall.totalWeightGrams).toBe(3.5);
+    expect(sVfLarge.totalWeightGrams).toBe(3.5);
+
+    expect(sRbHeavy.fallTimeSec).toBe(sRbLight.fallTimeSec);
+    expect(sVfSmall.fallTimeSec).toBe(sRbLight.fallTimeSec);
+    expect(sVfLarge.fallTimeSec).toBe(sRbLight.fallTimeSec);
+
+    // 지그헤드 무게가 무거워지면 바닥 안착 시간은 엄밀히 단축됨
+    const jh1 = calculateSinkingPhysics(13.5, 10, 0.3, getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 1.0, 1.0, 20, 'OZ', 'REAL_BALL', 10));
+    const jh3 = calculateSinkingPhysics(13.5, 10, 0.3, getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 1.0, 3.5, 20, 'OZ', 'REAL_BALL', 10));
+    const jh7 = calculateSinkingPhysics(17.0, 10, 0.3, getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 1.0, 7.0, 20, 'OZ', 'REAL_BALL', 10));
+    expect(jh1.fallTimeSec).toBeGreaterThan(jh3.fallTimeSec);
+    expect(jh3.fallTimeSec).toBeGreaterThan(jh7.fallTimeSec);
+  });
+
+  it('verifies 2.2: lure length (1~4in) & shape (STRAIGHT/GRUB/SHAD) affect both distance and sink time monotonically', () => {
+    // 1. 일반 루어 (10.6g 3/8oz): 길이 증가 -> 비거리 감소 & 침강 시간 증가
+    const lureLengths = [1, 2, 3, 4].map((len) => {
+      const bait = getBaitSpecs('LURE', len, 'GRUB');
+      return {
+        dist: calculateCalibratedDistance(10.6, 0.8, 'ML', 2.6, bait).distanceMeters,
+        sink: calculateSinkingPhysics(10.6, 10, 0.3, bait).fallTimeSec,
+      };
+    });
+    expect(lureLengths[0].dist).toBeGreaterThan(lureLengths[3].dist);
+    expect(lureLengths[0].sink).toBeLessThan(lureLengths[1].sink);
+    expect(lureLengths[1].sink).toBeLessThan(lureLengths[2].sink);
+    expect(lureLengths[2].sink).toBeLessThan(lureLengths[3].sink);
+
+    // 2. 일반 루어 형상 (2인치 10.6g): STRAIGHT > GRUB > SHAD 비거리, STRAIGHT < GRUB < SHAD 침강시간
+    const lureStraight = getBaitSpecs('LURE', 2, 'STRAIGHT');
+    const lureGrub = getBaitSpecs('LURE', 2, 'GRUB');
+    const lureShad = getBaitSpecs('LURE', 2, 'SHAD');
+    expect(calculateCalibratedDistance(10.6, 0.8, 'ML', 2.6, lureStraight).distanceMeters).toBeGreaterThan(
+      calculateCalibratedDistance(10.6, 0.8, 'ML', 2.6, lureGrub).distanceMeters
+    );
+    expect(calculateCalibratedDistance(10.6, 0.8, 'ML', 2.6, lureGrub).distanceMeters).toBeGreaterThan(
+      calculateCalibratedDistance(10.6, 0.8, 'ML', 2.6, lureShad).distanceMeters
+    );
+    expect(calculateSinkingPhysics(10.6, 10, 0.3, lureStraight).fallTimeSec).toBeLessThan(
+      calculateSinkingPhysics(10.6, 10, 0.3, lureGrub).fallTimeSec
+    );
+    expect(calculateSinkingPhysics(10.6, 10, 0.3, lureGrub).fallTimeSec).toBeLessThan(
+      calculateSinkingPhysics(10.6, 10, 0.3, lureShad).fallTimeSec
+    );
+
+    // 3. 던질찌/구멍찌 트레일러에서도 형상/길이가 비거리 및 안착 시간에 일관되게 반영됨
+    const ball1Straight = getBaitSpecs('CASTING_BALL', 1, 'STRAIGHT', 6.0, 1.0, 3.5, 20, 'OZ', 'REAL_BALL', 10);
+    const ball4Shad = getBaitSpecs('CASTING_BALL', 4, 'SHAD', 6.0, 1.0, 3.5, 20, 'OZ', 'REAL_BALL', 10);
+    expect(calculateCalibratedDistance(13.5, 0.8, 'ML', 2.6, ball1Straight).distanceMeters).toBeGreaterThan(
+      calculateCalibratedDistance(13.5, 0.8, 'ML', 2.6, ball4Shad).distanceMeters
+    );
+    expect(calculateSinkingPhysics(13.5, 10, 0.3, ball1Straight).fallTimeSec).toBeLessThan(
+      calculateSinkingPhysics(13.5, 10, 0.3, ball4Shad).fallTimeSec
+    );
+  });
+
+  it('verifies 2.3: aerodynamic and hydrodynamic shape drag hierarchy across Metal, Real Ball, and Variant Float', () => {
+    const metal20 = getBaitSpecs('METAL', 2, 'GRUB', 6.0, 1.0, 1.0, 20.0);
+    const realBall20 = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 1.0, 1.0, 20.0, 'OZ', 'REAL_BALL', 19.0);
+    const variantFloat20 = getBaitSpecs('CASTING_BALL', 2, 'GRUB', 6.0, 0.5, 1.0, 20.0, 'OZ', 'VARIANT_FLOAT', 19.0);
+
+    const dMetal = calculateCalibratedDistance(20.0, 1.0, 'MH', 2.7, metal20).distanceMeters;
+    const dRealBall = calculateCalibratedDistance(20.0, 1.0, 'MH', 2.7, realBall20).distanceMeters;
+    const dVariantFloat = calculateCalibratedDistance(20.0, 1.0, 'MH', 2.7, variantFloat20).distanceMeters;
+
+    expect(dMetal).toBeGreaterThan(dRealBall);
+    expect(dRealBall).toBeGreaterThan(dVariantFloat);
+
+    // 동일 20g 메탈지그 vs 20g 일반 루어 수중 침강 속도: 메탈지그의 최소 유체저항으로 인해 훨씬 빠른 침강
+    const metalSink = calculateSinkingPhysics(20.0, 10, 0.3, metal20);
+    const lureSink = calculateSinkingPhysics(20.0, 10, 0.3, getBaitSpecs('LURE', 2, 'GRUB'));
+    expect(metalSink.sinkSpeedMps).toBeGreaterThan(lureSink.sinkSpeedMps);
   });
 });
