@@ -8,14 +8,13 @@ import {
   Wind,
   Waves,
   Compass,
-  ShieldCheck,
   LogOut,
   AlertCircle,
   Download,
 } from 'lucide-react';
 import { DEFAULT_POPULAR_SPECIES, SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import type { CurrentUnit, WindUnit } from '../types';
-import { buildOAuthAuthorizeUrl, startSocialAuth, isUserAdmin, type AuthProvider } from '../services/oauthService';
+import { startSocialAuth, isUserAdmin, type AuthProvider } from '../services/oauthService';
 import { APP_VERSION } from '../version';
 
 export interface AuthUser {
@@ -71,7 +70,7 @@ export function setCookie(name: string, value: string, days: number = 365) {
 export function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
   const matches = document.cookie.match(
-    new RegExp('(?:^|; )' + encodeURIComponent(name).replace(/[\-\.\+\*]/g, '\\$&') + '=([^;]*)')
+    new RegExp('(?:^|; )' + encodeURIComponent(name).replace(/[-.+*]/g, '\\$&') + '=([^;]*)')
   );
   return matches ? decodeURIComponent(matches[1]) : null;
 }
@@ -84,7 +83,7 @@ export function saveRememberedCredentials(email: string, nickname: string) {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_SAVED_CREDS, JSON.stringify({ email, nickname }));
     }
-  } catch (e) {}
+  } catch {}
 }
 
 /** 보전된 이메일 & 닉네임 취득 */
@@ -99,7 +98,7 @@ export function getRememberedCredentials(): { email: string; nickname: string } 
         if (!email && parsed.email) email = parsed.email;
         if (!nickname && (parsed.nickname || parsed.name)) nickname = parsed.nickname || parsed.name;
       }
-    } catch (e) {}
+    } catch {}
   }
   return { email, nickname };
 }
@@ -130,7 +129,7 @@ export function getSavedUserPreferences(userId?: string, email?: string): UserPr
     if (raw) {
       return JSON.parse(raw);
     }
-  } catch (e) {}
+  } catch {}
   return null;
 }
 
@@ -196,6 +195,10 @@ export function clearAuthUser(): void {
   } catch (e) {
     console.error('Failed to remove auth user:', e);
   }
+}
+
+function getCurrentMonth(): number {
+  return new Date().getMonth() + 1;
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({
@@ -298,13 +301,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     onClose();
   };
 
-  const expiryDateStr = currentUser?.expiresAt
-    ? new Date(currentUser.expiresAt).toLocaleDateString('ko-KR', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      })
-    : '';
+  const currentMonth = getCurrentMonth();
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
@@ -483,7 +480,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   {DEFAULT_POPULAR_SPECIES.map((sp) => {
                     const isSelected = selectedSpecies.includes(sp);
                     const ecology = SPECIES_ENCYCLOPEDIA[sp];
-                    const isTastiest = ecology?.tastiestMonths?.includes(new Date().getMonth() + 1);
+                    const isTastiest = ecology?.tastiestMonths?.includes(currentMonth);
                     return (
                       <button
                         type="button"

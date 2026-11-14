@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Cloud, Copy, Database, HelpCircle, Loader2, QrCode, RefreshCw, Smartphone, Trash2, X } from 'lucide-react';
+import { Check, Cloud, Copy, Database, HelpCircle, Loader2, RefreshCw, Smartphone, Trash2, X } from 'lucide-react';
 import {
   clearCloudConfig,
   DEFAULT_SUPABASE_KEY,

@@ -2,10 +2,8 @@ import React from 'react';
 import {
   Compass,
   Filter,
-  Flame,
   List,
   MapPin,
-  Navigation2,
   SlidersHorizontal,
   Thermometer,
   Waves,

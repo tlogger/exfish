@@ -309,7 +309,7 @@ export async function fetchKhoaRoms(lat: number, lng: number): Promise<KhoaRomsR
       crsp: Math.round(Number(bestItem.crsp) * 100) / 100,
       wtem: bestItem.wtem != null ? Math.round(Number(bestItem.wtem) * 10) / 10 : 0,
     };
-  } catch (e) {
+  } catch {
     return null;
   }
 }

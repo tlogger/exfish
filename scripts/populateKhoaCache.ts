@@ -29,8 +29,15 @@ async function main() {
   }
 
   console.log(`\nCompleted! Success: ${successCount}, Fail: ${failCount}`);
+  if (successCount === 0) {
+    process.exitCode = 1;
+    console.error('All station requests failed during cache population.');
+  }
   const { count } = await sb.from('khoa_global_cache').select('*', { count: 'exact', head: true });
   console.log(`Total rows in Supabase khoa_global_cache: ${count}`);
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

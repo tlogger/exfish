@@ -281,6 +281,7 @@ export function calculateTideDay(
 
   const dayLabels = ['오늘', '내일', '모레'];
   const todayMoonAge = getMoonAge(baseDate);
+  const todayLunarDay = getKoreanLunarDay(startOfDay);
   const fallbackMul = getMulInfo(todayMoonAge, harbor.region);
   const todayTimes = SunCalc.getTimes(new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 12, 0, 0), lat, lng);
 
@@ -362,7 +363,7 @@ export function calculateTideDay(
     if (firstKhoaHigh) {
       const [kh, km] = firstKhoaHigh.time.split(':').map(Number);
       const khoaHighHour = kh + km / 60;
-      const modelHighHour = (harbor.highLagHours + todayMoonAge * 0.83) % tideCycle;
+      const modelHighHour = getAstronomicalHighHour(harbor.highLagHours, todayLunarDay) % tideCycle;
       let diffH = khoaHighHour - modelHighHour;
       while (diffH > tideCycle / 2) diffH -= tideCycle;
       while (diffH < -tideCycle / 2) diffH += tideCycle;

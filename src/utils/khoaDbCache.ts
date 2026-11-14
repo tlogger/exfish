@@ -126,21 +126,25 @@ function saveToL1Cache<T>(cacheKey: string, payload: T, expiresAt: number) {
       try {
         const now = Date.now();
         const khoaKeys: { key: string; expiresAt: number }[] = [];
+        const allKhoaKeys: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i);
           if (k && k.startsWith('khoa_c_')) {
-            let exp = 0;
-            try {
-              const parsed = JSON.parse(localStorage.getItem(k) || '{}');
-              exp = typeof parsed.expiresAt === 'number' ? parsed.expiresAt : 0;
-            } catch {
-              exp = 0;
-            }
-            if (exp <= now) {
-              localStorage.removeItem(k);
-            } else {
-              khoaKeys.push({ key: k, expiresAt: exp });
-            }
+            allKhoaKeys.push(k);
+          }
+        }
+        for (const k of allKhoaKeys) {
+          let exp = 0;
+          try {
+            const parsed = JSON.parse(localStorage.getItem(k) || '{}');
+            exp = typeof parsed.expiresAt === 'number' ? parsed.expiresAt : 0;
+          } catch {
+            exp = 0;
+          }
+          if (exp <= now) {
+            localStorage.removeItem(k);
+          } else {
+            khoaKeys.push({ key: k, expiresAt: exp });
           }
         }
         khoaKeys.sort((a, b) => a.expiresAt - b.expiresAt);

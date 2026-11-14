@@ -1,19 +1,15 @@
 import React from 'react';
 import {
-  AlertTriangle,
-  CheckCircle2,
-  CheckSquare,
+  Bell,
   ChevronDown,
   Clock,
   Compass,
-  Crosshair,
+  Download,
   Edit,
   ExternalLink,
   Fish,
   Info,
-  MapPin,
   MessageSquare,
-  Navigation,
   Pause,
   Play,
   PlusCircle,
@@ -24,12 +20,9 @@ import {
   Star,
   Thermometer,
   Trash2,
-  Waves,
-  Wind,
   Volume2,
-  Sliders,
-  Bell,
-  Download
+  Waves,
+  Wind
 } from 'lucide-react';
 import { Area, AreaChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type {
@@ -51,7 +44,7 @@ import { BiteScoreHelpModal } from './BiteScoreHelpModal';
 import type { AuthUser } from './LoginModal';
 import { isUserAdmin } from '../services/oauthService';
 import { deleteCloudMemo, fetchCloudMemos, saveCloudMemo } from '../utils/cloudDb';
-import { SPECIES_ENCYCLOPEDIA, type SpeciesCategory, type SpeciesEcology } from '../utils/speciesDatabase';
+import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import { SpeciesQuickModal } from './SpeciesQuickModal';
 import { getSpeciesRigInfo } from '../utils/speciesRigs';
 import {
@@ -120,12 +113,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 }) => {
   const [activeTab, setActiveTab] = React.useState<'WEATHER_TIDE' | 'LOGS' | 'DIRECTIONS' | 'MEMOS'>('WEATHER_TIDE');
   const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
-  const [isWindyOpen, setIsWindyOpen] = React.useState(false);
   const [isChecklistOpen, setIsChecklistOpen] = React.useState(false);
   const [isBiteScoreHelpOpen, setIsBiteScoreHelpOpen] = React.useState(false);
   const [expandedSpecies, setExpandedSpecies] = React.useState<string | null>(null);
   const [selectedEncyclopediaSpecies, setSelectedEncyclopediaSpecies] = React.useState<string | null>(null);
-  const [encyclopediaSearch, setEncyclopediaSearch] = React.useState('');
   const [encyclopediaCategory, setEncyclopediaCategory] = React.useState<string>('ALL');
 
   // 갯바위 들물 탈출 골든타임 비프 경보 활성화 상태 (Phase 3: 네이티브 푸시/알람 연동)
@@ -613,14 +604,21 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             {/* 2행: 안전 경보 & 고립 주의 배너 (경보가 있을 때만 영역 차지) */}
             {warnings.length > 0 && (
               <div className="px-3 py-2">
-                <div className="p-2.5 rounded-xl bg-rose-950/90 backdrop-blur-md border border-rose-500/70 text-rose-100 text-xs flex items-center gap-2 shadow-lg animate-pulse">
-                  <div className="w-5 h-5 rounded-full bg-red-600 border border-white/90 shadow-md shadow-red-900/60 flex items-center justify-center text-white font-black text-xs shrink-0">
+                <div className="p-2.5 rounded-xl bg-rose-950/90 backdrop-blur-md border border-rose-500/70 text-rose-100 text-xs flex items-start gap-2 shadow-lg animate-pulse">
+                  <div className="w-5 h-5 rounded-full bg-red-600 border border-white/90 shadow-md shadow-red-900/60 flex items-center justify-center text-white font-black text-xs shrink-0 mt-0.5">
                     !
                   </div>
-                  <span className="font-extrabold text-rose-300 shrink-0 text-xs">안전주의:</span>
-                  <span className="text-xs text-rose-100 font-medium truncate">
-                    {warnings.join(' · ')}
-                  </span>
+                  <div className="flex-1 flex flex-col gap-0.5">
+                    <span className="font-extrabold text-rose-300 text-xs">안전주의:</span>
+                    <div className="text-xs text-rose-100 font-medium leading-relaxed flex flex-wrap gap-x-2">
+                      {warnings.map((w, idx) => (
+                        <span key={idx} className="inline-flex items-center">
+                          {idx > 0 && <span className="text-rose-400 mr-2">·</span>}
+                          {w}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

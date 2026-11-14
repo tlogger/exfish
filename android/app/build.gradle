@@ -7,8 +7,8 @@ android {
         applicationId "com.tlogger.exfish"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 15
-        versionName "1.02.11-20261111"
+        versionCode 16
+        versionName "1.02.12-20261114"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

@@ -71,7 +71,9 @@ export function getOAuthClientConfig(): OAuthClientConfig {
         dirty = true;
       }
       if (dirty) {
-        localStorage.setItem(OAUTH_KEYS_STORAGE, JSON.stringify(parsed));
+        try {
+          localStorage.setItem(OAUTH_KEYS_STORAGE, JSON.stringify(parsed));
+        } catch {}
       }
       return {
         naverClientId: parsed.naverClientId || envNaver,

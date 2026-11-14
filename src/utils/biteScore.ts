@@ -276,7 +276,6 @@ export function calculateSingleSpeciesScore(
   targetDate?: Date
 ): SpeciesBiteScore {
   const now = targetDate || new Date();
-  const hour = currentHour !== undefined ? currentHour : now.getHours();
   const month = currentMonth !== undefined ? currentMonth : now.getMonth() + 1;
 
   const sst = marine.seaSurfaceTemp;

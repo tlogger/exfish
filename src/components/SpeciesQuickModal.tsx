@@ -7,6 +7,10 @@ interface SpeciesQuickModalProps {
   onClose: () => void;
 }
 
+function getCurrentMonth(): number {
+  return new Date().getMonth() + 1;
+}
+
 export const SpeciesQuickModal: React.FC<SpeciesQuickModalProps> = ({ speciesName, onClose }) => {
   if (!speciesName) return null;
 
@@ -19,7 +23,7 @@ export const SpeciesQuickModal: React.FC<SpeciesQuickModalProps> = ({ speciesNam
 
   if (!ecology) return null;
 
-  const currentMonth = new Date().getMonth() + 1;
+  const currentMonth = getCurrentMonth();
   const isTastiestSeason = ecology.tastiestMonths?.includes(currentMonth);
   const isPeakSeason = ecology.peakMonths.includes(currentMonth);
 

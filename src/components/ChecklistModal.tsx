@@ -8,8 +8,6 @@ import {
   Share2,
   RotateCcw,
   X,
-  AlertTriangle,
-  Sparkles,
   CheckCircle2,
 } from 'lucide-react';
 

@@ -832,29 +832,39 @@ const DEFAULT_TACKLE_STATE: InternalTackleState = {
 // localStorage 5MB 쿼터 초과 시에도 UI 상태가 즉시 반영되도록 보장하는 인메모리 권위 상태
 let memoryTackleState: InternalTackleState | null = null;
 
+function getSafeLocalStorage(): Storage | null {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage;
+    }
+  } catch {}
+  return null;
+}
+
 function readInitialTackleStateFromStorage(): InternalTackleState {
   const s: InternalTackleState = { ...DEFAULT_TACKLE_STATE };
-  if (typeof window === 'undefined' || !window.localStorage) {
+  const storage = getSafeLocalStorage();
+  if (!storage) {
     return normalizeTackleState(s);
   }
   try {
-    const savedW = localStorage.getItem(KEY_RIG_WEIGHT);
-    const savedPE = localStorage.getItem(KEY_PE_LINE);
-    const savedPower = localStorage.getItem(KEY_ROD_POWER) as string | null;
-    const savedLenM = localStorage.getItem(KEY_ROD_LENGTH_M);
-    const savedLenFt = localStorage.getItem(KEY_ROD_LENGTH);
-    const savedBaitType = localStorage.getItem(KEY_BAIT_TYPE) as BaitType | null;
-    const savedLureSub = localStorage.getItem(KEY_LURE_SUBMODE) as LureSubMode | null;
-    const savedBaitLen = localStorage.getItem(KEY_BAIT_LENGTH);
-    const savedBaitLenCm = localStorage.getItem(KEY_BAIT_LENGTH_CM);
-    const savedBaitShape = localStorage.getItem(KEY_BAIT_SHAPE) as LureShape | null;
-    const savedCastingSub = localStorage.getItem(KEY_CASTING_BALL_SUBMODE) as CastingBallSubMode | null;
-    const savedBallWeight = localStorage.getItem(KEY_CASTING_BALL_WEIGHT);
-    const savedBallHo = localStorage.getItem(KEY_CASTING_BALL_HO);
-    const savedJH = localStorage.getItem(KEY_JIGHEAD_WEIGHT);
-    const savedMetalW = localStorage.getItem(KEY_METAL_WEIGHT);
-    const savedEgiW = localStorage.getItem(KEY_EGI_WEIGHT);
-    const savedSinkerW = localStorage.getItem(KEY_SINKER_WEIGHT);
+    const savedW = storage.getItem(KEY_RIG_WEIGHT);
+    const savedPE = storage.getItem(KEY_PE_LINE);
+    const savedPower = storage.getItem(KEY_ROD_POWER) as string | null;
+    const savedLenM = storage.getItem(KEY_ROD_LENGTH_M);
+    const savedLenFt = storage.getItem(KEY_ROD_LENGTH);
+    const savedBaitType = storage.getItem(KEY_BAIT_TYPE) as BaitType | null;
+    const savedLureSub = storage.getItem(KEY_LURE_SUBMODE) as LureSubMode | null;
+    const savedBaitLen = storage.getItem(KEY_BAIT_LENGTH);
+    const savedBaitLenCm = storage.getItem(KEY_BAIT_LENGTH_CM);
+    const savedBaitShape = storage.getItem(KEY_BAIT_SHAPE) as LureShape | null;
+    const savedCastingSub = storage.getItem(KEY_CASTING_BALL_SUBMODE) as CastingBallSubMode | null;
+    const savedBallWeight = storage.getItem(KEY_CASTING_BALL_WEIGHT);
+    const savedBallHo = storage.getItem(KEY_CASTING_BALL_HO);
+    const savedJH = storage.getItem(KEY_JIGHEAD_WEIGHT);
+    const savedMetalW = storage.getItem(KEY_METAL_WEIGHT);
+    const savedEgiW = storage.getItem(KEY_EGI_WEIGHT);
+    const savedSinkerW = storage.getItem(KEY_SINKER_WEIGHT);
 
     if (savedW) s.weightGrams = parseFloat(savedW) || DEFAULT_TACKLE_STATE.weightGrams;
     if (savedPE) s.peLineSize = parseFloat(savedPE) || 1.0;
@@ -946,21 +956,23 @@ function ensureMemoryTackleState(): InternalTackleState {
 }
 
 function evictNonEssentialCachesFromStorage(): void {
-  if (typeof window === 'undefined' || !window.localStorage) return;
+  const storage = getSafeLocalStorage();
+  if (!storage) return;
   const keysToRemove: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
+  for (let i = 0; i < storage.length; i++) {
+    const k = storage.key(i);
     if (k && (k.startsWith('khoa_c_') || k === 'exfish_offline_spots')) {
       keysToRemove.push(k);
     }
   }
   for (const k of keysToRemove) {
-    localStorage.removeItem(k);
+    storage.removeItem(k);
   }
 }
 
 function persistTackleStateToStorage(state: InternalTackleState): void {
-  if (typeof window === 'undefined' || !window.localStorage) return;
+  const storage = getSafeLocalStorage();
+  if (!storage) return;
   const entries: [string, string][] = [
     [KEY_RIG_WEIGHT, String(state.weightGrams)],
     [KEY_PE_LINE, String(state.peLineSize)],
@@ -983,7 +995,7 @@ function persistTackleStateToStorage(state: InternalTackleState): void {
 
   const writeAll = () => {
     for (const [k, v] of entries) {
-      localStorage.setItem(k, v);
+      storage.setItem(k, v);
     }
   };
 
@@ -1166,13 +1178,17 @@ export function saveTackleConfig(
         }
         next.castingBallWeightGrams = getVariantFloatWeightByHo(next.castingBallHo);
       }
-    } else if (
-      next.castingBallSubMode === 'REAL_BALL' &&
-      params.castingBallSubMode === 'REAL_BALL' &&
-      prev.castingBallSubMode !== 'REAL_BALL' &&
-      params.castingBallWeightGrams === undefined
-    ) {
-      next.castingBallWeightGrams = 10.0;
+    } else if (next.castingBallSubMode === 'REAL_BALL') {
+      if (params.castingBallHo !== undefined && params.castingBallWeightGrams === undefined) {
+        next.castingBallWeightGrams = Math.max(1, Math.min(40, Math.round(next.castingBallHo * 3.75 * 10) / 10));
+      } else if (
+        params.castingBallSubMode === 'REAL_BALL' &&
+        prev.castingBallSubMode !== 'REAL_BALL' &&
+        params.castingBallWeightGrams === undefined
+      ) {
+        next.castingBallWeightGrams = 10.0;
+        next.castingBallHo = Math.round((10.0 / 3.75) * 10) / 10;
+      }
     }
   } else if (next.rodPower !== 'SURF' && next.baitType === 'LURE' && params.weightGrams === undefined) {
     if (params.lureSubMode === 'JIG') {
@@ -1189,7 +1205,7 @@ export function saveTackleConfig(
       if (!matchesOz) {
         next.weightGrams = 10.6;
       }
-    } else if (params.baitType === 'LURE' && prev.baitType !== 'LURE') {
+    } else if (next.baitType === 'LURE' && prev.baitType !== 'LURE') {
       if (next.lureSubMode === 'JIG' && next.weightGrams > 10) {
         next.weightGrams = 3;
       } else if (next.lureSubMode === 'OZ' && next.weightGrams > 60) {

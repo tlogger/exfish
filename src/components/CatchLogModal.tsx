@@ -2,10 +2,7 @@ import React from 'react';
 import { ArrowUp, Clock, Compass, RefreshCw, ShieldAlert } from 'lucide-react';
 import type { CatchLog, CurrentUnit, FishingMethod, TideDayInfo, WeatherData, WindUnit } from '../types';
 import { syncCatchEnvironment } from '../utils/catchSync';
-import {
-  formatCurrentVelocity,
-  formatWindSpeed,
-} from '../utils/weatherApi';
+import { formatCurrentVelocity } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import { compressImageFile } from '../utils/exifExtractor';
@@ -62,16 +59,6 @@ function calcDurationMinutes(start: string, end: string): number {
   return Math.max(0, endTotal - startTotal);
 }
 
-/** 분 단위를 "X시간 Y분" 텍스트로 포맷 */
-function formatDuration(mins: number): string {
-  if (!mins || mins <= 0) return '0분';
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h === 0) return `${m}분`;
-  if (m === 0) return `${h}시간`;
-  return `${h}시간 ${m}분`;
-}
-
 export const CatchLogModal: React.FC<CatchLogModalProps> = ({
   isOpen,
   onClose,
@@ -94,7 +81,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
   const [fishSizeInput, setFishSizeInput] = React.useState('28.5');
   const [catchMethod, setCatchMethod] = React.useState<FishingMethod>('LURE');
   const [lureBait, setLureBait] = React.useState('지그헤드 1/2oz + 웜');
-  const [catchDate, setCatchDate] = React.useState(new Date().toISOString().split('T')[0]);
+  const [catchDate, setCatchDate] = React.useState(() => new Date().toISOString().split('T')[0]);
 
   // 출조 시간 분할 필드 (시작 시각, 종료 시각, 히트 시각 - 각 필드는 독립적으로 동작)
   const [startTime, setStartTime] = React.useState('14:00');

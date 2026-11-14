@@ -13,7 +13,6 @@ import {
   METAL_WEIGHT_PRESETS,
   REAL_CASTING_BALL_PRESETS,
   resetTackleConfigState,
-  ROD_POWER_SPECS,
   saveTackleConfig,
   VARIANT_FLOAT_HO_PRESETS,
 } from './tackleCalibration';

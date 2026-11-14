@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronUp, Crosshair, Download, Filter, HelpCircle, List, Loader2, LogIn, Map as MapIcon, Moon, Navigation2, Satellite, Search, Sun, User, X } from 'lucide-react';
+import { Download, Filter, List, Loader2, LogIn, Map as MapIcon, Moon, Satellite, Search, Sun, User, X } from 'lucide-react';
 import { MapView, type MapMode } from './components/MapView';
 import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
@@ -23,7 +23,7 @@ import type {
 import { calculateTideDay, getDistanceKm } from './utils/tideEngine';
 import { getKhoaTideForecast } from './utils/tideService';
 import type { KhoaSwtcWeeklyResult } from './utils/khoaSwtcApi';
-import { fetchMarineData, fetchWeatherData, formatWindSpeed, getCompassDirection, getWeatherText } from './utils/weatherApi';
+import { fetchMarineData, fetchWeatherData } from './utils/weatherApi';
 import { calculateBiteScore } from './utils/biteScore';
 import { extractExifFromImage } from './utils/exifExtractor';
 import { searchPoi, type PoiSearchResult } from './utils/poiSearch';
@@ -42,7 +42,6 @@ import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { setupHardwareBackButtonListener, isNativePlatform, getNativeLocation } from './utils/nativeBridge';
 import { parseOAuthCallback, processOAuthCallbackResult, parseAppDeepLink } from './services/oauthService';
-import { APP_VERSION } from './version';
 
 export function App() {
   const [spots, setSpots] = React.useState<FishingSpot[]>([]);
@@ -64,6 +63,26 @@ export function App() {
   // 로그인 상태 관리 (소셜 로그인 및 30일 세션 유지)
   const [currentUser, setCurrentUser] = React.useState<AuthUser | null>(() => getSavedAuthUser());
   const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
+
+  // 단위 변환 설정 상태 (사용자 프로필 설정과 동기화)
+  const [windUnit, setWindUnit] = React.useState<WindUnit>(() => {
+    const user = getSavedAuthUser();
+    return user?.windUnit || 'ms';
+  });
+  const [currentUnit, setCurrentUnit] = React.useState<CurrentUnit>(() => {
+    const user = getSavedAuthUser();
+    return user?.currentUnit || 'ms';
+  });
+
+  // 환경 데이터 상태
+  const [weather, setWeather] = React.useState<WeatherData | null>(null);
+  const [marine, setMarine] = React.useState<MarineData | null>(null);
+  const [tide, setTide] = React.useState<TideDayInfo | null>(null);
+  const activeSwtcWeeklyRef = React.useRef<KhoaSwtcWeeklyResult | null>(null);
+  const khoaRequestRef = React.useRef(0);
+  const weatherRef = React.useRef<WeatherData | null>(null);
+  const marineRef = React.useRef<MarineData | null>(null);
+  const [biteScore, setBiteScore] = React.useState<BiteScoreBreakdown | null>(null);
 
   // 네이버, 카카오, 구글 소셜 로그인 콜백 수신 및 자동 처리 (웹 SPA)
   React.useEffect(() => {
@@ -117,23 +136,6 @@ export function App() {
       }
     };
   }, []);
-
-  // 환경 데이터 상태
-  const [weather, setWeather] = React.useState<WeatherData | null>(null);
-  const [marine, setMarine] = React.useState<MarineData | null>(null);
-  const [tide, setTide] = React.useState<TideDayInfo | null>(null);
-  const activeSwtcWeeklyRef = React.useRef<KhoaSwtcWeeklyResult | null>(null);
-  const [biteScore, setBiteScore] = React.useState<BiteScoreBreakdown | null>(null);
-
-  // 단위 변환 설정 상태 (사용자 프로필 설정과 동기화)
-  const [windUnit, setWindUnit] = React.useState<WindUnit>(() => {
-    const user = getSavedAuthUser();
-    return user?.windUnit || 'ms';
-  });
-  const [currentUnit, setCurrentUnit] = React.useState<CurrentUnit>(() => {
-    const user = getSavedAuthUser();
-    return user?.currentUnit || 'ms';
-  });
 
   // 필터 및 검색 상태
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -282,6 +284,68 @@ export function App() {
   const [environmentMap, setEnvironmentMap] = React.useState<Record<string, SpotRealtimeSummary>>({});
   const [userLocation, setUserLocation] = React.useState<{ lat: number; lng: number } | null>(null);
 
+  // 포인트 선택 시 날씨/해양/물때/입질지수 Fetch & 연산
+  const handleSelectSpot = React.useCallback(
+    async (spot: FishingSpot, shouldRecenter: boolean = true, openMobileDrawer: boolean = false) => {
+      setSelectedSpot(spot);
+      if (openMobileDrawer) {
+        setIsMobileDrawerOpen(true);
+      }
+      if (shouldRecenter) {
+        // [요구사항 3] 공통: 포인트 클릭 시 캐스팅 비거리가 다 나오도록 최적 스케일 확대 (18 - zoom = kakaoLevel)
+        // 원투(SURF): kakaoLevel 4 (zoom 14, 약 150m 반경), 루어/찌: kakaoLevel 3 (zoom 15, 약 70~80m 반경)
+        const isSurf = spot.fishing_methods && spot.fishing_methods.includes('SURF');
+        setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: isSurf ? 14 : 15 });
+      }
+
+      activeSwtcWeeklyRef.current = null;
+      // 1. 단일 마스터 시계열 조위 엔진 정밀 계산 (곡선 및 시간표 100% 완전 동기화)
+      const tideData = calculateTideDay(spot.lat, spot.lng, new Date());
+      setTide(tideData);
+
+      // [KHOA 중앙 DB 캐싱 연동] 당일 실측/예측 조위 시계열과 1:1 결합하여 단일 마스터 시계열 캘리브레이션 갱신
+      const khoaRequestId = ++khoaRequestRef.current;
+      getKhoaTideForecast(spot.lat, spot.lng, new Date())
+        .then((kForecast) => {
+          if (khoaRequestId !== khoaRequestRef.current) return;
+          if (kForecast?.tideDayInfo) {
+            activeSwtcWeeklyRef.current = kForecast.swtcWeekly || null;
+            setTide(kForecast.tideDayInfo);
+            const w = weatherRef.current;
+            const m = marineRef.current;
+            if (w && m) {
+              const score = calculateBiteScore(spot, w, m, kForecast.tideDayInfo, currentUser?.favoriteSpecies);
+              setBiteScore(score);
+            }
+          }
+        })
+        .catch(() => {});
+
+      // 2. Open-Meteo Weather & Marine API 병렬 Fetch (48h+ 예보 지원)
+      try {
+        const [weatherData, marineData] = await Promise.all([
+          fetchWeatherData(spot.lat, spot.lng),
+          fetchMarineData(spot.lat, spot.lng),
+        ]);
+        if (khoaRequestId !== khoaRequestRef.current) return;
+        weatherRef.current = weatherData;
+        marineRef.current = marineData;
+        setWeather(weatherData);
+        setMarine(marineData);
+
+        // 3. ExFish AI 입질 지수 도출 (로그인 유저의 관심 어종 가중치 자동 반영)
+        const score = calculateBiteScore(spot, weatherData, marineData, tideData, currentUser?.favoriteSpecies);
+        setBiteScore(score);
+
+        // 4. 오프라인 대비 메타데이터 로컬 캐싱
+        cacheSpotMetadata(spot, tideData, weatherData, marineData);
+      } catch (err) {
+        console.error('Error fetching marine/weather data:', err);
+      }
+    },
+    [currentUser]
+  );
+
   // 기기 로컬 저장소 및 Supabase DB 조과 데이터 로드 (오프라인 시 로컬 캐시 폴백)
   const reloadData = React.useCallback(async () => {
     try {
@@ -338,7 +402,7 @@ export function App() {
         setCatchLogs(localLogs);
       }
     }
-  }, [selectedSpot, userLocation]);
+  }, [selectedSpot, userLocation, handleSelectSpot]);
 
   React.useEffect(() => {
     reloadData();
@@ -374,7 +438,7 @@ export function App() {
       .catch((err) => {
         console.warn('Initial geolocation notice:', err);
       });
-  }, [spots]);
+  }, [spots, handleSelectSpot]);
 
   // 모든 포인트의 실시간 요약 데이터(환경 & 물때 & 입질지수) 백그라운드 병렬 수집
   React.useEffect(() => {
@@ -476,61 +540,6 @@ export function App() {
     };
   }, []);
 
-  // 포인트 선택 시 날씨/해양/물때/입질지수 Fetch & 연산
-  const handleSelectSpot = React.useCallback(
-    async (spot: FishingSpot, shouldRecenter: boolean = true, openMobileDrawer: boolean = false) => {
-      setSelectedSpot(spot);
-      if (openMobileDrawer) {
-        setIsMobileDrawerOpen(true);
-      }
-      if (shouldRecenter) {
-        // [요구사항 3] 공통: 포인트 클릭 시 캐스팅 비거리가 다 나오도록 최적 스케일 확대 (18 - zoom = kakaoLevel)
-        // 원투(SURF): kakaoLevel 4 (zoom 14, 약 150m 반경), 루어/찌: kakaoLevel 3 (zoom 15, 약 70~80m 반경)
-        const isSurf = spot.fishing_methods && spot.fishing_methods.includes('SURF');
-        setRecenterTarget({ lat: spot.lat, lng: spot.lng, zoom: isSurf ? 14 : 15 });
-      }
-
-      activeSwtcWeeklyRef.current = null;
-      // 1. 단일 마스터 시계열 조위 엔진 정밀 계산 (곡선 및 시간표 100% 완전 동기화)
-      const tideData = calculateTideDay(spot.lat, spot.lng, new Date());
-      setTide(tideData);
-
-      // [KHOA 중앙 DB 캐싱 연동] 당일 실측/예측 조위 시계열과 1:1 결합하여 단일 마스터 시계열 캘리브레이션 갱신
-      getKhoaTideForecast(spot.lat, spot.lng, new Date())
-        .then((kForecast) => {
-          if (kForecast?.tideDayInfo) {
-            activeSwtcWeeklyRef.current = kForecast.swtcWeekly || null;
-            setTide(kForecast.tideDayInfo);
-            if (weather && marine) {
-              const score = calculateBiteScore(spot, weather, marine, kForecast.tideDayInfo, currentUser?.favoriteSpecies);
-              setBiteScore(score);
-            }
-          }
-        })
-        .catch(() => {});
-
-      // 2. Open-Meteo Weather & Marine API 병렬 Fetch (48h+ 예보 지원)
-      try {
-        const [weatherData, marineData] = await Promise.all([
-          fetchWeatherData(spot.lat, spot.lng),
-          fetchMarineData(spot.lat, spot.lng),
-        ]);
-        setWeather(weatherData);
-        setMarine(marineData);
-
-        // 3. ExFish AI 입질 지수 도출 (로그인 유저의 관심 어종 가중치 자동 반영)
-        const score = calculateBiteScore(spot, weatherData, marineData, tideData, currentUser?.favoriteSpecies);
-        setBiteScore(score);
-
-        // 4. 오프라인 대비 메타데이터 로컬 캐싱
-        cacheSpotMetadata(spot, tideData, weatherData, marineData);
-      } catch (err) {
-        console.error('Error fetching marine/weather data:', err);
-      }
-    },
-    [currentUser?.favoriteSpecies, weather, marine]
-  );
-
   // 선택된 포인트의 실시간 물때 곡선 및 입질 지수 10초 주기 로컬 갱신 (원격 API 호출 배제, 배터리 절약, KHOA 공식 데이터 보존)
   React.useEffect(() => {
     if (!selectedSpot) return;
@@ -554,7 +563,7 @@ export function App() {
     }, 10000);
 
     return () => clearInterval(intervalId);
-  }, [selectedSpot?.id, selectedSpot?.lat, selectedSpot?.lng, weather, marine, currentUser?.favoriteSpecies]);
+  }, [selectedSpot, weather, marine, currentUser?.favoriteSpecies]);
 
   // 원격 해양/기상 데이터 15분 주기 배경 갱신 (Open-Meteo 모델 주기와 동기화)
   React.useEffect(() => {
@@ -574,7 +583,7 @@ export function App() {
     }, 15 * 60 * 1000);
 
     return () => clearInterval(weatherIntervalId);
-  }, [selectedSpot?.id, selectedSpot?.lat, selectedSpot?.lng]);
+  }, [selectedSpot]);
 
   // 로그인 유저의 관심 어종(favoriteSpecies) 변경 시, 현재 선택된 포인트의 입질 지수 실시간 재연산
   React.useEffect(() => {
@@ -582,7 +591,7 @@ export function App() {
       const score = calculateBiteScore(selectedSpot, weather, marine, tide, currentUser?.favoriteSpecies);
       setBiteScore(score);
     }
-  }, [currentUser?.favoriteSpecies]);
+  }, [selectedSpot, weather, marine, tide, currentUser?.favoriteSpecies]);
 
   // 지도 클릭을 통한 새 포인트 추가 트리거
   const handleMapClickForNewSpot = (lat: number, lng: number) => {
@@ -763,7 +772,7 @@ export function App() {
         const cLogs = await fetchCloudLogs();
         setCatchLogs(cLogs);
         saveLogsToStorage(cLogs);
-      } catch (syncErr) {}
+      } catch {}
     } catch (e: any) {
       console.error('Supabase catch log delete error:', e);
       alert(`Supabase DB 조과 삭제에 실패했습니다: ${e?.message || ''}`);

@@ -1,7 +1,12 @@
 import * as SunCalc from 'suncalc';
-import { getDistanceKm, getMulInfo, getMoonAge, getAstronomicalHighHour, getKoreanLunarDay } from './tideEngine';
+import {
+  calculateTideDay,
+  getAstronomicalHighHour,
+  getDistanceKm,
+  getMoonAge,
+  getMulInfo,
+} from './tideEngine';
 import { getCachedKhoaTideSeries } from './khoaCache';
-import { calculateTideDay } from './tideEngine';
 import { fetchKhoaSwtcWeekly, KhoaSwtcWeeklyResult } from './khoaSwtcApi';
 import type { TideDayInfo } from '../types';
 
@@ -231,44 +236,57 @@ export function applyPortCorrectionToSwtc(
   const ratio = correction.heightRatio;
   const offset = correction.heightOffsetCm;
 
-  const adjustTime = (timeStr: string, diffMin: number) => {
-    const [hh, mm] = timeStr.split(':').map(Number);
-    let total = (hh || 0) * 60 + (mm || 0) + diffMin;
-    while (total < 0) total += 1440;
-    total = total % 1440;
-    const h = Math.floor(total / 60);
-    const m = total % 60;
-    return {
-      time: `${padZero(h)}:${padZero(m)}`,
-      minutesFromMidnight: total,
-    };
-  };
-
-  const days = swtc.days.map((day) => ({
-    ...day,
-    events: day.events.map((ev) => {
-      const diffMin = ev.type === 'HIGH' ? timeDiffHigh : timeDiffLow;
-      const { time, minutesFromMidnight } = adjustTime(ev.time, diffMin);
-      const height = Math.round(ev.height * ratio + offset);
-      return {
-        ...ev,
-        time,
-        minutesFromMidnight,
-        height,
-      };
-    }),
-  }));
-
-  const allExtremums = swtc.allExtremums.map((ext) => {
+  // 1. 전체 극점(allExtremums) 보정 및 시간순 정렬
+  const correctedExtremums = swtc.allExtremums.map((ext) => {
     const diffMin = ext.type === 'HIGH' ? timeDiffHigh : timeDiffLow;
-    const { time } = adjustTime(ext.time, diffMin);
-    const totalMinutesFromStart = Math.max(0, ext.totalMinutesFromStart + diffMin);
+    const totalMinutesFromStart = ext.totalMinutesFromStart + diffMin;
     const height = Math.round(ext.height * ratio + offset);
+    const dayIdx = Math.floor(totalMinutesFromStart / 1440);
+    const minutesFromMidnight = ((totalMinutesFromStart % 1440) + 1440) % 1440;
+    const h = Math.floor(minutesFromMidnight / 60);
+    const m = minutesFromMidnight % 60;
+    const time = `${padZero(h)}:${padZero(m)}`;
+
     return {
       ...ext,
+      dayIdx,
       time,
       totalMinutesFromStart,
       height,
+    };
+  }).sort((a, b) => a.totalMinutesFromStart - b.totalMinutesFromStart);
+
+  // 2. 극점 간 조위차(diff) 재계산
+  for (let i = 0; i < correctedExtremums.length; i++) {
+    const cur = correctedExtremums[i];
+    const prev = correctedExtremums[i - 1];
+    const next = correctedExtremums[i + 1];
+    const opp = (prev && prev.type !== cur.type) ? prev : (next && next.type !== cur.type) ? next : null;
+    cur.diff = opp ? Math.abs(cur.height - opp.height) : undefined;
+  }
+
+  // 3. 일자별(days) 이벤트 목록 재구성 및 일별 diff 동기화
+  const days = swtc.days.map((day, dIdx) => {
+    const dayEvents = correctedExtremums
+      .filter((ext) => ext.dayIdx === dIdx)
+      .map((ext) => ({
+        type: ext.type,
+        typeLabel: ext.typeLabel,
+        time: ext.time,
+        height: ext.height,
+        diff: ext.diff,
+        minutesFromMidnight: ((ext.totalMinutesFromStart % 1440) + 1440) % 1440,
+      }));
+
+    for (let i = 0; i < dayEvents.length; i++) {
+      const cur = dayEvents[i];
+      const opp = dayEvents.find((o, idx) => idx !== i && o.type !== cur.type);
+      cur.diff = opp ? Math.abs(cur.height - opp.height) : cur.diff;
+    }
+
+    return {
+      ...day,
+      events: dayEvents,
     };
   });
 
@@ -276,7 +294,7 @@ export function applyPortCorrectionToSwtc(
     ...swtc,
     obsPostId: `${swtc.obsPostId}_${correction.name}`,
     days,
-    allExtremums,
+    allExtremums: correctedExtremums,
   };
 }
 
@@ -332,7 +350,7 @@ export async function getKhoaTideForecast(
           };
         }
       }
-    } catch (e) {}
+    } catch {}
   }
 
   // 2. 일출/일몰 및 음력/물때 연산 (해역별 물때 체계 적용: 서해 7물제, 남해/동해 8물제)
@@ -427,7 +445,7 @@ export async function getKhoaTideForecast(
               data: result,
             })
           );
-        } catch (e) {}
+        } catch {}
       }
 
       return result;
@@ -452,9 +470,10 @@ export async function getKhoaTideForecast(
       const timePart = it.obsrvnDt.split(' ')[1] || '00:00';
       const [hh, mm] = timePart.split(':').map(Number);
       const minutes = (hh || 0) * 60 + (mm || 0);
-      const val = it.tdlvHgt != null && !isNaN(it.tdlvHgt)
+      const rawVal = it.tdlvHgt != null && !isNaN(it.tdlvHgt)
         ? it.tdlvHgt
         : (it.bscTdlvHgt != null && !isNaN(it.bscTdlvHgt) ? it.bscTdlvHgt : 0);
+      const val = correction ? rawVal * correction.heightRatio + correction.heightOffsetCm : rawVal;
       return { time: timePart.slice(0, 5), minutes, val };
     });
 
@@ -481,19 +500,27 @@ export async function getKhoaTideForecast(
         if (points[j].val < cur) isMin = false;
       }
       if (isMax) {
+        const diffMin = correction ? correction.highTimeDiffMinutes : 0;
+        const totalM = Math.max(0, Math.min(1439, points[i].minutes + diffMin));
+        const hh = Math.floor(totalM / 60);
+        const mm = totalM % 60;
         rawPeaks.push({
           type: 'HIGH',
-          time: points[i].time,
+          time: `${padZero(hh)}:${padZero(mm)}`,
           height: Math.round(cur),
-          minutes: points[i].minutes,
+          minutes: totalM,
         });
       }
       if (isMin) {
+        const diffMin = correction ? correction.lowTimeDiffMinutes : 0;
+        const totalM = Math.max(0, Math.min(1439, points[i].minutes + diffMin));
+        const hh = Math.floor(totalM / 60);
+        const mm = totalM % 60;
         rawPeaks.push({
           type: 'LOW',
-          time: points[i].time,
+          time: `${padZero(hh)}:${padZero(mm)}`,
           height: Math.round(cur),
-          minutes: points[i].minutes,
+          minutes: totalM,
         });
       }
     }
@@ -544,7 +571,10 @@ export async function getKhoaTideForecast(
     const firstHighHour = (getAstronomicalHighHour(baseStation.highLagHours, lunarDay) + (correction ? correction.highTimeDiffMinutes / 60 : 0) + tideCycle) % tideCycle;
     const springFactor = 0.4 + 0.6 * (Math.sin(((lunarDay - 1) / 15) * Math.PI) ** 2);
     const amplitude = ((correction ? baseStation.meanRange * correction.heightRatio : baseStation.meanRange) * springFactor) / 2;
-    const meanSeaLevel = Math.round(baseStation.datumZ0 * 100);
+    const baseMeanSeaLevel = Math.round(baseStation.datumZ0 * 100);
+    const meanSeaLevel = correction
+      ? Math.round(baseMeanSeaLevel * correction.heightRatio + correction.heightOffsetCm)
+      : baseMeanSeaLevel;
 
     // 일조부등(Diurnal Inequality): 태음일주조(O1)와 일월일주조(K1)의 기조력에 의한 오전/오후 조위 증감차
     // 달의 적위 및 삭망월 주기에 따라 최대 15~35%의 조위차가 제1만조와 제2만조 사이에 발생
@@ -680,7 +710,7 @@ export async function getKhoaTideForecast(
           data: result,
         })
       );
-    } catch (e) {}
+    } catch {}
   }
 
   return result;

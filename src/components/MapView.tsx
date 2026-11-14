@@ -7,7 +7,7 @@ import {
   Circle,
   useKakaoLoader,
 } from 'react-kakao-maps-sdk';
-import { AlertCircle, Check, Crosshair, Star, Sliders, Waves as WavesIcon, LocateFixed, ChevronUp, Plus, Minus } from 'lucide-react';
+import { Check, Star, Sliders, LocateFixed, Plus, Minus } from 'lucide-react';
 import { MaterialSpotMarker } from './MaterialSpotMarker';
 import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo, SweetSpot } from '../types';
 import type { AuthUser } from './LoginModal';
@@ -16,25 +16,19 @@ import {
   formatWindSpeed,
   formatCurrentVelocity,
 } from '../utils/weatherApi';
-import { KOREA_DEPTH_CONTOURS, estimateDepthAtPoint } from '../data/depthContours';
-import { generateDynamicBathymetryContours } from '../utils/dynamicBathymetryEngine';
+import { estimateDepthAtPoint } from '../data/depthContours';
 import {
   getSavedTackleConfig,
   saveTackleConfig,
   calculateSinkingPhysics,
   calculateAerodynamicCastingDrift,
-  ROD_POWER_SPECS,
   RodPower,
   TackleRigConfig,
-  SURF_ROD_LENGTHS_M,
   WEIGHT_PRESETS,
   getWeightDescription,
-  BaitType,
   LureSubMode,
-  LureShape,
   LURE_SHAPES,
   LURE_SHAPE_NAMES,
-  getBaitSpecs,
   JIGHEAD_PRESETS,
   METAL_WEIGHT_PRESETS,
   EGI_WEIGHT_PRESETS,
@@ -46,7 +40,6 @@ import {
 } from '../utils/tackleCalibration';
 import {
   getNativeLocation,
-  setScreenKeepAwake,
   triggerHaptic,
   setupVolumeZoomListener,
 } from '../utils/nativeBridge';
@@ -171,7 +164,7 @@ export const MapView: React.FC<MapViewProps> = ({
   onEditSpot,
   onUpdateSpot,
   favoriteSpotIds: externalFavoriteSpotIds,
-  onToggleFavorite: externalOnToggleFavorite,
+  onToggleFavorite: _onToggleFavorite,
   isSunMode = false,
   mapMode: externalMapMode,
   onChangeMapMode,
@@ -274,7 +267,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const isCoarsePointer = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
   // 나만의 즐겨찾기(찜한 포인트) 목록
-  const [internalFavoriteSpotIds, setInternalFavoriteSpotIds] = React.useState<string[]>(() => {
+  const [internalFavoriteSpotIds] = React.useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('exfish_favorite_spot_ids');
@@ -285,55 +278,6 @@ export const MapView: React.FC<MapViewProps> = ({
   });
   const favoriteSpotIds = externalFavoriteSpotIds || internalFavoriteSpotIds;
   const [viewOnlyFavorites, setViewOnlyFavorites] = React.useState(false);
-
-  const toggleFavorite = (spotId: string) => {
-    if (externalOnToggleFavorite) {
-      externalOnToggleFavorite(spotId);
-      return;
-    }
-    setInternalFavoriteSpotIds((prev) => {
-      const next = prev.includes(spotId) ? prev.filter((id) => id !== spotId) : [...prev, spotId];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('exfish_favorite_spot_ids', JSON.stringify(next));
-      }
-      return next;
-    });
-  };
-
-  // KHOA 국가해양격자 수심 등심선 오버레이 표시 여부
-  const [showDepthContours, setShowDepthContours] = React.useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('exfish_show_depth_contours') === 'true';
-    }
-    return false;
-  });
-
-  const toggleDepthContours = () => {
-    setShowDepthContours((prev) => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('exfish_show_depth_contours', String(next));
-      }
-      return next;
-    });
-  };
-
-  // 150m 격자수심 + 국립해양조사원(KHOA) 실시간 조위 합성 동적 등심선 (5~30m)
-  const currentHour = new Date().getHours();
-  const currentTideHeightCm = tide?.hourlyCurve?.find((c) => c.isCurrent || c.hour === currentHour)?.height;
-
-  const dynamicBathymetry = React.useMemo(() => {
-    if (!showDepthContours) return null;
-    const targetLat = selectedSpot ? selectedSpot.lat : center.lat;
-    const targetLng = selectedSpot ? selectedSpot.lng : center.lng;
-    return generateDynamicBathymetryContours(
-      targetLat,
-      targetLng,
-      currentTideHeightCm,
-      18, // 반경 18km
-      [5, 10, 15, 20, 25, 30] // 5m ~ 30m 등심선
-    );
-  }, [showDepthContours, selectedSpot?.lat, selectedSpot?.lng, center.lat, center.lng, currentTideHeightCm]);
 
   // 공기역학 채비 캘리브레이션 (루어 무게 g & PE 라인 호수)
   const [tackleConfig, setTackleConfig] = React.useState<TackleRigConfig>(() => getSavedTackleConfig());
@@ -675,17 +619,6 @@ export const MapView: React.FC<MapViewProps> = ({
     setSweetSpotConfigSpot(null);
   };
 
-  const handleSaveSweetSpotConfig = async () => {
-    if (!sweetSpotConfigSpot || !onUpdateSpot) return;
-    await onUpdateSpot({
-      ...sweetSpotConfigSpot,
-      use_sweet_spot: tempUseSweetSpot,
-      sweet_spots: tempSweetSpots,
-    });
-    setSweetSpotConfigSpot(null);
-    setIsAddingSweetSpot(false);
-  };
-
   const handleDeleteTempSweetSpot = async (idx: number) => {
     setPendingDeleteSweetIdx(null);
     await persistSweetSpots(tempSweetSpots.filter((_, i) => i !== idx), tempUseSweetSpot);
@@ -789,7 +722,7 @@ export const MapView: React.FC<MapViewProps> = ({
       setMapMode('HYBRID');
       try {
         localStorage.setItem('exfish_map_mode', 'HYBRID');
-      } catch (e) {
+      } catch {
         // ignore
       }
       setCenter({ lat: microAdjustSpot.lat, lng: microAdjustSpot.lng });
@@ -798,18 +731,6 @@ export const MapView: React.FC<MapViewProps> = ({
       setPendingNewSpot(null);
     }
   }, [microAdjustSpot]);
-
-  const handleNudge = (deltaLat: number, deltaLng: number) => {
-    triggerHaptic('light');
-    setAdjustedPos((prev) => {
-      const next = {
-        lat: Number((prev.lat + deltaLat).toFixed(7)),
-        lng: Number((prev.lng + deltaLng).toFixed(7)),
-      };
-      setCenter(next);
-      return next;
-    });
-  };
 
   // 원본 위치 대비 이동 거리(미터) 계산
   const distMeters = microAdjustSpot
@@ -1095,9 +1016,6 @@ export const MapView: React.FC<MapViewProps> = ({
           // 좌우 유효 경계선 (최대 비거리 지점까지 뻗어나가는 레이더 가이드 선)
           const leftEdge = calculateDestinationPoint(targetSpot.lat, targetSpot.lng, startDeg, maxRadius);
           const rightEdge = calculateDestinationPoint(targetSpot.lat, targetSpot.lng, endDeg, maxRadius);
-
-          // [요구사항 4-3, 4-4] 설정 모드 중에는 비거리/풍속/조류 HUD를 숨김
-          const isSpecialMode = Boolean(castingConfigSpot || sweetSpotConfigSpot);
 
           return (
             <React.Fragment key={`range-sector-${targetSpot.id}`}>
@@ -2673,8 +2591,16 @@ export const MapView: React.FC<MapViewProps> = ({
                                   return (
                                     <tr
                                       key={row.ho}
+                                      role="button"
+                                      tabIndex={0}
                                       onClick={() => updateTackle({ castingBallHo: row.ho, castingBallWeightGrams: row.weightGrams })}
-                                      className={`cursor-pointer transition ${
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          updateTackle({ castingBallHo: row.ho, castingBallWeightGrams: row.weightGrams });
+                                        }
+                                      }}
+                                      className={`cursor-pointer transition focus:outline-none focus:ring-1 focus:ring-cyan-400 ${
                                         isRowSelected
                                           ? 'bg-cyan-500/25 text-cyan-200 font-bold'
                                           : 'text-slate-300 hover:bg-slate-800/60'
@@ -3060,7 +2986,7 @@ export const MapView: React.FC<MapViewProps> = ({
             type="button"
             onClick={() => {
               triggerHaptic('success');
-              onConfirmMicroAdjust && onConfirmMicroAdjust(microAdjustSpot.id, adjustedPos.lat, adjustedPos.lng);
+              onConfirmMicroAdjust?.(microAdjustSpot.id, adjustedPos.lat, adjustedPos.lng);
             }}
             className="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition active:scale-95 flex items-center gap-1 cursor-pointer"
             title="조정 위치 저장"

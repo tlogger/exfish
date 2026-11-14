@@ -1,4 +1,3 @@
-import { SpeciesEcology } from './speciesDatabase';
 
 export type FishingMethodType =
   | 'SURF_CASTING' // 원투 낚시 (처넣기, 백사장/방파제)
@@ -39,7 +38,7 @@ export interface SpeciesRigInfo {
     action: string;
   };
   feedingStrategy: string;
-  goldenHoursText: (sunrise: string, sunset: string, mulNumber?: number) => string;
+  goldenHoursText: (_sunrise: string, _sunset: string, _mulNumber?: number) => string;
 }
 
 const METHOD_STYLES: Record<FishingMethodType, { bg: string; text: string; border: string }> = {
@@ -104,7 +103,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥 착저 후 드랙 프리 거치 → 초릿대 처박히는 본입질 시 대물 강한 챔질',
     },
     feedingStrategy: '서해 조간대 갯골과 펄 모래밭에서 만조를 타고 올라와 바닥의 조개, 게, 갯지렁이를 흡입합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `여름철(7~9월) 사리 물때(6~10물) 중들물~만조 직전 갯골 수위 상승 타임`,
   },
   보리멸: {
@@ -132,7 +131,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '원투 후 초슬로우 릴링으로 바닥 모래 긁기(사비키) → 투두둑 입질 시 천천히 줄타기',
     },
     feedingStrategy: '백사장 얕은 모래밭과 쇄파대(파도가 부서지는 곳) 안쪽에서 무리지어 갯지렁이를 쪼아먹습니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `주간 맑은 물때(조금~4물, 11~14물) 오전 07:00 ~ 11:00 햇살 비출 때 활성 극대화`,
   },
   붕장어: {
@@ -160,7 +159,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '원투 후 텐션 잡고 거치 → 초릿대 딸랑거리는 연속 예신 후 강한 본입질 시 챔질',
     },
     feedingStrategy: '완전한 야행성으로 일몰 직후 굴에서 나와 발달된 후각으로 썩은 생선과 지렁이 냄새를 쫓습니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `일몰 후 어두워진 20:00 ~ 새벽 02:00, 들물 진행 중 수심이 차오를 때`,
   },
   도다리: {
@@ -188,7 +187,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '원투 후 3분 간격 1m 슬로우 드래깅으로 모래먼지 유발 → 묵직한 입질 시 챔질',
     },
     feedingStrategy: '봄철 산란 후 체력을 회복하기 위해 모래뻘 바닥에 매복하여 기어 다니는 갯지렁이를 적극 흡입합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `봄철(3~5월) 오전 08:00 ~ 14:00, 들물 조류가 모래 언덕을 타고 넘을 때`,
   },
   돌돔: {
@@ -216,7 +215,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '여턱 안착 후 예신(툭툭) 대기 → 낚싯대 허리까지 처박히는 3단 본입질 시 풀파워 챔질',
     },
     feedingStrategy: '강한 이빨로 성게 가시와 패류 껍질을 부수어 섭이하므로 거센 조류가 수중 암초에 부딪히는 곳에 붙습니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `사리 물때(7~10물)의 거센 조류 소통 시간대 및 정조 직전 물돌이 타임`,
   },
   '문절망둑 (망둥어)': {
@@ -244,7 +243,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '던져두고 1분에 한 번씩 살짝 끌어주면 톡톡거리며 물고 달아남',
     },
     feedingStrategy: '가을철 몸집을 불리기 위해 얕은 갯벌로 몰려와 바닥의 지렁이와 갑각류를 닥치는 대로 삼킵니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `가을(9~11월) 낮 10:00 ~ 16:00, 들물이 시작되며 갯벌로 바닷물이 유입될 때`,
   },
 
@@ -276,7 +275,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '밑밥 투입 후 조류에 찌를 태워 동조 흘림 → 원줄 살짝 잡아주는 견제 시 찌가 쏜살같이 입수',
     },
     feedingStrategy: '밑밥의 빵가루와 크릴 부유물을 먹기 위해 수중 여 틈에서 표·중층(수심 2~5m)으로 피어오릅니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, sunset, _mul) =>
       `해질녘 일몰(${sunset}) 전후 1.5시간 피딩 타임 및 오전 맑은 조류 소통 시간`,
   },
   감성돔: {
@@ -304,7 +303,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥 수심에서 30cm 띄워 흘리며 10초마다 뒷줄 살짝 당겨 밑걸림 회피 및 유혹',
     },
     feedingStrategy: '수중 여 뿌리와 조류가 부딪히는 훈수 지대 바닥에서 밑밥의 압맥과 크릴, 패류를 섭이합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (sunrise, _sunset, _mul) =>
       `새벽 여명(${sunrise} 1시간 전) 및 일몰 전후, 간조 후 초들물~중들물 수위 상승기`,
   },
   '쥐치 (말쥐치)': {
@@ -332,7 +331,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '찌가 한 마디 쏙 들어가는 순간 즉각적인 손목 스냅 챔질',
     },
     feedingStrategy: '작고 날카로운 주둥이로 미끼만 갉아먹으므로 방파제 직벽이나 테트라포드 사이에 붙어 있습니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `주간 09:00 ~ 15:00 맑은 물색과 잔잔한 조류 상태일 때`,
   },
   학꽁치: {
@@ -360,7 +359,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '원투 후 채비 정렬 → 슬로우 리트리브 중 어신찌가 수평으로 째질 때 챔질',
     },
     feedingStrategy: '표층 1m 이내를 떼지어 회유하며 떠다니는 곤쟁이와 부유 플랑크톤을 공격합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `가을~겨울 낮 10:00 ~ 15:00 햇살이 따스한 맑은 날 표층 부상`,
   },
   '숭어 (가숭어/밀치)': {
@@ -388,7 +387,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '조류에 흘려두면 떡밥을 쪼아먹다 찌가 쑥 사라질 때 강한 챔질',
     },
     feedingStrategy: '플랑크톤과 유기물을 흡입 섭식하므로 일반 루어에는 일절 반응하지 않습니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `봄/겨울철 주간 10:00 ~ 16:00 조류가 완만하게 흐르는 만조 시간대`,
   },
   전어: {
@@ -416,7 +415,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '가벼운 고패질로 어피 날갯짓 연출 → 우르르 타닥 물릴 때 랜딩',
     },
     feedingStrategy: '떼를 지어 표층을 돌며 플랑크톤을 먹으므로 반짝이는 어피 바늘에 군집 반응합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `가을(9~11월) 오전 07:00 ~ 11:00 맑고 잔잔한 내만 방파제`,
   },
   벤자리: {
@@ -444,7 +443,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '본류대에 찌를 태워 70m 이상 흘리며 원줄 뭉치가 풀려나갈 때 챔질',
     },
     feedingStrategy: '여름밤 먼바다 거센 본류대 중층을 무리지어 회유하며 크릴 띠를 맹렬히 공격합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `초여름~한여름 밤 20:00 ~ 새벽 03:00, 사리 물때의 힘찬 본류대`,
   },
 
@@ -475,7 +474,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥을 콩콩 2~3회 찍어준 뒤 3초 스테이 (가벼운 봉돌로 올라탄 무게감 감지 후 강한 챔질)',
     },
     feedingStrategy: '완만한 조류의 모래뻘 바닥을 기어 다니며 작은 갑각류와 조개를 사냥합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `주간 08:00 ~ 15:00 조류가 완만하게 흐르는 조금~3물 낮 시간대`,
   },
   갑오징어: {
@@ -502,7 +501,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '에기가 바닥에서 15~20cm 단차로 수평을 유지하도록 천천히 바닥 긁기 후 5초 정지',
     },
     feedingStrategy: '수중 턱과 모래가 만나는 경계 물골에 매복하여 단차를 두고 떠 있는 에기를 촉수로 감아챕니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `초들물~중들물로 바뀌며 맑은 물이 들어오는 오전 09:00 ~ 13:00`,
   },
   무늬오징어: {
@@ -529,7 +528,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥 안착 → 2단 저킹 3~4회 → 슬로우 텐션 폴링 (입질은 폴링 시 낚싯줄 당김)',
     },
     feedingStrategy: '잘피밭과 수중 여가 발달한 곶부리 조류 소통 구역을 회유하며 물고기를 덮칩니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (sunrise, sunset, _mul) =>
       `새벽 해창(${sunrise}) 및 일몰(${sunset}) 전후 피딩 2시간 골든타임`,
   },
   낙지: {
@@ -556,7 +555,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '뻘바닥을 아주 느리게 긁으며 끈적한 묵직함 발생 시 부드러운 만세 챔질',
     },
     feedingStrategy: '뻘바닥 구멍 주변을 기어 다니며 저서 생물을 감싸 흡입합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `가을철 야간 21:00 ~ 02:00 간조 전후 뻘이 드러나는 얕은 연안`,
   },
   '문어 (참문어/돌문어)': {
@@ -583,7 +582,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥을 쿵쿵 찍으며 살랑거리다 묵직하게 바닥이 굳어지는 느낌 시 강제 기중기 릴링',
     },
     feedingStrategy: '수중 여밭과 테트라포드 틈새에 숨어 지나가는 게와 조개를 덮칩니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `조류가 약한 조금 물때(조금~3물, 12~14물) 주간 시간대`,
   },
   '대문어 (피문어)': {
@@ -610,7 +609,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '심해 바닥 안착 후 큰 고패질 → 흡착 시 전동릴 파워 권사',
     },
     feedingStrategy: '동해 차가운 심해 모래자갈 바닥을 기어 다니며 대형 물고기와 패류를 사냥합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `겨울~봄 오전 07:00 ~ 12:00 파도가 잔잔한 출항일`,
   },
   '한치 (창꼴뚜기)': {
@@ -637,7 +636,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '캐스팅 후 큰 저킹 2~3회 → 10초 롱 스테이 중 살포시 가져갈 때 챔질',
     },
     feedingStrategy: '야간 집어등 불빛 아래 중층(15~30m)으로 떠올라 베이트피시를 사냥합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `여름밤 21:00 ~ 새벽 03:00 집어등 불빛 아래 한치 무리 형성 시간`,
   },
 
@@ -668,7 +667,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥 착저 후 1~2바퀴 호핑 & 리프트앤폴, 갯바위 턱 직벽 바짝 붙이기',
     },
     feedingStrategy: '어두워진 직후 및 일몰 해창에 여밭 은신처에서 부상하여 왕성한 먹이활동을 합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, sunset, _mul) =>
       `일몰 피딩(${sunset} 전후 1.5시간) 및 밤 21시~24시 여밭 중들물 구간`,
   },
   광어: {
@@ -695,7 +694,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥을 절대 띄우지 않고 드래깅(끌기)과 호핑 반복, 스테이(멈춤) 3초 필수',
     },
     feedingStrategy: '모래와 자갈이 섞인 사니질 바닥에 매복하여 상층을 지나가는 루어를 덮칩니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (sunrise, _sunset, _mul) =>
       `아침 해창(${sunrise} 전후 1시간) 및 중들물~만조 직전 수온 상승기`,
   },
   농어: {
@@ -722,7 +721,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '갯바위 부딪히는 하얀 파도 포말(화이트 워터) 안쪽으로 캐스팅 후 슬로우 릴링',
     },
     feedingStrategy: '파도가 갯바위에 부딪혀 포말이 이는 자리와 강한 조류 물골에서 베이트를 사냥합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (sunrise, _sunset, _mul) =>
       `새벽 여명(${sunrise} 30분 전) 및 밤 21시~24시 중들물 강류대`,
   },
   '풀치(갈치)': {
@@ -749,7 +748,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '캐스팅 후 카운트다운(5~10초) → 숏 트위칭 2~3회 후 슬로우 텐션 폴링',
     },
     feedingStrategy: '방파제 가로등이나 집어등 불빛 경계면의 명암 구역에 베이트피시가 모일 때 입질 폭발.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (sunrise, _sunset, _mul) =>
       `야간 20:00 ~ 02:00 집어등 집중 시간대 및 해창 직전(${sunrise} 1시간 전)`,
   },
   갈치: {
@@ -776,7 +775,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '중층 숏 저킹 후 텐션 폴링 중 툭 치는 입질 후킹',
     },
     feedingStrategy: '표층 및 중층에서 멸치 떼를 수직으로 기습 사냥합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `야간 20:00 ~ 03:00 집어등 집중 시간`,
   },
   볼락: {
@@ -803,7 +802,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '표층 리트리브 및 텐션 폴링, 집어등 불빛이 끝나는 어둠의 경계면 공략',
     },
     feedingStrategy: '야간에 해초대와 수중 여 위로 떠올라 플랑크톤과 치어를 공격합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, sunset, _mul) =>
       `해질녘(${sunset}) 직후부터 밤 23시까지의 잔잔한 만조 전후 물돌이 타임`,
   },
   참돔: {
@@ -830,7 +829,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥 착저 후 즉시 일정한 속도로 리트리브(감아올리기) 10~15바퀴 후 재착저',
     },
     feedingStrategy: '사리 물때의 거센 본류대 바닥층에서 회유하며 크릴과 패류, 새우류를 섭이합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `사리 물때(6~10물)의 본류대가 힘차게 뻗어나가는 3물~7물 조류 최성기`,
   },
   붉바리: {
@@ -857,7 +856,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '암초 급심 바닥 착저 후 큰 호핑 → 여 틈으로 파고들기 전 강제 집행',
     },
     feedingStrategy: '수온 18°C 이상의 따뜻한 남해/제주 암초 틈에 서식하며 게와 새우를 급습합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `여름철(7~9월) 낮 11:00 ~ 16:00 수온 최고조 시간대`,
   },
   쥐노래미: {
@@ -884,7 +883,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥 돌 틈새를 콕콕 찍으며 슬로우 드래깅',
     },
     feedingStrategy: '주행성으로 낮 동안 갯바위 여밭 틈새에서 먹이를 찾습니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `낮 09:00 ~ 16:00, 들물 진행 시 바위 틈 활성 상승`,
   },
   노래미: {
@@ -911,7 +910,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥 호핑',
     },
     feedingStrategy: '여밭 틈새에서 갯지렁이와 작은 갑각류를 쪼아먹습니다.',
-    goldenHoursText: (sunrise, sunset) => `주간 10:00 ~ 15:00`,
+    goldenHoursText: (_sunrise, _sunset) => `주간 10:00 ~ 15:00`,
   },
   전갱이: {
     speciesName: '전갱이',
@@ -937,7 +936,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '중층 트위칭 후 텐션 폴링 중 톡 치는 흡입 즉시 손목 챔질',
     },
     feedingStrategy: '야간 집어등 불빛 아래 표·중층에서 요각류와 치어를 사냥합니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `야간 20:00 ~ 01:00 집어등 불빛 주변`,
   },
   고등어: {
@@ -964,7 +963,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '캐스팅 후 중층 고속 릴링 & 폴링',
     },
     feedingStrategy: '떼를 지어 맹렬한 속도로 베이트피시를 쫓습니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (sunrise, sunset, _mul) =>
       `아침 해창(${sunrise}) 및 해질녘(${sunset}) 1시간 피딩`,
   },
   삼치: {
@@ -991,7 +990,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '원투 후 릴이 부서져라 초고속 리트리브(빠를수록 반응 급상승)',
     },
     feedingStrategy: '날카로운 이빨로 멸치를 반토막 내며 고속 돌진하므로 빠른 속도가 생명입니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (sunrise, _sunset, _mul) =>
       `아침 일출(${sunrise}) 전후 2시간 수면 베이트 보일링 시간`,
   },
   방어: {
@@ -1018,7 +1017,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '힘찬 원투 후 연속 하이피치 저킹',
     },
     feedingStrategy: '거센 물골에서 멸치 떼를 수면으로 몰아붙여 보일링을 일으킵니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (sunrise, _sunset, _mul) =>
       `새벽 일출(${sunrise}) 직후 및 사리 물때 조류 급류 시간`,
   },
   '부시리 (히라마사)': {
@@ -1045,7 +1044,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '본류대 파워 저킹 및 탑워터 파동 연출',
     },
     feedingStrategy: '갯바위 턱이나 수중 여를 끼고 쏜살같이 회유하며 베이트를 삼킵니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `사리 물때의 거센 조류 분출 시간 및 일출 피딩`,
   },
   양태: {
@@ -1072,7 +1071,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥을 긁으며 숏 호핑 → 턱 하는 강한 입질 시 후킹',
     },
     feedingStrategy: '모래뻘에 몸을 묻고 눈만 내놓은 채 지나가는 작은 물고기를 덮칩니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `여름철 낮 10:00 ~ 16:00 수온이 오르는 중들물 타임`,
   },
   성대: {
@@ -1099,7 +1098,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '모래 바닥 착저 후 툭툭 끌어오기',
     },
     feedingStrategy: '모래 바닥에서 게와 작은 조개를 섭이하며 꾸우욱 소리를 냅니다.',
-    goldenHoursText: (sunrise, sunset, mul) =>
+    goldenHoursText: (_sunrise, _sunset, _mul) =>
       `초여름~가을 낮 09:00 ~ 15:00 맑은 바다`,
   },
   쏨뱅이: {
@@ -1126,7 +1125,7 @@ export const SPECIES_RIG_DATABASE: Record<string, SpeciesRigInfo> = {
       action: '바닥 착저 후 1바퀴 감고 스테이',
     },
     feedingStrategy: '암초 구멍에 은신해 있다가 머리 위를 지나가는 먹이를 즉각 삼킵니다.',
-    goldenHoursText: (sunrise, sunset) => `일몰 전후 및 야간 시간대`,
+    goldenHoursText: (_sunrise, _sunset) => `일몰 전후 및 야간 시간대`,
   },
 };
 

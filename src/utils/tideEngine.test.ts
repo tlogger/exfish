@@ -5,7 +5,6 @@ import {
   getDistanceKm,
   getMoonAge,
   getMulInfo,
-  KOREA_HARBORS,
 } from './tideEngine';
 
 describe('tideEngine astronomical and tidal calculations', () => {

@@ -1,7 +1,7 @@
 {
   "name": "exfish",
   "private": true,
-  "version": "1.02.11",
+  "version": "1.02.12",
   "type": "module",
   "scripts": {
     "dev": "vite",
