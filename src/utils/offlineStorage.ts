@@ -26,8 +26,16 @@ export function cacheSpotMetadata(
     const raw = localStorage.getItem(STORAGE_KEY_OFFLINE_SPOTS);
     const spotsMap: Record<string, CachedSpotMeta> = raw ? JSON.parse(raw) : {};
 
+    // Base64 data URI 사진은 localStorage 5MB 쿼터를 고갈시키므로 오프라인 메타 캐시에서 제외
+    const sanitizedSpot: FishingSpot = spot.photo_urls
+      ? {
+          ...spot,
+          photo_urls: spot.photo_urls.filter((url) => typeof url === 'string' && !url.startsWith('data:')),
+        }
+      : spot;
+
     spotsMap[spot.id] = {
-      spot,
+      spot: sanitizedSpot,
       cachedAt: new Date().toISOString(),
       tide: tide || undefined,
       weather: weather || undefined,

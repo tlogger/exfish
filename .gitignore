@@ -38,5 +38,7 @@ dist-ssr
 update_images.ps1
 convert_assets.ps1
 .gemini/
+.vercel
+
 
 

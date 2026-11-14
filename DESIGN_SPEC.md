@@ -3,7 +3,7 @@
 > **버전**: Version 5.0 (Field Ergonomics & Selective Safety Edition)  
 > **최종 개정일**: 2026년 10월 23일  
 > **공개 저장소**: [https://github.com/tlogger/exfish](https://github.com/tlogger/exfish)  
-> **라이브 서비스**: [https://tlogger.github.io/exfish/](https://tlogger.github.io/exfish/)  
+> **라이브 서비스**: [https://exfish.vercel.app/](https://exfish.vercel.app/)  
 > **문서 상태**: 모바일 Android 하이브리드 앱 및 웹 프로덕션 배포용 엔지니어링 표준 사양 (Audited & Approved by @reviewer)
 
 ---

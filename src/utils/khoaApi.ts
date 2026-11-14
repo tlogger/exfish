@@ -11,14 +11,16 @@
 export const KHOA_SERVICE_KEY =
   '7Q54Z6DQ%2B9wH23fR%2FAlrOSh4XgQ9xyA8I%2F69h1tmrlCwtFqMG8zdR01z0h8%2Bo%2Ft1Uvt%2BwoN947y1ts5Maeoy%2Bg%3D%3D';
 
-/** 웹 환경(로컬 개발)에서는 Vite 프록시(/api-khoa)를 통해 CORS를 우회하고, 네이티브/프로덕션에서는 직접 호출 */
+/** 웹 환경(로컬 개발 및 Vercel 배포)에서는 프록시(/api-khoa)를 통해 CORS를 우회하고, 네이티브/기타 환경에서는 직접 호출 */
 function getKhoaApiBaseUrl(): string {
   if (
     typeof window !== 'undefined' &&
     window.location &&
     window.location.protocol &&
     window.location.protocol.startsWith('http') &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.endsWith('.vercel.app'))
   ) {
     return '/api-khoa';
   }

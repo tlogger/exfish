@@ -47,13 +47,15 @@ function getSwtcApiBaseUrl(): string {
   if (isNativePlatform()) {
     return 'https://www.khoa.go.kr';
   }
-  // PC 웹 로컬 개발 환경(localhost)에서는 Vite 프록시 사용
+  // PC 웹 로컬 개발(localhost) 및 Vercel 배포 환경에서는 프록시(/api-swtc) 사용
   if (
     typeof window !== 'undefined' &&
     window.location &&
     window.location.protocol &&
     window.location.protocol.startsWith('http') &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.endsWith('.vercel.app'))
   ) {
     return '/api-swtc';
   }

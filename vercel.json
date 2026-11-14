@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/api-khoa/:path*",
+      "destination": "https://apis.data.go.kr/:path*"
+    },
+    {
+      "source": "/api-swtc/:path*",
+      "destination": "https://www.khoa.go.kr/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ]
+}

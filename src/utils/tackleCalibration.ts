@@ -140,10 +140,10 @@ export const JIGHEAD_PRESETS: JigheadPreset[] = [
   { id: 'jh-1-4',  type: 'oz', label: '1/4oz',  weightGrams: 7.1 },
 ];
 
-// 메탈 지그 무게 퀵 프리셋 (1~80g)
-export const METAL_WEIGHT_PRESETS = [7, 10, 14, 18, 21, 28, 35, 40, 50, 60, 80] as const;
+// 메탈 지그 무게 퀵 프리셋 (버튼: 10, 20, 30, 40g / 슬라이더: 1~80g)
+export const METAL_WEIGHT_PRESETS = [10, 20, 30, 40] as const;
 
-// 메탈 지그 길이 퀵 프리셋 (2.5 ~ 16.0cm)
+// 메탈 지그 길이 퀵 프리셋 (레거시 호환용 보존)
 export const METAL_LENGTH_PRESETS = [3.5, 5.0, 6.5, 8.0, 10.0, 12.0, 14.0] as const;
 
 export function getBaitSpecs(
@@ -153,7 +153,7 @@ export function getBaitSpecs(
   lengthCm: number = 6.0,
   castingBallHo: number = 3.0,
   jigheadWeightGrams: number = 1.0,
-  metalWeightGrams: number = 28.0,
+  metalWeightGrams: number = 20.0,
   lureSubMode: LureSubMode = 'OZ',
   castingBallSubMode: CastingBallSubMode = 'REAL_BALL',
   castingBallWeightGrams?: number,
@@ -392,8 +392,7 @@ export function getWeightDescription(weightGrams: number, baitConfig?: BaitConfi
     }
     if (baitConfig.type === 'METAL') {
       const mw = baitConfig.metalWeightGrams ?? weightGrams;
-      const len = baitConfig.lengthCm ?? 6.0;
-      return `메탈지그 ${mw}g (${len.toFixed(1)}cm)`;
+      return `메탈지그 ${mw}g`;
     }
     if (baitConfig.lureSubMode === 'JUKKUMI') {
       const ew = baitConfig.egiWeightGrams ?? 15;
@@ -722,153 +721,259 @@ export function calculateSinkingPhysics(
   };
 }
 
-export function getSavedTackleConfig(): TackleRigConfig {
-  let weight = 25;
-  let pe = 1.0;
-  let rodPower: RodPower = 'M';
-  let rodLengthM = 2.6;
-  let baitType: BaitType = 'LURE';
-  let lureSubMode: LureSubMode = 'OZ';
-  let baitLength = 2;
-  let baitLengthCm = 6.0;
-  let baitShape: LureShape = 'GRUB';
-  let castingBallSubMode: CastingBallSubMode = 'REAL_BALL';
-  let castingBallWeightGrams = 10.0;
-  let castingBallHo = 1.0;
-  let jigheadWeightGrams = 1.0;
-  let metalWeightGrams = 28.0;
-  let egiWeightGrams = 15.0;
-  let sinkerWeightGrams = 0.0;
+interface InternalTackleState {
+  weightGrams: number;
+  peLineSize: number;
+  rodPower: RodPower;
+  rodLengthM: number;
+  baitType: BaitType;
+  lureSubMode: LureSubMode;
+  baitLength: number;
+  baitLengthCm: number;
+  baitShape: LureShape;
+  castingBallSubMode: CastingBallSubMode;
+  castingBallWeightGrams: number;
+  castingBallHo: number;
+  jigheadWeightGrams: number;
+  metalWeightGrams: number;
+  egiWeightGrams: number;
+  sinkerWeightGrams: number;
+}
 
-  if (typeof window !== 'undefined') {
-    try {
-      const savedW = localStorage.getItem(KEY_RIG_WEIGHT);
-      const savedPE = localStorage.getItem(KEY_PE_LINE);
-      const savedPower = localStorage.getItem(KEY_ROD_POWER) as string | null;
-      const savedLenM = localStorage.getItem(KEY_ROD_LENGTH_M);
-      const savedLenFt = localStorage.getItem(KEY_ROD_LENGTH);
-      const savedBaitType = localStorage.getItem(KEY_BAIT_TYPE) as BaitType | null;
-      const savedLureSub = localStorage.getItem(KEY_LURE_SUBMODE) as LureSubMode | null;
-      const savedBaitLen = localStorage.getItem(KEY_BAIT_LENGTH);
-      const savedBaitLenCm = localStorage.getItem(KEY_BAIT_LENGTH_CM);
-      const savedBaitShape = localStorage.getItem(KEY_BAIT_SHAPE) as LureShape | null;
-      const savedCastingSub = localStorage.getItem(KEY_CASTING_BALL_SUBMODE) as CastingBallSubMode | null;
-      const savedBallWeight = localStorage.getItem(KEY_CASTING_BALL_WEIGHT);
-      const savedBallHo = localStorage.getItem(KEY_CASTING_BALL_HO);
-      const savedJH = localStorage.getItem(KEY_JIGHEAD_WEIGHT);
-      const savedMetalW = localStorage.getItem(KEY_METAL_WEIGHT);
-      const savedEgiW = localStorage.getItem(KEY_EGI_WEIGHT);
-      const savedSinkerW = localStorage.getItem(KEY_SINKER_WEIGHT);
+const DEFAULT_TACKLE_STATE: InternalTackleState = {
+  weightGrams: 10.6,
+  peLineSize: 1.0,
+  rodPower: 'M',
+  rodLengthM: 2.6,
+  baitType: 'LURE',
+  lureSubMode: 'OZ',
+  baitLength: 2,
+  baitLengthCm: 6.0,
+  baitShape: 'GRUB',
+  castingBallSubMode: 'REAL_BALL',
+  castingBallWeightGrams: 10.0,
+  castingBallHo: 1.0,
+  jigheadWeightGrams: 1.0,
+  metalWeightGrams: 20.0,
+  egiWeightGrams: 15.0,
+  sinkerWeightGrams: 0.0,
+};
 
-      if (savedW) weight = parseFloat(savedW) || 25;
-      if (savedPE) pe = parseFloat(savedPE) || 1.0;
+// localStorage 5MB 쿼터 초과 시에도 UI 상태가 즉시 반영되도록 보장하는 인메모리 권위 상태
+let memoryTackleState: InternalTackleState | null = null;
 
-      if (savedPower === 'XH' || savedPower === 'SURF') {
-        rodPower = 'SURF';
-      } else if (savedPower && ROD_POWER_SPECS[savedPower as RodPower]) {
-        rodPower = savedPower as RodPower;
-      }
-
-      if (savedLenM) {
-        rodLengthM = parseFloat(savedLenM) || (rodPower === 'SURF' ? 4.2 : 2.6);
-      } else if (savedLenFt) {
-        const ft = parseFloat(savedLenFt) || 8.6;
-        rodLengthM = Math.round(ft * 0.3048 * 10) / 10;
-      }
-
-      if (savedBaitType === 'LIVE' || savedBaitType === 'LURE' || savedBaitType === 'CASTING_BALL' || savedBaitType === 'METAL') {
-        baitType = savedBaitType;
-      }
-      if (savedLureSub && ['JIG', 'OZ', 'JUKKUMI'].includes(savedLureSub)) {
-        lureSubMode = savedLureSub;
-      }
-      if (savedCastingSub && ['REAL_BALL', 'VARIANT_FLOAT'].includes(savedCastingSub)) {
-        castingBallSubMode = savedCastingSub;
-      }
-      if (savedBaitLen) baitLength = parseInt(savedBaitLen, 10) || 2;
-      if (savedBaitLenCm) baitLengthCm = parseFloat(savedBaitLenCm) || 6.0;
-      if (savedBaitShape && ['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'].includes(savedBaitShape)) {
-        baitShape = savedBaitShape;
-      }
-      if (savedBallWeight) castingBallWeightGrams = parseFloat(savedBallWeight) || 10.0;
-      if (savedBallHo) castingBallHo = parseFloat(savedBallHo) || 1.0;
-      if (savedJH) jigheadWeightGrams = parseFloat(savedJH) || 1.0;
-      if (savedMetalW) metalWeightGrams = parseFloat(savedMetalW) || 28.0;
-      if (savedEgiW) egiWeightGrams = parseFloat(savedEgiW) || 15.0;
-      if (savedSinkerW !== null && savedSinkerW !== undefined) {
-        sinkerWeightGrams = parseFloat(savedSinkerW) || 0.0;
-      }
-    } catch {
-      // ignore
-    }
+function readInitialTackleStateFromStorage(): InternalTackleState {
+  const s: InternalTackleState = { ...DEFAULT_TACKLE_STATE };
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return normalizeTackleState(s);
   }
+  try {
+    const savedW = localStorage.getItem(KEY_RIG_WEIGHT);
+    const savedPE = localStorage.getItem(KEY_PE_LINE);
+    const savedPower = localStorage.getItem(KEY_ROD_POWER) as string | null;
+    const savedLenM = localStorage.getItem(KEY_ROD_LENGTH_M);
+    const savedLenFt = localStorage.getItem(KEY_ROD_LENGTH);
+    const savedBaitType = localStorage.getItem(KEY_BAIT_TYPE) as BaitType | null;
+    const savedLureSub = localStorage.getItem(KEY_LURE_SUBMODE) as LureSubMode | null;
+    const savedBaitLen = localStorage.getItem(KEY_BAIT_LENGTH);
+    const savedBaitLenCm = localStorage.getItem(KEY_BAIT_LENGTH_CM);
+    const savedBaitShape = localStorage.getItem(KEY_BAIT_SHAPE) as LureShape | null;
+    const savedCastingSub = localStorage.getItem(KEY_CASTING_BALL_SUBMODE) as CastingBallSubMode | null;
+    const savedBallWeight = localStorage.getItem(KEY_CASTING_BALL_WEIGHT);
+    const savedBallHo = localStorage.getItem(KEY_CASTING_BALL_HO);
+    const savedJH = localStorage.getItem(KEY_JIGHEAD_WEIGHT);
+    const savedMetalW = localStorage.getItem(KEY_METAL_WEIGHT);
+    const savedEgiW = localStorage.getItem(KEY_EGI_WEIGHT);
+    const savedSinkerW = localStorage.getItem(KEY_SINKER_WEIGHT);
 
-  // 원투대/루어대 규격 안전 정규화
-  const rodType: RodType = rodPower === 'SURF' ? 'SURF' : 'LURE';
-  if (rodType === 'SURF') {
-    if (!SURF_ROD_LENGTHS_M.includes(rodLengthM as any)) {
-      rodLengthM = 4.2;
+    if (savedW) s.weightGrams = parseFloat(savedW) || DEFAULT_TACKLE_STATE.weightGrams;
+    if (savedPE) s.peLineSize = parseFloat(savedPE) || 1.0;
+
+    if (savedPower === 'XH' || savedPower === 'SURF') {
+      s.rodPower = 'SURF';
+    } else if (savedPower && ROD_POWER_SPECS[savedPower as RodPower]) {
+      s.rodPower = savedPower as RodPower;
     }
-    baitType = 'LIVE';
-    if (weight < 30) weight = 93.8;
+
+    if (savedLenM) {
+      s.rodLengthM = parseFloat(savedLenM) || (s.rodPower === 'SURF' ? 4.2 : 2.6);
+    } else if (savedLenFt) {
+      const ft = parseFloat(savedLenFt) || 8.6;
+      s.rodLengthM = Math.round(ft * 0.3048 * 10) / 10;
+    }
+
+    if (savedBaitType === 'LIVE' || savedBaitType === 'LURE' || savedBaitType === 'CASTING_BALL' || savedBaitType === 'METAL') {
+      s.baitType = savedBaitType;
+    }
+    if (savedLureSub && ['JIG', 'OZ', 'JUKKUMI'].includes(savedLureSub)) {
+      s.lureSubMode = savedLureSub;
+    }
+    if (savedCastingSub && ['REAL_BALL', 'VARIANT_FLOAT'].includes(savedCastingSub)) {
+      s.castingBallSubMode = savedCastingSub;
+    }
+    if (savedBaitLen) s.baitLength = parseInt(savedBaitLen, 10) || 2;
+    if (savedBaitLenCm) s.baitLengthCm = parseFloat(savedBaitLenCm) || 6.0;
+    if (savedBaitShape && ['GRUB', 'SHAD', 'STRAIGHT', 'MINNOW'].includes(savedBaitShape)) {
+      s.baitShape = savedBaitShape;
+    }
+    if (savedBallWeight) {
+      const parsed = parseFloat(savedBallWeight);
+      if (!Number.isNaN(parsed)) s.castingBallWeightGrams = parsed;
+    }
+    if (savedBallHo) s.castingBallHo = parseFloat(savedBallHo) || 1.0;
+    if (savedJH) s.jigheadWeightGrams = parseFloat(savedJH) || 1.0;
+    if (savedMetalW) s.metalWeightGrams = parseFloat(savedMetalW) || 20.0;
+    if (savedEgiW) s.egiWeightGrams = parseFloat(savedEgiW) || 15.0;
+    if (savedSinkerW !== null && savedSinkerW !== undefined) {
+      const parsed = parseFloat(savedSinkerW);
+      if (!Number.isNaN(parsed)) s.sinkerWeightGrams = parsed;
+    }
+  } catch {
+    // ignore storage read error
+  }
+  return normalizeTackleState(s);
+}
+
+function normalizeTackleState(raw: InternalTackleState): InternalTackleState {
+  const s: InternalTackleState = { ...raw };
+  if (s.rodPower === 'SURF') {
+    if (!SURF_ROD_LENGTHS_M.includes(s.rodLengthM as any)) {
+      s.rodLengthM = 4.2;
+    }
+    s.baitType = 'LIVE';
+    if (s.weightGrams < 30) s.weightGrams = 93.8;
   } else {
-    rodLengthM = Math.max(1.6, Math.min(3.0, rodLengthM));
-    if (baitType === 'LIVE') baitType = 'LURE';
-    if (baitType === 'METAL') {
-      weight = metalWeightGrams;
-    } else if (baitType === 'CASTING_BALL') {
-      if (castingBallSubMode === 'VARIANT_FLOAT') {
-        weight = Math.round((castingBallHo * 3.75 + jigheadWeightGrams) * 10) / 10;
+    s.rodLengthM = Math.max(1.6, Math.min(3.0, s.rodLengthM));
+    if (s.baitType === 'LIVE') s.baitType = 'LURE';
+    if (s.baitType === 'METAL') {
+      s.metalWeightGrams = Math.max(1, Math.min(80, s.metalWeightGrams));
+      s.weightGrams = s.metalWeightGrams;
+    } else if (s.baitType === 'CASTING_BALL') {
+      if (s.castingBallSubMode === 'VARIANT_FLOAT') {
+        s.weightGrams = Math.round((s.castingBallHo * 3.75 + s.jigheadWeightGrams) * 10) / 10;
       } else {
-        weight = Math.round((castingBallWeightGrams + jigheadWeightGrams) * 10) / 10;
+        s.weightGrams = Math.round((s.castingBallWeightGrams + s.jigheadWeightGrams) * 10) / 10;
       }
-    } else if (baitType === 'LURE' && lureSubMode === 'JUKKUMI') {
-      weight = Math.round((egiWeightGrams + sinkerWeightGrams) * 10) / 10;
+    } else if (s.baitType === 'LURE' && s.lureSubMode === 'JUKKUMI') {
+      s.weightGrams = Math.round((s.egiWeightGrams + s.sinkerWeightGrams) * 10) / 10;
     }
   }
+  return s;
+}
 
+function ensureMemoryTackleState(): InternalTackleState {
+  if (!memoryTackleState) {
+    memoryTackleState = readInitialTackleStateFromStorage();
+  }
+  return memoryTackleState;
+}
+
+function evictNonEssentialCachesFromStorage(): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && (k.startsWith('khoa_c_') || k === 'exfish_offline_spots')) {
+      keysToRemove.push(k);
+    }
+  }
+  for (const k of keysToRemove) {
+    localStorage.removeItem(k);
+  }
+}
+
+function persistTackleStateToStorage(state: InternalTackleState): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  const entries: [string, string][] = [
+    [KEY_RIG_WEIGHT, String(state.weightGrams)],
+    [KEY_PE_LINE, String(state.peLineSize)],
+    [KEY_ROD_POWER, state.rodPower],
+    [KEY_ROD_LENGTH_M, String(state.rodLengthM)],
+    [KEY_ROD_LENGTH, String(Math.round(state.rodLengthM * 3.28084 * 10) / 10)],
+    [KEY_BAIT_TYPE, state.baitType],
+    [KEY_LURE_SUBMODE, state.lureSubMode],
+    [KEY_BAIT_LENGTH, String(state.baitLength)],
+    [KEY_BAIT_LENGTH_CM, String(state.baitLengthCm)],
+    [KEY_BAIT_SHAPE, state.baitShape],
+    [KEY_CASTING_BALL_SUBMODE, state.castingBallSubMode],
+    [KEY_CASTING_BALL_WEIGHT, String(state.castingBallWeightGrams)],
+    [KEY_CASTING_BALL_HO, String(state.castingBallHo)],
+    [KEY_JIGHEAD_WEIGHT, String(state.jigheadWeightGrams)],
+    [KEY_METAL_WEIGHT, String(state.metalWeightGrams)],
+    [KEY_EGI_WEIGHT, String(state.egiWeightGrams)],
+    [KEY_SINKER_WEIGHT, String(state.sinkerWeightGrams)],
+  ];
+
+  const writeAll = () => {
+    for (const [k, v] of entries) {
+      localStorage.setItem(k, v);
+    }
+  };
+
+  try {
+    writeAll();
+  } catch {
+    try {
+      evictNonEssentialCachesFromStorage();
+      writeAll();
+    } catch {
+      // Storage quota exhausted or restricted; in-memory state remains authoritative
+    }
+  }
+}
+
+function buildTackleRigConfig(state: InternalTackleState): TackleRigConfig {
+  const rodType: RodType = state.rodPower === 'SURF' ? 'SURF' : 'LURE';
   const baitConfig = getBaitSpecs(
-    baitType,
-    baitLength,
-    baitShape,
-    baitLengthCm,
-    castingBallHo,
-    jigheadWeightGrams,
-    metalWeightGrams,
-    lureSubMode,
-    castingBallSubMode,
-    castingBallWeightGrams,
-    egiWeightGrams,
-    sinkerWeightGrams
+    state.baitType,
+    state.baitLength,
+    state.baitShape,
+    state.baitLengthCm,
+    state.castingBallHo,
+    state.jigheadWeightGrams,
+    state.metalWeightGrams,
+    state.lureSubMode,
+    state.castingBallSubMode,
+    state.castingBallWeightGrams,
+    state.egiWeightGrams,
+    state.sinkerWeightGrams
   );
 
   const { distanceMeters, elasticityEfficiency, lengthFactor, totalWeightGrams } = calculateCalibratedDistance(
-    weight,
-    pe,
-    rodPower,
-    rodLengthM,
+    state.weightGrams,
+    state.peLineSize,
+    state.rodPower,
+    state.rodLengthM,
     baitConfig
   );
 
-  const rodLengthFt = Math.round(rodLengthM * 3.28084 * 10) / 10;
+  const rodLengthFt = Math.round(state.rodLengthM * 3.28084 * 10) / 10;
   const r1 = Math.round(distanceMeters * 0.5);
   const r2 = distanceMeters;
   const r3 = Math.round(distanceMeters * 1.5);
 
   return {
-    weightGrams: weight,
+    weightGrams: state.weightGrams,
     totalWeightGrams,
     baitConfig,
-    peLineSize: pe,
+    peLineSize: state.peLineSize,
     rodType,
-    rodPower,
-    rodLengthM,
+    rodPower: state.rodPower,
+    rodLengthM: state.rodLengthM,
     rodLengthFt,
     calibratedDistanceMeters: distanceMeters,
     radii: [r1, r2, r3],
     rodElasticityEfficiency: elasticityEfficiency,
     rodLengthFactor: lengthFactor,
   };
+}
+
+export function resetTackleConfigState(): void {
+  memoryTackleState = normalizeTackleState({ ...DEFAULT_TACKLE_STATE });
+}
+
+export function getSavedTackleConfig(): TackleRigConfig {
+  return buildTackleRigConfig(ensureMemoryTackleState());
 }
 
 export interface TackleUpdateParams {
@@ -920,114 +1025,95 @@ export function saveTackleConfig(
         metalWeightGrams,
       };
 
+  const prev = ensureMemoryTackleState();
+  const next: InternalTackleState = { ...prev };
+
+  // 1. 로드 파워 및 전장 반영
+  if (params.rodPower) {
+    next.rodPower = params.rodPower === ('XH' as any) ? 'SURF' : params.rodPower;
+  }
+
+  const rawLen = params.rodLengthM ?? params.rodLength;
+  if (rawLen !== undefined) {
+    let lengthM = rawLen;
+    if (rawLen > 6.0) {
+      lengthM = Math.round(rawLen * 0.3048 * 10) / 10;
+    }
+    next.rodLengthM = lengthM;
+  }
+
+  // 2. 미끼 타입 결정
+  if (next.rodPower === 'SURF') {
+    next.baitType = 'LIVE';
+  } else if (params.baitType) {
+    next.baitType = params.baitType === 'LIVE' ? 'LURE' : params.baitType;
+  } else if (next.baitType === 'LIVE') {
+    next.baitType = 'LURE';
+  }
+
+  // 3. 세부 옵션 반영
+  if (params.lureSubMode) next.lureSubMode = params.lureSubMode;
+  if (params.baitLength !== undefined) next.baitLength = params.baitLength;
+  if (params.baitLengthCm !== undefined) next.baitLengthCm = params.baitLengthCm;
+  if (params.baitShape) next.baitShape = params.baitShape;
+  if (params.castingBallSubMode) next.castingBallSubMode = params.castingBallSubMode;
+  if (params.castingBallWeightGrams !== undefined) next.castingBallWeightGrams = params.castingBallWeightGrams;
+  if (params.castingBallHo !== undefined) next.castingBallHo = params.castingBallHo;
+  if (params.jigheadWeightGrams !== undefined) next.jigheadWeightGrams = params.jigheadWeightGrams;
+  if (params.metalWeightGrams !== undefined) next.metalWeightGrams = params.metalWeightGrams;
+  if (params.egiWeightGrams !== undefined) next.egiWeightGrams = params.egiWeightGrams;
+  if (params.sinkerWeightGrams !== undefined) next.sinkerWeightGrams = params.sinkerWeightGrams;
+  if (params.peLineSize !== undefined) next.peLineSize = params.peLineSize;
+
+  // 4. 무게 동기화 (서브모드/미끼 타입 전환 시 기본 유효 무게 자동 맞춤)
+  if (params.weightGrams !== undefined) {
+    next.weightGrams = params.weightGrams;
+  }
+
+  if (next.rodPower !== 'SURF' && next.baitType === 'METAL') {
+    if (params.weightGrams !== undefined && params.metalWeightGrams === undefined) {
+      next.metalWeightGrams = Math.max(1, Math.min(80, params.weightGrams));
+    }
+    next.weightGrams = next.metalWeightGrams;
+  } else if (next.rodPower !== 'SURF' && next.baitType === 'LURE' && params.weightGrams === undefined) {
+    if (params.lureSubMode === 'JIG') {
+      const matchesJig = WEIGHT_PRESETS.some(
+        (p) => p.category === 'JIG' && Math.abs(p.weightGrams - next.weightGrams) < 0.15
+      );
+      if (!matchesJig) {
+        next.weightGrams = 3;
+      }
+    } else if (params.lureSubMode === 'OZ') {
+      const matchesOz = WEIGHT_PRESETS.some(
+        (p) => p.category === 'OZ' && Math.abs(p.weightGrams - next.weightGrams) < 0.15
+      );
+      if (!matchesOz) {
+        next.weightGrams = 10.6;
+      }
+    } else if (params.baitType === 'LURE' && prev.baitType !== 'LURE') {
+      if (next.lureSubMode === 'JIG' && next.weightGrams > 10) {
+        next.weightGrams = 3;
+      } else if (next.lureSubMode === 'OZ' && next.weightGrams > 60) {
+        next.weightGrams = 10.6;
+      }
+    }
+  }
+
+  const normalized = normalizeTackleState(next);
+  memoryTackleState = normalized;
+  persistTackleStateToStorage(normalized);
+
   if (typeof window !== 'undefined') {
     try {
-      let finalPower = params.rodPower;
-      if (finalPower === ('XH' as any)) finalPower = 'SURF';
-      if (finalPower) {
-        localStorage.setItem(KEY_ROD_POWER, finalPower);
-      } else {
-        finalPower = (localStorage.getItem(KEY_ROD_POWER) as RodPower) || 'M';
-      }
-
-      const rawLen = params.rodLengthM ?? params.rodLength;
-      if (rawLen !== undefined) {
-        let lengthM = rawLen;
-        if (rawLen > 6.0) {
-          lengthM = Math.round(rawLen * 0.3048 * 10) / 10;
-        }
-        localStorage.setItem(KEY_ROD_LENGTH_M, String(lengthM));
-        localStorage.setItem(KEY_ROD_LENGTH, String(Math.round(lengthM * 3.28084 * 10) / 10));
-      }
-
-      let finalBaitType = params.baitType;
-      if (!finalBaitType) {
-        finalBaitType = (localStorage.getItem(KEY_BAIT_TYPE) as BaitType) || (finalPower === 'SURF' ? 'LIVE' : 'LURE');
-      }
-      if (finalPower === 'SURF') finalBaitType = 'LIVE';
-      else if (finalBaitType === 'LIVE') finalBaitType = 'LURE';
-      localStorage.setItem(KEY_BAIT_TYPE, finalBaitType);
-
-      if (params.lureSubMode) localStorage.setItem(KEY_LURE_SUBMODE, params.lureSubMode);
-      if (params.baitLength !== undefined) localStorage.setItem(KEY_BAIT_LENGTH, String(params.baitLength));
-      if (params.baitLengthCm !== undefined) localStorage.setItem(KEY_BAIT_LENGTH_CM, String(params.baitLengthCm));
-      if (params.baitShape) localStorage.setItem(KEY_BAIT_SHAPE, params.baitShape);
-
-      if (params.castingBallSubMode) localStorage.setItem(KEY_CASTING_BALL_SUBMODE, params.castingBallSubMode);
-      if (params.castingBallWeightGrams !== undefined) localStorage.setItem(KEY_CASTING_BALL_WEIGHT, String(params.castingBallWeightGrams));
-      if (params.castingBallHo !== undefined) localStorage.setItem(KEY_CASTING_BALL_HO, String(params.castingBallHo));
-      if (params.jigheadWeightGrams !== undefined) localStorage.setItem(KEY_JIGHEAD_WEIGHT, String(params.jigheadWeightGrams));
-      if (params.metalWeightGrams !== undefined) localStorage.setItem(KEY_METAL_WEIGHT, String(params.metalWeightGrams));
-      if (params.egiWeightGrams !== undefined) localStorage.setItem(KEY_EGI_WEIGHT, String(params.egiWeightGrams));
-      if (params.sinkerWeightGrams !== undefined) localStorage.setItem(KEY_SINKER_WEIGHT, String(params.sinkerWeightGrams));
-
-      if (params.peLineSize !== undefined) {
-        localStorage.setItem(KEY_PE_LINE, String(params.peLineSize));
-      }
-
-      // 미끼 타입에 따른 weightGrams 동기화
-      let finalWeight = params.weightGrams ?? (parseFloat(localStorage.getItem(KEY_RIG_WEIGHT) || '25') || 25);
-      if (finalPower !== 'SURF') {
-        if (finalBaitType === 'METAL') {
-          finalWeight = params.metalWeightGrams !== undefined
-            ? params.metalWeightGrams
-            : (parseFloat(localStorage.getItem(KEY_METAL_WEIGHT) || '28') || 28);
-        } else if (finalBaitType === 'CASTING_BALL') {
-          const sub = params.castingBallSubMode || (localStorage.getItem(KEY_CASTING_BALL_SUBMODE) as CastingBallSubMode) || 'REAL_BALL';
-          const jh = params.jigheadWeightGrams !== undefined
-            ? params.jigheadWeightGrams
-            : (parseFloat(localStorage.getItem(KEY_JIGHEAD_WEIGHT) || '1') || 1);
-          if (sub === 'VARIANT_FLOAT') {
-            const ho = params.castingBallHo !== undefined
-              ? params.castingBallHo
-              : (parseFloat(localStorage.getItem(KEY_CASTING_BALL_HO) || '1') || 1);
-            finalWeight = Math.round((ho * 3.75 + jh) * 10) / 10;
-          } else {
-            const bw = params.castingBallWeightGrams !== undefined
-              ? params.castingBallWeightGrams
-              : (parseFloat(localStorage.getItem(KEY_CASTING_BALL_WEIGHT) || '10') || 10);
-            finalWeight = Math.round((bw + jh) * 10) / 10;
-          }
-        } else if (finalBaitType === 'LURE') {
-          const lureSub = params.lureSubMode || (localStorage.getItem(KEY_LURE_SUBMODE) as LureSubMode) || 'OZ';
-          if (lureSub === 'JUKKUMI') {
-            const ew = params.egiWeightGrams !== undefined
-              ? params.egiWeightGrams
-              : (parseFloat(localStorage.getItem(KEY_EGI_WEIGHT) || '15') || 15);
-            const sw = params.sinkerWeightGrams !== undefined
-              ? params.sinkerWeightGrams
-              : (parseFloat(localStorage.getItem(KEY_SINKER_WEIGHT) || '0') || 0);
-            finalWeight = Math.round((ew + sw) * 10) / 10;
-          }
-        }
-      }
-      localStorage.setItem(KEY_RIG_WEIGHT, String(finalWeight));
-
       window.dispatchEvent(
         new CustomEvent('exfish_tackle_updated', {
-          detail: {
-            weightGrams: finalWeight,
-            peLineSize: params.peLineSize,
-            rodPower: finalPower,
-            rodLength: rawLen,
-            baitType: finalBaitType,
-            lureSubMode: params.lureSubMode,
-            baitLength: params.baitLength,
-            baitShape: params.baitShape,
-            baitLengthCm: params.baitLengthCm,
-            castingBallSubMode: params.castingBallSubMode,
-            castingBallWeightGrams: params.castingBallWeightGrams,
-            castingBallHo: params.castingBallHo,
-            jigheadWeightGrams: params.jigheadWeightGrams,
-            metalWeightGrams: params.metalWeightGrams,
-            egiWeightGrams: params.egiWeightGrams,
-            sinkerWeightGrams: params.sinkerWeightGrams,
-          },
+          detail: { ...normalized },
         })
       );
     } catch {
       // ignore
     }
   }
-  return getSavedTackleConfig();
+
+  return buildTackleRigConfig(normalized);
 }

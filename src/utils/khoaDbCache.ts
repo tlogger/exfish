@@ -114,13 +114,45 @@ export async function getOrFetchKhoaData<T>(
   return queryPromise;
 }
 
-/** L1 로컬/메모리 저장 헬퍼 */
+/** L1 로컬/메모리 저장 헬퍼 (쿼터 초과 시 오래된 KHOA 캐시 정리 후 재시도) */
 function saveToL1Cache<T>(cacheKey: string, payload: T, expiresAt: number) {
   memoryCache.set(cacheKey, { expiresAt, payload });
   if (typeof window !== 'undefined') {
+    const storageKey = `khoa_c_${cacheKey}`;
+    const serialized = JSON.stringify({ expiresAt, payload });
     try {
-      localStorage.setItem(`khoa_c_${cacheKey}`, JSON.stringify({ expiresAt, payload }));
-    } catch {}
+      localStorage.setItem(storageKey, serialized);
+    } catch {
+      try {
+        const now = Date.now();
+        const khoaKeys: { key: string; expiresAt: number }[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('khoa_c_')) {
+            let exp = 0;
+            try {
+              const parsed = JSON.parse(localStorage.getItem(k) || '{}');
+              exp = typeof parsed.expiresAt === 'number' ? parsed.expiresAt : 0;
+            } catch {
+              exp = 0;
+            }
+            if (exp <= now) {
+              localStorage.removeItem(k);
+            } else {
+              khoaKeys.push({ key: k, expiresAt: exp });
+            }
+          }
+        }
+        khoaKeys.sort((a, b) => a.expiresAt - b.expiresAt);
+        const evictCount = Math.max(1, Math.ceil(khoaKeys.length / 2));
+        for (let i = 0; i < Math.min(evictCount, khoaKeys.length); i++) {
+          localStorage.removeItem(khoaKeys[i].key);
+        }
+        localStorage.setItem(storageKey, serialized);
+      } catch {
+        // ignore if storage remains unavailable or full
+      }
+    }
   }
 }
 

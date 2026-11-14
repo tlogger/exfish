@@ -6,7 +6,7 @@
 > - ✅ **앱 아이콘(512x512)**: [`google_play_assets/app_icon_512x512.png`](file:///c:/Users/pyros/Documents/espFish/google_play_assets/app_icon_512x512.png)
 > - ✅ **그래픽 이미지(1024x500)**: [`google_play_assets/feature_graphic_1024x500.png`](file:///c:/Users/pyros/Documents/espFish/google_play_assets/feature_graphic_1024x500.png)
 > - ✅ **실기기 스크린샷 5장**: [`google_play_assets/`](file:///c:/Users/pyros/Documents/espFish/google_play_assets) 폴더 내 01~05 스크린샷
-> - ✅ **개인정보처리방침 URL**: `https://tlogger.github.io/exfish/privacy-policy.html`
+> - ✅ **개인정보처리방침 URL**: `https://exfish.vercel.app/privacy-policy.html`
 
 ---
 
@@ -107,7 +107,7 @@
 
 | 항목 | 선택/입력값 | 설명 |
 | :--- | :--- | :--- |
-| **개인정보처리방침** | `https://tlogger.github.io/exfish/privacy-policy.html` | 위치 및 조과 저장 정책 명시 |
+| **개인정보처리방침** | `https://exfish.vercel.app/privacy-policy.html` | 위치 및 조과 저장 정책 명시 |
 | **광고** | **아니요, 앱에 광고가 포함되어 있지 않습니다** | 완전 무료 청정 앱 |
 | **앱 액세스 권한** | **특수 액세스 권한 없이 모든 기능을 이용할 수 있음** | 로그인 없이도 지도/날씨 열람 가능 |
 | **콘텐츠 등급** | **설문 시작** ➔ 유틸리티/스포츠 선택 ➔ 폭력/선정성 **전부 '아니요'** | 전체이용가 (PEGI 3, All ages) |

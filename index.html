@@ -12,6 +12,13 @@
     <title>ExFish - ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며...</title>
     <meta name="description" content="ExFish: ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며... 한국 연안 갯바위, 방파제, 해변 포인트 및 실시간 기상, 수온, 조류, 72시간 물때 시간표와 실측 조과 기록 플랫폼" />
     <script>
+      // GitHub Pages(tlogger.github.io) 접속 시 Vercel(exfish.vercel.app)로 즉시 자동 이동
+      if (window.location.hostname === 'tlogger.github.io') {
+        var newPath = window.location.pathname.replace(/^\/exfish(\/|$)/, '/');
+        window.location.replace('https://exfish.vercel.app' + (newPath === '/' ? '' : newPath) + window.location.search + window.location.hash);
+      }
+    </script>
+    <script>
       (function() {
         try {
           var hash = window.location.hash || '';

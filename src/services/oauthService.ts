@@ -41,13 +41,13 @@ function decodeSafe(encoded: string): string {
 // 사용자 설정 및 기본 발급 키 정의
 export const DEFAULT_OAUTH_CONFIG: OAuthClientConfig = {
   naverClientId: decodeSafe('eVFmdzVfMXV4aXpPdDk0Vk12WlM='),
-  naverCallbackUrl: 'https://tlogger.github.io/exfish/naverlogin',
+  naverCallbackUrl: 'https://exfish.vercel.app/naverlogin',
   kakaoClientId: decodeSafe('NjFlYmYwYjdhMGRhZjI0Y2JhMzU3ZDkyNjc3YzhkOGE='),
-  kakaoCallbackUrl: 'https://tlogger.github.io/exfish/kakaologin',
+  kakaoCallbackUrl: 'https://exfish.vercel.app/kakaologin',
   googleClientId: decodeSafe('OTE5ODg4MDUwMDEtY2RsbDdnOXAybjk2YXBwbHB2N2JhcHJkbzBpMGk2dWouYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20='),
 };
 
-/** OAuth 설정 취득 (localStorage 우선, 없으면 기본값) */
+/** OAuth 설정 취득 (localStorage 우선, 없으면 기본값; 구 tlogger.github.io 잔재 자동 정리) */
 export function getOAuthClientConfig(): OAuthClientConfig {
   const envNaver = import.meta.env.VITE_NAVER_CLIENT_ID || DEFAULT_OAUTH_CONFIG.naverClientId;
   const envNaverCallback = import.meta.env.VITE_NAVER_CALLBACK_URL || DEFAULT_OAUTH_CONFIG.naverCallbackUrl;
@@ -61,6 +61,18 @@ export function getOAuthClientConfig(): OAuthClientConfig {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(OAUTH_KEYS_STORAGE) : null;
     if (raw) {
       const parsed = JSON.parse(raw);
+      let dirty = false;
+      if (typeof parsed.naverCallbackUrl === 'string' && parsed.naverCallbackUrl.includes('tlogger.github.io')) {
+        delete parsed.naverCallbackUrl;
+        dirty = true;
+      }
+      if (typeof parsed.kakaoCallbackUrl === 'string' && parsed.kakaoCallbackUrl.includes('tlogger.github.io')) {
+        delete parsed.kakaoCallbackUrl;
+        dirty = true;
+      }
+      if (dirty) {
+        localStorage.setItem(OAUTH_KEYS_STORAGE, JSON.stringify(parsed));
+      }
       return {
         naverClientId: parsed.naverClientId || envNaver,
         naverCallbackUrl: parsed.naverCallbackUrl || envNaverCallback,
@@ -103,8 +115,8 @@ export function isNativeApp(): boolean {
 /** 현재 실행 호스트 기반 SPA 메인 경로 산출 */
 export function getOAuthMainRedirectUri(): string {
   if (isNativeApp()) {
-    // 모바일 앱 환경에서는 Google OAuth의 허용 도메인인 공식 GitHub Pages URL을 리다이렉트 URI로 제공
-    return 'https://tlogger.github.io/exfish/';
+    // 모바일 앱 환경에서는 Google OAuth의 허용 도메인인 공식 Vercel URL을 리다이렉트 URI로 제공
+    return 'https://exfish.vercel.app/';
   }
   const isLocalDevWithPort =
     typeof window !== 'undefined' &&
@@ -113,7 +125,7 @@ export function getOAuthMainRedirectUri(): string {
   if (isLocalDevWithPort) {
     return `${window.location.origin}/`;
   }
-  return 'https://tlogger.github.io/exfish/';
+  return 'https://exfish.vercel.app/';
 }
 
 /** 소셜 공급자별 OAuth2 인가 URL 생성 */
@@ -130,10 +142,14 @@ export function buildOAuthAuthorizeUrl(provider: AuthProvider): { url: string; e
   const state = encodeURIComponent(JSON.stringify({ provider, isApp: isNative, t: Date.now() }));
 
   if (provider === 'naver') {
-    let callbackUrl = 'https://tlogger.github.io/exfish/naverlogin';
+    let callbackUrl = 'https://exfish.vercel.app/naverlogin';
     if (isLocalDevWithPort) {
       callbackUrl = `${window.location.origin}/naverlogin`;
-    } else if (config.naverCallbackUrl && !config.naverCallbackUrl.includes('localhost')) {
+    } else if (
+      config.naverCallbackUrl &&
+      !config.naverCallbackUrl.includes('localhost') &&
+      !config.naverCallbackUrl.includes('tlogger.github.io')
+    ) {
       callbackUrl = config.naverCallbackUrl;
     }
 
@@ -145,10 +161,14 @@ export function buildOAuthAuthorizeUrl(provider: AuthProvider): { url: string; e
   }
 
   if (provider === 'kakao') {
-    let callbackUrl = 'https://tlogger.github.io/exfish/kakaologin';
+    let callbackUrl = 'https://exfish.vercel.app/kakaologin';
     if (isLocalDevWithPort) {
       callbackUrl = `${window.location.origin}/kakaologin`;
-    } else if (config.kakaoCallbackUrl && !config.kakaoCallbackUrl.includes('localhost')) {
+    } else if (
+      config.kakaoCallbackUrl &&
+      !config.kakaoCallbackUrl.includes('localhost') &&
+      !config.kakaoCallbackUrl.includes('tlogger.github.io')
+    ) {
       callbackUrl = config.kakaoCallbackUrl;
     }
 
@@ -374,7 +394,7 @@ export async function processOAuthCallbackResult(callbackData: {
         typeof window !== 'undefined' &&
         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
         Boolean(window.location.port);
-      const callbackUrl = isLocalDevWithPort ? `${window.location.origin}/kakaologin` : 'https://tlogger.github.io/exfish/kakaologin';
+      const callbackUrl = isLocalDevWithPort ? `${window.location.origin}/kakaologin` : 'https://exfish.vercel.app/kakaologin';
 
       const tokenRes = await fetch('https://kauth.kakao.com/oauth/token', {
         method: 'POST',
@@ -438,7 +458,7 @@ export async function processOAuthCallbackResult(callbackData: {
     : ((typeof localStorage !== 'undefined' ? localStorage.getItem('exfish_wind_unit') as WindUnit : null) || 'ms');
   const finalCurrentUnit = (savedPrefs && savedPrefs.currentUnit)
     ? savedPrefs.currentUnit
-    : ((typeof localStorage !== 'undefined' ? localStorage.getItem('exfish_current_unit') as CurrentUnit : null) || 'knot');
+    : ((typeof localStorage !== 'undefined' ? localStorage.getItem('exfish_current_unit') as CurrentUnit : null) || 'ms');
 
   const now = Date.now();
   const isAdmin = isUserAdmin({ email: userEmail });

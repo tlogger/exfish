@@ -441,8 +441,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </div>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[
-                      { id: 'knot', label: 'knot' },
                       { id: 'ms', label: 'm/s' },
+                      { id: 'knot', label: 'knot' },
                       { id: 'cms', label: 'cm/s' },
                     ].map((c) => (
                       <button

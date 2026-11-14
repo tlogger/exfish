@@ -1,10 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   calculateAerodynamicCastingDrift,
   calculateCalibratedDistance,
   calculateSinkingPhysics,
   getBaitSpecs,
+  getSavedTackleConfig,
+  getWeightDescription,
+  METAL_WEIGHT_PRESETS,
+  resetTackleConfigState,
   ROD_POWER_SPECS,
+  saveTackleConfig,
 } from './tackleCalibration';
 
 describe('tackleCalibration physics engine', () => {
@@ -135,5 +140,157 @@ describe('tackleCalibration physics engine', () => {
     const variantResult = calculateCalibratedDistance(8.5, 0.8, 'ML', 2.6, variantFloat);
     expect(variantResult.totalWeightGrams).toBeCloseTo(11.0, 1);
     expect(variantFloat.castingBallHo).toBe(2.0);
+  });
+});
+
+describe('tackleConfig state management & UI requirements', () => {
+  beforeEach(() => {
+    resetTackleConfigState();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetTackleConfigState();
+  });
+
+  it('switches to CASTING_BALL (REAL_BALL / VARIANT_FLOAT) and persists sub-options', () => {
+    const realBall = saveTackleConfig({
+      baitType: 'CASTING_BALL',
+      castingBallSubMode: 'REAL_BALL',
+      castingBallWeightGrams: 15,
+      jigheadWeightGrams: 1.5,
+    });
+    expect(realBall.baitConfig?.type).toBe('CASTING_BALL');
+    expect(realBall.baitConfig?.castingBallSubMode).toBe('REAL_BALL');
+    expect(realBall.weightGrams).toBeCloseTo(16.5, 1);
+    expect(getSavedTackleConfig().baitConfig?.type).toBe('CASTING_BALL');
+
+    const variantFloat = saveTackleConfig({
+      castingBallSubMode: 'VARIANT_FLOAT',
+      castingBallHo: 2.0,
+      jigheadWeightGrams: 1.0,
+    });
+    expect(variantFloat.baitConfig?.type).toBe('CASTING_BALL');
+    expect(variantFloat.baitConfig?.castingBallSubMode).toBe('VARIANT_FLOAT');
+    expect(variantFloat.weightGrams).toBeCloseTo(8.5, 1);
+  });
+
+  it('transitions cleanly across LURE sub-modes (JIG, OZ, JUKKUMI) and weight presets', () => {
+    const jigInit = saveTackleConfig({ baitType: 'LURE', lureSubMode: 'JIG' });
+    expect(jigInit.baitConfig?.type).toBe('LURE');
+    expect(jigInit.baitConfig?.lureSubMode).toBe('JIG');
+    expect(jigInit.weightGrams).toBe(3);
+
+    const jigCustom = saveTackleConfig({ weightGrams: 5 });
+    expect(jigCustom.weightGrams).toBe(5);
+
+    const ozInit = saveTackleConfig({ lureSubMode: 'OZ' });
+    expect(ozInit.baitConfig?.lureSubMode).toBe('OZ');
+    expect(ozInit.weightGrams).toBe(10.6);
+
+    const ozPreset = saveTackleConfig({ weightGrams: 28.3 });
+    expect(ozPreset.weightGrams).toBe(28.3);
+
+    const jukkumi = saveTackleConfig({
+      lureSubMode: 'JUKKUMI',
+      egiWeightGrams: 15,
+      sinkerWeightGrams: 18.8,
+    });
+    expect(jukkumi.baitConfig?.lureSubMode).toBe('JUKKUMI');
+    expect(jukkumi.weightGrams).toBeCloseTo(33.8, 1);
+
+    const noSinker = saveTackleConfig({ egiWeightGrams: 20, sinkerWeightGrams: 0 });
+    expect(noSinker.weightGrams).toBe(20);
+  });
+
+  it('supports METAL 10~40g presets, 1~80g range, and omits jig length from description', () => {
+    expect([...METAL_WEIGHT_PRESETS]).toEqual([10, 20, 30, 40]);
+
+    const metalDefault = saveTackleConfig({ baitType: 'METAL' });
+    expect(metalDefault.baitConfig?.type).toBe('METAL');
+    expect(metalDefault.baitConfig?.metalWeightGrams).toBe(20);
+    expect(metalDefault.weightGrams).toBe(20);
+    expect(getWeightDescription(metalDefault.weightGrams, metalDefault.baitConfig)).toBe('메탈지그 20g');
+    expect(getWeightDescription(metalDefault.weightGrams, metalDefault.baitConfig)).not.toContain('cm');
+
+    const metal40 = saveTackleConfig({ metalWeightGrams: 40, weightGrams: 40 });
+    expect(metal40.weightGrams).toBe(40);
+
+    const metal80 = saveTackleConfig({ metalWeightGrams: 80, weightGrams: 80 });
+    expect(metal80.weightGrams).toBe(80);
+
+    const metal1 = saveTackleConfig({ metalWeightGrams: 1, weightGrams: 1 });
+    expect(metal1.weightGrams).toBe(1);
+    expect(getWeightDescription(metal1.weightGrams, metal1.baitConfig)).toBe('메탈지그 1g');
+  });
+
+  it('supports SURF rod selection and reverts cleanly back to LURE rod', () => {
+    const surf = saveTackleConfig({
+      rodPower: 'SURF',
+      rodLengthM: 4.5,
+      weightGrams: 112.5,
+    });
+    expect(surf.rodType).toBe('SURF');
+    expect(surf.rodPower).toBe('SURF');
+    expect(surf.rodLengthM).toBe(4.5);
+    expect(surf.baitConfig?.type).toBe('LIVE');
+    expect(surf.weightGrams).toBe(112.5);
+
+    const backToLure = saveTackleConfig({ rodPower: 'ML', baitType: 'LURE' });
+    expect(backToLure.rodType).toBe('LURE');
+    expect(backToLure.rodPower).toBe('ML');
+    expect(backToLure.baitConfig?.type).toBe('LURE');
+  });
+
+  it('updates authoritative in-memory state and evicts caches even when localStorage throws QuotaExceededError', () => {
+    const store = new Map<string, string>([
+      ['khoa_c_tide_sample', 'cached-payload'],
+      ['exfish_offline_spots', '[{"id":"1"}]'],
+      ['unrelated_key', 'keep-me'],
+    ]);
+
+    const mockStorage = {
+      get length() {
+        return store.size;
+      },
+      key(index: number) {
+        return Array.from(store.keys())[index] ?? null;
+      },
+      getItem(k: string) {
+        return store.get(k) ?? null;
+      },
+      setItem() {
+        throw new Error('QuotaExceededError');
+      },
+      removeItem(k: string) {
+        store.delete(k);
+      },
+      clear() {
+        store.clear();
+      },
+    };
+
+    const dispatchEventMock = vi.fn();
+    vi.stubGlobal('localStorage', mockStorage);
+    vi.stubGlobal('window', {
+      localStorage: mockStorage,
+      dispatchEvent: dispatchEventMock,
+    });
+
+    const updated = saveTackleConfig({
+      baitType: 'CASTING_BALL',
+      castingBallSubMode: 'REAL_BALL',
+      castingBallWeightGrams: 20,
+      jigheadWeightGrams: 2,
+    });
+
+    // 비핵심 캐시는 정리되고 핵심 키는 보존되며 인메모리 상태는 정상 갱신되어야 함
+    expect(store.has('khoa_c_tide_sample')).toBe(false);
+    expect(store.has('exfish_offline_spots')).toBe(false);
+    expect(store.has('unrelated_key')).toBe(true);
+    expect(updated.baitConfig?.type).toBe('CASTING_BALL');
+    expect(updated.weightGrams).toBeCloseTo(22, 1);
+    expect(getSavedTackleConfig().baitConfig?.type).toBe('CASTING_BALL');
+    expect(getSavedTackleConfig().weightGrams).toBeCloseTo(22, 1);
   });
 });

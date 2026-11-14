@@ -1,6 +1,6 @@
 import React from 'react';
-import { ChevronUp, Crosshair, Download, Filter, HelpCircle, List, Loader2, LogIn, Navigation2, Plus, Search, Smartphone, User, X } from 'lucide-react';
-import { MapView } from './components/MapView';
+import { ChevronUp, Crosshair, Download, Filter, HelpCircle, List, Loader2, LogIn, Map as MapIcon, Moon, Navigation2, Satellite, Search, Sun, User, X } from 'lucide-react';
+import { MapView, type MapMode } from './components/MapView';
 import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
 import { CatchLogModal } from './components/CatchLogModal';
@@ -132,7 +132,7 @@ export function App() {
   });
   const [currentUnit, setCurrentUnit] = React.useState<CurrentUnit>(() => {
     const user = getSavedAuthUser();
-    return user?.currentUnit || 'knot';
+    return user?.currentUnit || 'ms';
   });
 
   // 필터 및 검색 상태
@@ -154,18 +154,6 @@ export function App() {
   const [isChecklistModalOpen, setIsChecklistModalOpen] = React.useState(false);
   // 모바일 앱 초기 1초 스플래시 스크린 표시 상태 (웹 환경은 스플래시 생략)
   const [showSplash, setShowSplash] = React.useState(() => isNativePlatform());
-
-  // 모바일 웹 방문자용 안드로이드 APK 앱 다운로드 안내 배너
-  const [showMobileAppBanner, setShowMobileAppBanner] = React.useState(() => {
-    if (isNativePlatform()) return false;
-    if (typeof window === 'undefined') return false;
-    return !sessionStorage.getItem('exfish_dismiss_app_banner');
-  });
-
-  const handleDismissAppBanner = () => {
-    setShowMobileAppBanner(false);
-    sessionStorage.setItem('exfish_dismiss_app_banner', 'true');
-  };
   const [newSpotLat, setNewSpotLat] = React.useState<number | undefined>();
   const [newSpotLng, setNewSpotLng] = React.useState<number | undefined>();
   const [microAdjustSpot, setMicroAdjustSpot] = React.useState<FishingSpot | null>(null);
@@ -251,7 +239,27 @@ export function App() {
     selectedSpot,
   ]);
 
-  // 아웃도어 초고대비 모드 (Sun Mode: WCAG AAA 7:1) 및 오프라인 상태 관리
+  // 아웃도어 초고대비 모드 (Sun Mode: WCAG AAA 7:1), 지도 뷰 모드, 오프라인 상태 관리
+  const [mapMode, setMapMode] = React.useState<MapMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('exfish_map_mode');
+      if (saved === 'HYBRID' || saved === 'DARK') return saved;
+    }
+    return 'ROADMAP';
+  });
+
+  const handleMapModeChange = React.useCallback((mode: MapMode) => {
+    setMapMode(mode);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('exfish_map_mode', mode);
+        document.documentElement.setAttribute('data-map-mode', mode);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
   const [isSunMode, setIsSunMode] = React.useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('exfish_sun_mode') === 'true';
@@ -815,39 +823,6 @@ export function App() {
         <SplashScreen onFinish={() => setShowSplash(false)} durationMs={1000} />
       )}
 
-      {/* 모바일 웹 방문자용 안드로이드 APK 앱 다운로드 안내 배너 */}
-      {showMobileAppBanner && !isNativePlatform() && (
-        <div className="bg-gradient-to-r from-emerald-950/95 via-slate-900 to-teal-950/95 border-b border-emerald-500/40 px-3 py-1.5 flex items-center justify-between text-xs shrink-0 z-40 shadow-sm">
-          <div className="flex items-center gap-2 min-w-0 pr-2">
-            <div className="w-6 h-6 rounded-md bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
-              <Smartphone size={13} className="text-emerald-400" />
-            </div>
-            <p className="text-slate-200 text-[11px] truncate">
-              <strong className="text-emerald-300">ExFish 안드로이드 전용 앱</strong>으로 현장에서 실시간 조석·비거리를 확인하세요!
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <a
-              href="./exfish.apk"
-              download="exfish.apk"
-              className="px-2.5 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white rounded-md text-[11px] font-bold shadow flex items-center gap-1 active:scale-95 transition"
-              title="ExFish APK 다운로드"
-            >
-              <Download size={11} />
-              <span>앱 설치</span>
-            </a>
-            <button
-              onClick={handleDismissAppBanner}
-              className="text-slate-400 hover:text-white p-1 rounded transition"
-              title="닫기"
-              aria-label="안내 배너 닫기"
-            >
-              <X size={13} />
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* 글로벌 상단 헤더 & 내비게이션 바 */}
       <header className="h-14 bg-slate-900 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between shrink-0 z-30 shadow-md gap-2">
         {/* 로고 (ExFish 브랜딩 및 버전 정보 표시, 클릭 시 페이지 새로고침) */}
@@ -1032,9 +1007,6 @@ export function App() {
             >
               <Download size={14} className="text-emerald-400" />
               <span>APK 다운로드</span>
-              <span className="text-[9.5px] font-mono px-1 py-0.2 rounded bg-emerald-900/80 text-emerald-300 border border-emerald-500/40">
-                .apk
-              </span>
             </a>
           )}
 
@@ -1053,10 +1025,10 @@ export function App() {
         </div>
       </header>
 
-      {/* 서브 바: 모바일에서는 장르 선택을 제거하고 '내 포인트만 보기'와 '로그인'을 나란히 배치 */}
-      <div className="h-10 bg-slate-900/90 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between text-xs shrink-0 overflow-x-auto">
+      {/* 서브 바: 내 포인트 + 로그인(모바일) + 지도 종류 선택 아이콘바 */}
+      <div className="h-10 bg-slate-900/90 border-b border-slate-800 px-3 sm:px-4 flex items-center justify-between text-xs shrink-0 overflow-x-auto gap-2">
         {/* PC 화면 전용 장르 필터 (모바일에서는 완전히 숨김) */}
-        <div className="hidden md:flex items-center gap-1.5">
+        <div className="hidden md:flex items-center gap-1.5 shrink-0">
           <span className="text-slate-400 flex items-center gap-1 mr-1">
             <Filter size={12} /> 장르:
           </span>
@@ -1080,9 +1052,9 @@ export function App() {
           ))}
         </div>
 
-        {/* 모바일 & 공통 액션: 내 포인트만 보기와 로그인 버튼 나란히 배치 */}
+        {/* 공통 액션: 내 포인트 + 로그인(모바일) & 지도 종류 선택 아이콘바 */}
         <div className="flex items-center justify-between w-full md:w-auto gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setViewOnlyMySpots(!viewOnlyMySpots)}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs transition ${
@@ -1092,26 +1064,13 @@ export function App() {
               }`}
             >
               <User size={13} />
-              <span>내 포인트만 보기</span>
+              <span>내 포인트</span>
             </button>
-
-            {/* 모바일 화면 전용 APK 다운로드 버튼 */}
-            {!isNativePlatform() && (
-              <a
-                href="./exfish.apk"
-                download="exfish.apk"
-                className="sm:hidden flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-bold text-xs active:scale-95 transition"
-                title="최신 ExFish Android APK 다운로드"
-              >
-                <Download size={12} className="text-emerald-400" />
-                <span>APK</span>
-              </a>
-            )}
 
             {/* 모바일 화면 전용 로그인 버튼 (아이콘 전용) */}
             <button
               onClick={() => setIsLoginModalOpen(true)}
-              className={`md:hidden flex items-center justify-center p-2 rounded-lg border text-xs font-semibold transition ${
+              className={`md:hidden flex items-center justify-center p-1.5 rounded-lg border text-xs font-semibold transition ${
                 currentUser
                   ? 'bg-slate-800/90 border-slate-700 text-cyan-300'
                   : 'bg-cyan-600/30 border-cyan-500/50 text-cyan-300'
@@ -1123,9 +1082,66 @@ export function App() {
             </button>
           </div>
 
-          <span className="text-[11px] text-slate-500">
-            총 {filteredSpots.length}개 포인트
-          </span>
+          {/* 지도 종류 선택 아이콘바 (일반지도 / 스카이뷰 / 다크 / 고대비) */}
+          <div className="flex items-center bg-slate-950/90 border border-slate-700/80 rounded-lg p-0.5 gap-0.5 shrink-0">
+            <button
+              onClick={() => handleMapModeChange('ROADMAP')}
+              className={`p-1.5 rounded-md transition flex items-center justify-center ${
+                mapMode === 'ROADMAP'
+                  ? 'bg-cyan-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+              title="일반 도로 지도"
+              aria-label="일반 지도"
+            >
+              <MapIcon size={15} />
+            </button>
+            <button
+              onClick={() => handleMapModeChange('HYBRID')}
+              className={`p-1.5 rounded-md transition flex items-center justify-center ${
+                mapMode === 'HYBRID'
+                  ? 'bg-cyan-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+              title="갯바위·방파제 고해상도 실사 항공 스카이뷰"
+              aria-label="스카이뷰"
+            >
+              <Satellite size={15} />
+            </button>
+            <button
+              onClick={() => handleMapModeChange('DARK')}
+              className={`p-1.5 rounded-md transition flex items-center justify-center ${
+                mapMode === 'DARK'
+                  ? 'bg-amber-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+              title="야간 낚시 다크 모드 (눈부심 방지)"
+              aria-label="야간 다크"
+            >
+              <Moon size={15} />
+            </button>
+            <button
+              onClick={() => {
+                const next = !isSunMode;
+                setIsSunMode(next);
+                try {
+                  localStorage.setItem('exfish_sun_mode', String(next));
+                } catch {}
+                if (typeof document !== 'undefined') {
+                  document.body.classList.toggle('sun-mode-active', next);
+                }
+              }}
+              className={`p-1.5 rounded-md transition flex items-center justify-center border-l border-slate-800 ml-0.5 pl-1.5 ${
+                isSunMode
+                  ? 'bg-yellow-400 text-black font-bold shadow-yellow-500/30'
+                  : 'text-yellow-400/90 hover:text-yellow-300 hover:bg-slate-800'
+              }`}
+              title={isSunMode ? '아웃도어 초고대비 모드 끄기' : '아웃도어 초고대비 모드 켜기 (한낮 직사광선용)'}
+              aria-label="고대비 모드"
+            >
+              <Sun size={15} className={isSunMode ? 'text-black' : 'text-yellow-400'} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1163,14 +1179,8 @@ export function App() {
             favoriteSpotIds={favoriteSpotIds}
             onToggleFavorite={handleToggleFavorite}
             isSunMode={isSunMode}
-            onToggleSunMode={() => {
-              const next = !isSunMode;
-              setIsSunMode(next);
-              localStorage.setItem('exfish_sun_mode', String(next));
-              if (typeof document !== 'undefined') {
-                document.body.classList.toggle('sun-mode-active', next);
-              }
-            }}
+            mapMode={mapMode}
+            onChangeMapMode={handleMapModeChange}
           />
         </div>
 
@@ -1241,31 +1251,6 @@ export function App() {
               }}
               onMinimize={() => setIsMobileDrawerOpen(false)}
             />
-          </div>
-        )}
-
-        {/* 플로팅 포인트 등록 버튼 */}
-        {!isMobileDrawerOpen && (
-          <div className="fixed bottom-4 md:bottom-6 right-4 md:right-6 z-30 block">
-            <button
-              onClick={() => {
-                if (searchQuery.trim()) {
-                  setSearchQuery('');
-                  setShowPoiDropdown(false);
-                  setPoiResults([]);
-                }
-                setEditingSpot(null);
-                setNewSpotLat(37.2541);
-                setNewSpotLng(126.4982);
-                setIsSpotModalOpen(true);
-              }}
-              className="w-11 h-11 md:w-auto md:h-auto p-0 md:px-4 md:py-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold shadow-2xl flex items-center justify-center md:gap-1.5 border border-cyan-400/50 active:scale-95 transition"
-              title="새 낚시 포인트 등록"
-              aria-label="새 낚시 포인트 등록"
-            >
-              <Plus size={20} className="shrink-0" />
-              <span className="hidden md:inline text-sm">포인트 등록</span>
-            </button>
           </div>
         )}
       </main>

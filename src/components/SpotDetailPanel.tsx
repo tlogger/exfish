@@ -405,226 +405,228 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
   return (
     <div className="spot-detail-panel flex flex-col h-full bg-slate-900 border-l border-slate-800 text-white overflow-hidden shadow-2xl">
-      {/* 1. 상단 일체형 히어로: 사진 위에 텍스트/어종/날씨/기온/수온을 superimpose하여 세로 스크롤 최소화 (요구사항 1, 7, 8) */}
-      <div className="relative shrink-0 bg-slate-950 overflow-hidden border-b border-slate-800">
-        <div className="relative w-full h-36 sm:h-44 overflow-hidden">
-          {/* 배경 사진 또는 은은한 해양 풍경 그라데이션 */}
-          {spot.photo_urls && spot.photo_urls.length > 0 ? (
-            <img
-              src={spot.photo_urls[activePhotoIndex] || spot.photo_urls[0]}
-              alt={spot.name}
-              className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
-            />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950 flex items-center justify-center">
-              <span className="text-4xl opacity-20">🌊</span>
-            </div>
-          )}
+      {/* 1. 상단 일체형 히어로: 사진 유무에 따라 동적 높이 최적화 (사진 없을 시 컴팩트 헤더로 세로 공간 확보) */}
+      {(() => {
+        const hasPhotos = Boolean(spot.photo_urls && spot.photo_urls.length > 0);
+        const warnings: string[] = [];
+        if (weather && weather.windSpeed >= 8) {
+          warnings.push(`순간 강풍 주의 (${weather.windSpeed}m/s)`);
+        }
+        if (marine && marine.waveHeight >= 1.5) {
+          warnings.push(`높은 파고/너울 주의 (${marine.waveHeight}m)`);
+        }
+        const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
+        if (isHazardTerrain && tide?.highTides && tide.highTides.length > 0) {
+          const nowMinutes = now.getHours() * 60 + now.getMinutes();
+          for (const ht of tide.highTides) {
+            const [h, m] = ht.time.split(':').map(Number);
+            const htMinutes = h * 60 + m;
+            const diff = htMinutes - nowMinutes;
+            if (diff > 0 && diff <= 120) {
+              warnings.push(`만조(${ht.time}) ${diff}분 전! 퇴로 확보 필수`);
+              break;
+            }
+          }
+        }
 
-          {/* 비네팅 & 딤 오버레이 (사진 위 글씨 가독성 확보) */}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/45 to-slate-950/75" />
-
-          {/* Superimpose 콘텐츠 레이어 */}
-          <div className="absolute inset-0 p-3 sm:p-3.5 flex flex-col justify-between z-10">
-            {/* 상단 행: 타입 뱃지 + 작성자 + 사진 인디케이터 + 액션 버튼 그룹 */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-600/90 text-white shadow-sm backdrop-blur-sm">
-                  {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'SEAWALL' ? '석축' : spot.spot_type === 'BREAKWATER' ? '방파제' : spot.spot_type === 'BEACH' ? '해변/백사장' : '선착장'}
-                </span>
-                <span className="text-[10px] text-slate-300 drop-shadow">작성: {spot.author_name}</span>
-                {isAdmin && (
-                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/50 font-bold ml-1">
-                    👑 ADMIN
-                  </span>
-                )}
-                {spot.photo_urls && spot.photo_urls.length > 1 && (
-                  <div className="flex gap-1 ml-1 bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded-full border border-white/10">
-                    {spot.photo_urls.map((_, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setActivePhotoIndex(idx)}
-                        className={`w-1.5 h-1.5 rounded-full transition-all ${
-                          idx === activePhotoIndex ? 'bg-cyan-400 w-3' : 'bg-white/40'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* 액션 버튼 그룹 */}
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={async () => {
-                    const spotTypeLabel = spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'SEAWALL' ? '석축' : spot.spot_type === 'BREAKWATER' ? '방파제' : spot.spot_type === 'BEACH' ? '해변' : '선착장';
-                    const spotSummary = `[ExFish 포인트] ${spot.name} (${spotTypeLabel}${spot.navi_name ? ` · ${spot.navi_name}` : ''})`;
-                    const biteText = `🎣 입질 지수: ${biteScore?.totalScore ?? 0}점${biteScore?.verdict ? ` (${biteScore.verdict})` : ''}`;
-                    
-                    const weatherParts: string[] = [];
-                    if (weather?.weatherText) weatherParts.push(weather.weatherText);
-                    if (weather?.temp != null) weatherParts.push(`기온 ${weather.temp.toFixed(1)}℃`);
-                    if (weather?.windSpeed != null) weatherParts.push(`풍속 ${formatWindSpeed(weather.windSpeed, windUnit)}`);
-                    if (marine?.waveHeight != null) weatherParts.push(`파고 ${marine.waveHeight.toFixed(1)}m`);
-                    if (marine?.seaSurfaceTemp != null) weatherParts.push(`수온 ${marine.seaSurfaceTemp.toFixed(1)}℃`);
-                    const weatherText = weatherParts.length > 0 ? `🌤️ 날씨: ${weatherParts.join(' · ')}` : '';
-
-                    const shareTitle = `ExFish - ${spot.name}`;
-                    // 실제 배포 도메인 주소 보장 (localhost 방지)
-                    const shareUrl = `https://tlogger.github.io/exfish/?spot=${encodeURIComponent(spot.id)}`;
-                    const shareText = `${spotSummary}\n${biteText}${weatherText ? `\n${weatherText}` : ''}\n🔗 바로가기: ${shareUrl}`;
-
-                    // 모바일 네이티브 앱 환경: 다른 앱(카카오톡, 메시지 등)으로 공유 다이얼로그 호출
-                    if (Capacitor.isNativePlatform()) {
-                      try {
-                        await Share.share({
-                          title: shareTitle,
-                          text: shareText,
-                          url: shareUrl,
-                          dialogTitle: `${spot.name} 포인트 공유하기`,
-                        });
-                        return;
-                      } catch (e: any) {
-                        if (e?.message?.includes('canceled') || e?.message?.includes('dismissed')) return;
-                      }
-                    }
-
-                    // 웹 브라우저 환경: 포인트 링크 클립보드 복사
-                    try {
-                      if (navigator.clipboard) {
-                        await navigator.clipboard.writeText(shareText);
-                        alert(`포인트 요약 및 링크가 클립보드에 복사되었습니다.\n\n${shareText}`);
-                      } else {
-                        const ta = document.createElement('textarea');
-                        ta.value = shareText;
-                        document.body.appendChild(ta);
-                        ta.select();
-                        document.execCommand('copy');
-                        document.body.removeChild(ta);
-                        alert(`포인트 요약 및 링크가 클립보드에 복사되었습니다.\n\n${shareText}`);
-                      }
-                    } catch {
-                      alert(`포인트 정보:\n${shareText}`);
-                    }
-                  }}
-                  className="p-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-slate-200 hover:text-cyan-400 border border-white/10 transition"
-                  title="공유"
-                >
-                  <Share2 size={13} />
-                </button>
-                {canManageSpot && (
-                  <>
-                    <button
-                      onClick={() => onEditSpot(spot)}
-                      className={`p-1.5 rounded-lg backdrop-blur-sm transition border ${
-                        isAdmin
-                          ? 'bg-amber-950/70 border-amber-500/50 text-amber-300 hover:text-white'
-                          : 'bg-black/60 border-white/10 text-slate-200 hover:text-cyan-400'
-                      }`}
-                      title={isAdmin ? '포인트 수정 (관리자 전권)' : '포인트 수정'}
-                    >
-                      <Edit size={13} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`'${spot.name}' 포인트를 정말 삭제하시겠습니까?`)) {
-                          onDeleteSpot(spot.id);
-                        }
-                      }}
-                      className={`p-1.5 rounded-lg backdrop-blur-sm transition border ${
-                        isAdmin
-                          ? 'bg-rose-950/70 border-rose-500/50 text-rose-300 hover:text-white'
-                          : 'bg-black/60 border-white/10 text-slate-200 hover:text-rose-400'
-                      }`}
-                      title={isAdmin ? '포인트 삭제 (관리자 전권)' : '포인트 삭제'}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </>
-                )}
-                {/* 모바일 앱/웹 창 아래로 내리기 ('V' ChevronDown 버튼으로 교체) */}
-                <button
-                  onClick={onMinimize || onClose}
-                  className="p-1.5 rounded-lg bg-cyan-600/80 hover:bg-cyan-500 backdrop-blur-sm text-white border border-cyan-400/30 transition md:hidden flex items-center justify-center shadow"
-                  title="상세보기 접기 (아래로 내리기)"
-                >
-                  <ChevronDown size={16} />
-                </button>
-              </div>
-            </div>
-
-            {/* 하단 행: 포인트 이름 + 실시간 최고 타깃 + 날씨/기온/수온 */}
-            <div className="space-y-1">
-              <h1 className="text-base sm:text-lg font-black text-white truncate drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
-                {spot.name}
-              </h1>
-
-              {/* [요구사항 1] 실시간 최고 타깃만 유지 (상단 지저분함 제거) */}
-              {biteScore?.topSpecies && (
-                <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-cyan-950/90 to-blue-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/40 text-[11px] shadow">
-                  <span className="text-cyan-400 font-black shrink-0">✨ 실시간 최고 타깃:</span>
-                  <button
-                    type="button"
-                    onClick={() => biteScore.topSpecies && setQuickModalSpecies(biteScore.topSpecies.speciesName)}
-                    className="font-bold text-white underline decoration-cyan-400 underline-offset-2 hover:text-cyan-200"
-                  >
-                    {biteScore.topSpecies.speciesName} ({biteScore.topSpecies.score}점)
-                  </button>
-                  <span className="text-slate-400 text-[10px] hidden xs:inline">· {biteScore.topSpecies.activityMatch}</span>
-                </div>
+        return (
+          <div className="relative shrink-0 bg-slate-950 overflow-hidden border-b border-slate-800">
+            <div className={hasPhotos ? 'relative w-full h-36 sm:h-44 overflow-hidden' : 'relative w-full bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/40'}>
+              {hasPhotos && (
+                <>
+                  <img
+                    src={spot.photo_urls![activePhotoIndex] || spot.photo_urls![0]}
+                    alt={spot.name}
+                    className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                  />
+                  {/* 비네팅 & 딤 오버레이 (사진 위 글씨 가독성 확보) */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/45 to-slate-950/75" />
+                </>
               )}
 
-              {/* [요구사항 7] 날씨, 기온, 수온 배치 */}
-              <div className="inline-flex items-center gap-2 bg-black/75 backdrop-blur-md px-2.5 py-0.5 rounded-lg border border-white/15 text-[11px] font-mono shadow-md">
-                <span className="text-white font-sans font-bold">{simWeatherText}</span>
-                <span className="text-slate-500">·</span>
-                <span className="text-amber-300 font-bold">기온 {simTemp.toFixed(1)}°C</span>
-                <span className="text-slate-500">·</span>
-                <span className="text-cyan-300 font-bold">수온 {simWaterTemp > 0 ? `${simWaterTemp.toFixed(1)}°C` : '--'}</span>
+              {/* Superimpose / 컴팩트 콘텐츠 레이어 */}
+              <div className={hasPhotos ? 'absolute inset-0 p-3 sm:p-3.5 flex flex-col justify-between z-10' : 'relative px-3 py-2 flex flex-col gap-1 z-10'}>
+                {/* 상단 행: 타입 뱃지 + 작성자 + 사진 인디케이터 + 액션 버튼 그룹 */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-600/90 text-white shadow-sm backdrop-blur-sm">
+                      {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'SEAWALL' ? '석축' : spot.spot_type === 'BREAKWATER' ? '방파제' : spot.spot_type === 'BEACH' ? '해변/백사장' : '선착장'}
+                    </span>
+                    <span className="text-[10px] text-slate-300 drop-shadow">작성: {spot.author_name}</span>
+                    {isAdmin && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/50 font-bold ml-1">
+                        👑 ADMIN
+                      </span>
+                    )}
+                    {hasPhotos && spot.photo_urls!.length > 1 && (
+                      <div className="flex gap-1 ml-1 bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded-full border border-white/10">
+                        {spot.photo_urls!.map((_, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setActivePhotoIndex(idx)}
+                            className={`w-1.5 h-1.5 rounded-full transition-all ${
+                              idx === activePhotoIndex ? 'bg-cyan-400 w-3' : 'bg-white/40'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 액션 버튼 그룹 */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={async () => {
+                        const spotTypeLabel = spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'SEAWALL' ? '석축' : spot.spot_type === 'BREAKWATER' ? '방파제' : spot.spot_type === 'BEACH' ? '해변' : '선착장';
+                        const spotSummary = `[ExFish 포인트] ${spot.name} (${spotTypeLabel}${spot.navi_name ? ` · ${spot.navi_name}` : ''})`;
+                        const biteText = `🎣 입질 지수: ${biteScore?.totalScore ?? 0}점${biteScore?.verdict ? ` (${biteScore.verdict})` : ''}`;
+                        
+                        const weatherParts: string[] = [];
+                        if (weather?.weatherText) weatherParts.push(weather.weatherText);
+                        if (weather?.temp != null) weatherParts.push(`기온 ${weather.temp.toFixed(1)}℃`);
+                        if (weather?.windSpeed != null) weatherParts.push(`풍속 ${formatWindSpeed(weather.windSpeed, windUnit)}`);
+                        if (marine?.waveHeight != null) weatherParts.push(`파고 ${marine.waveHeight.toFixed(1)}m`);
+                        if (marine?.seaSurfaceTemp != null) weatherParts.push(`수온 ${marine.seaSurfaceTemp.toFixed(1)}℃`);
+                        const weatherText = weatherParts.length > 0 ? `🌤️ 날씨: ${weatherParts.join(' · ')}` : '';
+
+                        const shareTitle = `ExFish - ${spot.name}`;
+                        // 실제 배포 도메인 주소 보장 (localhost 방지)
+                        const shareUrl = `https://exfish.vercel.app/?spot=${encodeURIComponent(spot.id)}`;
+                        const shareText = `${spotSummary}\n${biteText}${weatherText ? `\n${weatherText}` : ''}\n🔗 바로가기: ${shareUrl}`;
+
+                        // 모바일 네이티브 앱 환경: 다른 앱(카카오톡, 메시지 등)으로 공유 다이얼로그 호출
+                        if (Capacitor.isNativePlatform()) {
+                          try {
+                            await Share.share({
+                              title: shareTitle,
+                              text: shareText,
+                              url: shareUrl,
+                              dialogTitle: `${spot.name} 포인트 공유하기`,
+                            });
+                            return;
+                          } catch (e: any) {
+                            if (e?.message?.includes('canceled') || e?.message?.includes('dismissed')) return;
+                          }
+                        }
+
+                        // 웹 브라우저 환경: 포인트 링크 클립보드 복사
+                        try {
+                          if (navigator.clipboard) {
+                            await navigator.clipboard.writeText(shareText);
+                            alert(`포인트 요약 및 링크가 클립보드에 복사되었습니다.\n\n${shareText}`);
+                          } else {
+                            const ta = document.createElement('textarea');
+                            ta.value = shareText;
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(ta);
+                            alert(`포인트 요약 및 링크가 클립보드에 복사되었습니다.\n\n${shareText}`);
+                          }
+                        } catch {
+                          alert(`포인트 정보:\n${shareText}`);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-slate-200 hover:text-cyan-400 border border-white/10 transition"
+                      title="공유"
+                    >
+                      <Share2 size={13} />
+                    </button>
+                    {canManageSpot && (
+                      <>
+                        <button
+                          onClick={() => onEditSpot(spot)}
+                          className={`p-1.5 rounded-lg backdrop-blur-sm transition border ${
+                            isAdmin
+                              ? 'bg-amber-950/70 border-amber-500/50 text-amber-300 hover:text-white'
+                              : 'bg-black/60 border-white/10 text-slate-200 hover:text-cyan-400'
+                          }`}
+                          title={isAdmin ? '포인트 수정 (관리자 전권)' : '포인트 수정'}
+                        >
+                          <Edit size={13} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`'${spot.name}' 포인트를 정말 삭제하시겠습니까?`)) {
+                              onDeleteSpot(spot.id);
+                            }
+                          }}
+                          className={`p-1.5 rounded-lg backdrop-blur-sm transition border ${
+                            isAdmin
+                              ? 'bg-rose-950/70 border-rose-500/50 text-rose-300 hover:text-white'
+                              : 'bg-black/60 border-white/10 text-slate-200 hover:text-rose-400'
+                          }`}
+                          title={isAdmin ? '포인트 삭제 (관리자 전권)' : '포인트 삭제'}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    )}
+                    {/* 모바일 앱/웹 창 아래로 내리기 ('V' ChevronDown 버튼으로 교체) */}
+                    <button
+                      onClick={onMinimize || onClose}
+                      className="p-1.5 rounded-lg bg-cyan-600/80 hover:bg-cyan-500 backdrop-blur-sm text-white border border-cyan-400/30 transition md:hidden flex items-center justify-center shadow"
+                      title="상세보기 접기 (아래로 내리기)"
+                    >
+                      <ChevronDown size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 하단 행: 포인트 이름 + 실시간 최고 타깃 + 날씨/기온/수온 */}
+                <div className={hasPhotos ? 'space-y-1' : 'space-y-1'}>
+                  <h1 className="text-base sm:text-lg font-black text-white truncate drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+                    {spot.name}
+                  </h1>
+
+                  <div className={hasPhotos ? 'space-y-1' : 'flex flex-wrap items-center gap-1.5'}>
+                    {/* 실시간 최고 타깃 */}
+                    {biteScore?.topSpecies && (
+                      <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-cyan-950/90 to-blue-950/80 px-2 py-0.5 rounded-lg border border-cyan-500/40 text-[11px] shadow">
+                        <span className="text-cyan-400 font-black shrink-0">✨ 최고 타깃:</span>
+                        <button
+                          type="button"
+                          onClick={() => biteScore.topSpecies && setQuickModalSpecies(biteScore.topSpecies.speciesName)}
+                          className="font-bold text-white underline decoration-cyan-400 underline-offset-2 hover:text-cyan-200"
+                        >
+                          {biteScore.topSpecies.speciesName} ({biteScore.topSpecies.score}점)
+                        </button>
+                        {hasPhotos && (
+                          <span className="text-slate-400 text-[10px] hidden xs:inline">· {biteScore.topSpecies.activityMatch}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 날씨, 기온, 수온 배치 */}
+                    <div className="inline-flex items-center gap-2 bg-black/75 backdrop-blur-md px-2 py-0.5 rounded-lg border border-white/15 text-[11px] font-mono shadow-md">
+                      <span className="text-white font-sans font-bold">{simWeatherText}</span>
+                      <span className="text-slate-500">·</span>
+                      <span className="text-amber-300 font-bold">기온 {simTemp.toFixed(1)}°C</span>
+                      <span className="text-slate-500">·</span>
+                      <span className="text-cyan-300 font-bold">수온 {simWaterTemp > 0 ? `${simWaterTemp.toFixed(1)}°C` : '--'}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* 2행: 안전 경보 & 고립 주의 배너 오버레이 (빨간색 느낌표 아이콘 적용) */}
-        <div className="p-3 space-y-2">
-          {(() => {
-            const warnings: string[] = [];
-            if (weather && weather.windSpeed >= 8) {
-              warnings.push(`순간 강풍 주의 (${weather.windSpeed}m/s)`);
-            }
-            if (marine && marine.waveHeight >= 1.5) {
-              warnings.push(`높은 파고/너울 주의 (${marine.waveHeight}m)`);
-            }
-            const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
-            if (isHazardTerrain && tide?.highTides && tide.highTides.length > 0) {
-              const nowMinutes = now.getHours() * 60 + now.getMinutes();
-              for (const ht of tide.highTides) {
-                const [h, m] = ht.time.split(':').map(Number);
-                const htMinutes = h * 60 + m;
-                const diff = htMinutes - nowMinutes;
-                if (diff > 0 && diff <= 120) {
-                  warnings.push(`만조(${ht.time}) ${diff}분 전! 퇴로 확보 필수`);
-                  break;
-                }
-              }
-            }
-            if (warnings.length === 0) return null;
-
-            return (
-              <div className="p-2.5 rounded-xl bg-rose-950/90 backdrop-blur-md border border-rose-500/70 text-rose-100 text-xs flex items-center gap-2 shadow-lg animate-pulse">
-                <div className="w-5 h-5 rounded-full bg-red-600 border border-white/90 shadow-md shadow-red-900/60 flex items-center justify-center text-white font-black text-xs shrink-0">
-                  !
+            {/* 2행: 안전 경보 & 고립 주의 배너 (경보가 있을 때만 영역 차지) */}
+            {warnings.length > 0 && (
+              <div className="px-3 py-2">
+                <div className="p-2.5 rounded-xl bg-rose-950/90 backdrop-blur-md border border-rose-500/70 text-rose-100 text-xs flex items-center gap-2 shadow-lg animate-pulse">
+                  <div className="w-5 h-5 rounded-full bg-red-600 border border-white/90 shadow-md shadow-red-900/60 flex items-center justify-center text-white font-black text-xs shrink-0">
+                    !
+                  </div>
+                  <span className="font-extrabold text-rose-300 shrink-0 text-xs">안전주의:</span>
+                  <span className="text-xs text-rose-100 font-medium truncate">
+                    {warnings.join(' · ')}
+                  </span>
                 </div>
-                <span className="font-extrabold text-rose-300 shrink-0 text-xs">안전주의:</span>
-                <span className="text-xs text-rose-100 font-medium truncate">
-                  {warnings.join(' · ')}
-                </span>
               </div>
-            );
-          })()}
-        </div>
-      </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 3. 아이콘 전용 탭 바 (텍스트 라벨 완전 제거로 높이 최소화) */}
       <div className="flex border-b border-slate-800 bg-slate-900/95 shrink-0 px-2 py-1 gap-1.5">
@@ -1280,15 +1282,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       </div>
                       <button
                         onClick={() => setIsPlaying(!isPlaying)}
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition shadow ${
+                        className={`flex items-center justify-center p-1.5 rounded-lg transition shadow ${
                           isPlaying
                             ? 'bg-amber-600 hover:bg-amber-500 text-white'
                             : 'bg-cyan-600 hover:bg-cyan-500 text-white'
                         }`}
                         title={isPlaying ? '시뮬레이션 일시정지' : '미래 예측 자동 재생'}
+                        aria-label={isPlaying ? '일시정지' : '재생'}
                       >
                         {isPlaying ? <Pause size={12} /> : <Play size={12} />}
-                        <span>{isPlaying ? '일시정지' : '재생'}</span>
                       </button>
                     </div>
 
@@ -1556,7 +1558,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           {nearestStationInfo.station.name} 관측소
                         </div>
                         <div className="text-[9.5px] text-slate-400">
-                          거리 {nearestStationInfo.distanceKm}km · 성과값 {nearestStationInfo.station.datumZ0}m
+                          거리 {nearestStationInfo.distanceKm}km · 기준 수심 {nearestStationInfo.station.datumZ0}m
                         </div>
                       </div>
                     </div>
@@ -2650,72 +2652,41 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         );
       })()}
 
-          {/* 유튜브 실시간 현장 조황 & 낚시 영상 링크 (최신순 검색, 잔잔한 외곽선) */}
-            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                  <span className="w-4 h-4 rounded bg-rose-600 flex items-center justify-center text-white text-[10px] font-black">
-                    ▶
+          {/* 유튜브 검색 링크 (포인트명 + 낚시 + 포인트 어종 + 관심어종 통합 검색) */}
+          {(() => {
+            const youtubeKeywords = Array.from(
+              new Set(
+                [spot.name, '낚시', ...(spot.target_species || []), ...(favoriteSpecies || [])]
+                  .map((kw) => kw?.trim())
+                  .filter((kw): kw is string => Boolean(kw))
+              )
+            ).join(' ');
+            const youtubeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(youtubeKeywords)}`;
+
+            return (
+              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded bg-rose-600 flex items-center justify-center text-white text-[10px] font-black">
+                      ▶
+                    </span>
+                    <span>유튜브 검색 링크</span>
                   </span>
-                  <span>유튜브 최근 현장 조황 & 공략 영상</span>
-                </span>
-                <span className="text-[10px] text-slate-400 font-medium">최신 업로드순</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {/* 1. 포인트 전체 최신 조황 */}
+                </div>
                 <a
-                  href={`https://www.youtube.com/results?search_query=${encodeURIComponent(spot.name + ' 낚시')}&sp=CAI%253D`}
+                  href={youtubeSearchUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 transition flex items-center justify-between group"
                 >
-                  <div className="truncate pr-2">
-                    <div className="text-xs font-bold text-white group-hover:text-rose-300 truncate">
-                      📺 {spot.name} 낚시
-                    </div>
-                    <div className="text-[10px] text-slate-400">최근 조황 영상 보기</div>
+                  <div className="truncate pr-2 text-xs font-bold text-white group-hover:text-rose-300">
+                    📺 {youtubeKeywords}
                   </div>
                   <ExternalLink size={13} className="text-slate-400 group-hover:text-rose-300 shrink-0" />
                 </a>
-
-                {/* 2. 네비 명칭이 다를 경우 네비 지명 조황 */}
-                {spot.navi_name && spot.navi_name !== spot.name && (
-                  <a
-                    href={`https://www.youtube.com/results?search_query=${encodeURIComponent(spot.navi_name + ' 낚시')}&sp=CAI%253D`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 transition flex items-center justify-between group"
-                  >
-                    <div className="truncate pr-2">
-                      <div className="text-xs font-bold text-white group-hover:text-rose-300 truncate">
-                        📺 {spot.navi_name} 낚시
-                      </div>
-                      <div className="text-[10px] text-slate-400">주변 지명 탐색</div>
-                    </div>
-                    <ExternalLink size={13} className="text-slate-400 group-hover:text-rose-400 shrink-0" />
-                  </a>
-                )}
-
-                {/* 3. 대상 어종별 맞춤 최신 조황 */}
-                {spot.target_species.slice(0, 4).map((sp, idx) => (
-                  <a
-                    key={idx}
-                    href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${spot.name} ${sp} 낚시`)}&sp=CAI%253D`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 transition flex items-center justify-between group"
-                  >
-                    <div className="truncate pr-2">
-                      <div className="text-xs font-bold text-white group-hover:text-cyan-300 truncate">
-                        🐟 {spot.name} {sp}
-                      </div>
-                      <div className="text-[10px] text-slate-400">{sp} 실시간 공략 영상</div>
-                    </div>
-                    <ExternalLink size={13} className="text-slate-400 group-hover:text-cyan-400 shrink-0" />
-                  </a>
-                ))}
               </div>
-            </div>
+            );
+          })()}
 
             {/* 기타 안내 및 체크리스트 & 모바일 APK 다운로드 링크 */}
             <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
@@ -2749,19 +2720,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   href="./exfish.apk"
                   download="exfish.apk"
                   className="w-full p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-between shadow-md group cursor-pointer"
-                  title="최신 ExFish Android APK 다운로드"
+                  title="APK 다운로드"
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-base">📱</span>
-                    <div>
-                      <div className="text-white font-bold group-hover:text-cyan-300 flex items-center gap-1.5">
-                        <span>ExFish 모바일 앱 다운로드</span>
-                        <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">.apk</span>
-                      </div>
-                      <div className="text-[10.5px] text-slate-400 font-normal">
-                        Android 스마트폰 전용 설치 파일 (tlogger.github.io)
-                      </div>
-                    </div>
+                    <span className="text-white font-bold group-hover:text-cyan-300">APK 다운로드</span>
                   </div>
                   <Download size={16} className="text-slate-400 group-hover:text-cyan-300 group-hover:translate-y-0.5 transition shrink-0" />
                 </a>
