@@ -1,0 +1,5 @@
+android
+google_play_assets
+public/*.aab
+*.aab
+.gemini
