@@ -112,15 +112,24 @@ export async function fetchKhoaSwtcWeekly(
           });
           json = typeof capRes.data === 'string' ? JSON.parse(capRes.data) : capRes.data;
         } else {
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-              'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
-            },
-            body: body.toString(),
+          // Vercel 배포/웹 환경에서는 GET /api/swtc-proxy를 경유해 Vercel Edge CDN(s-maxage=6h) 공유 캐시 활용
+          const proxyUrl = `/api/swtc-proxy?obsPostId=${encodeURIComponent(obsCode)}&stDate=${encodeURIComponent(dateStr)}`;
+          let res = await fetch(proxyUrl, {
+            method: 'GET',
             signal: AbortSignal.timeout(9000),
           });
+
+          if (!res.ok) {
+            res = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+              },
+              body: body.toString(),
+              signal: AbortSignal.timeout(9000),
+            });
+          }
 
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           json = await res.json();

@@ -130,10 +130,12 @@ export const SpotFormModal: React.FC<SpotFormModalProps> = ({
       // 1. 스트림 소실 방지를 위해 EXIF GPS 분석을 가장 먼저 수행
       const res = await extractExifFromImage(file);
 
-      // 2. 브라우저 및 클라우드 DB 영구 보전용 압축 Base64 Data URL 생성
+      // 2. 고화질 압축 후 Supabase Storage(exfish-photos) 업로드 (오프라인/실패 시 Base64 폴백)
       const dataUrl = await compressImageFile(file);
       if (dataUrl) {
-        setPhotoUrls((prev) => [...prev, dataUrl]);
+        const { uploadPhotoToStorage } = await import('../utils/cloudDb');
+        const uploadedUrl = await uploadPhotoToStorage(dataUrl, 'fishing_spots');
+        setPhotoUrls((prev) => [...prev, uploadedUrl]);
       }
 
       if (res.lat != null && res.lng != null && !isNaN(res.lat) && !isNaN(res.lng)) {

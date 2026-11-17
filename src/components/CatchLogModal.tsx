@@ -2,7 +2,7 @@ import React from 'react';
 import { ArrowUp, Clock, Compass, RefreshCw, ShieldAlert } from 'lucide-react';
 import type { CatchLog, CurrentUnit, FishingMethod, TideDayInfo, WeatherData, WindUnit } from '../types';
 import { syncCatchEnvironment } from '../utils/catchSync';
-import { formatCurrentVelocity } from '../utils/weatherApi';
+import { formatCurrentVelocity, formatWindSpeed } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import { compressImageFile } from '../utils/exifExtractor';
@@ -249,10 +249,12 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       // 1. 스트림 소실 방지를 위해 EXIF GPS/일시 분석을 가장 먼저 수행
       const res = await extractExifFromImage(file);
 
-      // 2. 영구 보전 가능한 고화질 압축 Base64 데이터 생성 (blob: URL 소실 원천 방지)
+      // 2. 고화질 압축 후 Supabase Storage(exfish-photos) 업로드 (오프라인/실패 시 Base64 폴백)
       const dataUrl = await compressImageFile(file);
       if (dataUrl) {
-        setPhotoUrl(dataUrl);
+        const { uploadPhotoToStorage } = await import('../utils/cloudDb');
+        const uploadedUrl = await uploadPhotoToStorage(dataUrl, 'catch_logs');
+        setPhotoUrl(uploadedUrl);
       }
 
       const notices: string[] = [];
@@ -763,11 +765,13 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               </div>
               <div>
                 <label className="text-slate-400 block mb-0.5">
-                  당시 풍속 ({windUnit === 'knot' ? 'knot' : windUnit === 'kmh' ? 'km/h' : 'm/s'})
+                  당시 풍속 (m/s 입력 · {formatWindSpeed(windSpeed, windUnit)})
                 </label>
                 <input
                   type="number"
                   step="0.1"
+                  min="0"
+                  max="40"
                   value={windSpeed}
                   onChange={(e) => setWindSpeed(parseFloat(e.target.value) || 0)}
                   className="w-full bg-slate-850 border border-slate-700 rounded p-1.5 text-white"
@@ -775,12 +779,14 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               </div>
               <div className="col-span-2">
                 <label className="text-slate-400 block mb-0.5">
-                  당시 조류 속도 ({currentUnit === 'knot' ? 'knot' : currentUnit === 'cms' ? 'cm/s' : 'm/s'})
+                  당시 조류 속도 (m/s 기준 입력 · 표시단위 변환값 확인)
                 </label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
                     step="0.05"
+                    min="0"
+                    max="4"
                     value={simCurrentVel}
                     onChange={(e) => setSimCurrentVel(parseFloat(e.target.value) || 0)}
                     className="w-full bg-slate-850 border border-slate-700 rounded p-1.5 text-white"

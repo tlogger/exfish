@@ -195,7 +195,11 @@ export function loadLogsFromStorage(): CatchLog[] {
 
 export function saveLogsToStorage(logs: CatchLog[]) {
   try {
-    localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(logs));
+    // Base64 data: URL은 localStorage 5MB 용량 초과 및 전체 캐시 삭제(evictNonEssentialCachesFromStorage)를 유발하므로 제외
+    const sanitized = logs.map((l) =>
+      l.photo_url && l.photo_url.startsWith('data:') ? { ...l, photo_url: undefined } : l
+    );
+    localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(sanitized));
   } catch (e) {
     console.error('Failed to save logs to localStorage', e);
   }

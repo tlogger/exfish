@@ -1,10 +1,12 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import type { CatchLog, FishingSpot, SpotMemo } from '../types';
+import { Capacitor } from '@capacitor/core';
+import type { CatchLog, FishingSpot, FishingShop, SpotMemo, ShopMemo } from '../types';
 import { INITIAL_CATCH_LOGS, INITIAL_SPOTS } from './storage';
 
 const STORAGE_KEY_URL = 'espfish_supabase_url';
 const STORAGE_KEY_ANON = 'espfish_supabase_anon_key';
 const STORAGE_KEY_MEMOS = 'espfish_spot_memos';
+const STORAGE_KEY_SHOP_MEMOS = 'espfish_shop_memos';
 
 // 사용자가 생성한 Supabase Project URL 및 Publishable Key 기본값 (tlogger's Project)
 export const DEFAULT_SUPABASE_URL = 'https://johtqemdlprtbpohdkgu.supabase.co';
@@ -323,9 +325,135 @@ function fromDbLogRecord(record: any): CatchLog {
   };
 }
 
-/** Supabase로부터 포인트 목록 불러오기 (테이블이 비어있으면 기본 5대 포인트를 Supabase에 자동 시딩) */
-export async function fetchCloudSpots(): Promise<FishingSpot[]> {
+export interface DeltaSyncResult<T> {
+  rows: T[];
+  deletedIds: string[];
+  maxUpdatedAt: string | null;
+  isFullSync: boolean;
+}
+
+function isMissingColumnError(error: any): boolean {
+  const msg = String(error?.message || '');
+  return error?.code === '42703' || error?.code === 'PGRST204' || msg.includes('updated_at') || msg.includes('is_deleted');
+}
+
+function extractMaxTimestamp(records: any[]): string | null {
+  let maxIso: string | null = null;
+  let maxMs = 0;
+  for (const r of records) {
+    const candidate = r?.updated_at || r?.created_at;
+    if (!candidate) continue;
+    const ms = new Date(candidate).getTime();
+    if (!Number.isNaN(ms) && ms > maxMs) {
+      maxMs = ms;
+      maxIso = candidate;
+    }
+  }
+  return maxIso;
+}
+
+async function fetchMasterViaEdgeProxy(table: 'fishing_spots' | 'fishing_shops'): Promise<Record<string, any>[] | null> {
+  if (typeof fetch === 'undefined') return null;
+  const baseUrl = Capacitor.isNativePlatform() ? 'https://exfish.vercel.app' : '';
+  try {
+    const res = await fetch(`${baseUrl}/api/exfish-master?table=${table}`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return Array.isArray(json) ? json : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 압축된 Base64 Data URL 이미지를 Supabase Storage(exfish-photos)에 업로드하고 Public URL 반환 (실패 시 원본 dataUrl 폴백) */
+export async function uploadPhotoToStorage(
+  dataUrl: string,
+  folder: 'catch_logs' | 'fishing_spots',
+  idHint?: string
+): Promise<string> {
+  if (!dataUrl || !dataUrl.startsWith('data:image/')) return dataUrl;
+  try {
+    const match = /^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/.exec(dataUrl);
+    if (!match) return dataUrl;
+    const mime = match[1];
+    const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
+    const binary = atob(match[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: mime });
+    const safeHint = (idHint || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '');
+    const objectPath = `${folder}/${safeHint}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+    const client = getSupabase();
+    const { error } = await client.storage.from('exfish-photos').upload(objectPath, blob, {
+      contentType: mime,
+      upsert: true,
+    });
+    if (error) {
+      console.warn('[Storage] 사진 업로드 실패, Base64 폴백 사용:', error.message);
+      return dataUrl;
+    }
+    const { data } = client.storage.from('exfish-photos').getPublicUrl(objectPath);
+    return data?.publicUrl || dataUrl;
+  } catch (err) {
+    console.warn('[Storage] 사진 업로드 예외, Base64 폴백 사용:', err);
+    return dataUrl;
+  }
+}
+
+/** Supabase로부터 포인트 증분/전체 조회 (updated_at 컬럼 존재 시 변경분만 다운로드, 미적용 시 자동 전체 폴백) */
+export async function fetchCloudSpotsDelta(sinceIso?: string | null): Promise<DeltaSyncResult<FishingSpot>> {
   const client = getSupabase();
+
+  if (sinceIso) {
+    const { data, error } = await client
+      .from('fishing_spots')
+      .select('*')
+      .gt('updated_at', sinceIso)
+      .order('updated_at', { ascending: true });
+
+    if (!error) {
+      const records = data || [];
+      const activeRows: FishingSpot[] = [];
+      const deletedIds: string[] = [];
+      for (const r of records) {
+        if (r.is_deleted === true) {
+          deletedIds.push(r.id);
+        } else {
+          activeRows.push(fromDbSpotRecord(r));
+        }
+      }
+      return {
+        rows: activeRows,
+        deletedIds,
+        maxUpdatedAt: extractMaxTimestamp(records) || sinceIso,
+        isFullSync: false,
+      };
+    }
+
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+  }
+
+  // 초기 전체 동기화: Vercel Edge CDN 프록시 우선 조회로 인앱 브라우저/신규 방문 시 Supabase Egress 절감
+  const edgeRows = await fetchMasterViaEdgeProxy('fishing_spots');
+  if (edgeRows && edgeRows.length > 0) {
+    const activeRecords = edgeRows.filter((r: any) => r.is_deleted !== true);
+    return {
+      rows: activeRecords.map(fromDbSpotRecord),
+      deletedIds: [],
+      maxUpdatedAt: extractMaxTimestamp(edgeRows),
+      isFullSync: true,
+    };
+  }
+
+  // Edge 프록시 미응답 시 직접 조회 폴백
   const { data, error } = await client
     .from('fishing_spots')
     .select('*')
@@ -337,26 +465,65 @@ export async function fetchCloudSpots(): Promise<FishingSpot[]> {
   }
 
   if (!data || data.length === 0) {
-    // 최초 빈 테이블일 경우 기본 5대 포인트를 Supabase에 저장
     const seedRecords = INITIAL_SPOTS.map(toDbSpotRecord);
     const { error: seedErr } = await client.from('fishing_spots').upsert(seedRecords);
     if (seedErr) {
       console.error('Error seeding initial spots to Supabase:', seedErr);
-      return INITIAL_SPOTS;
+      return { rows: INITIAL_SPOTS, deletedIds: [], maxUpdatedAt: null, isFullSync: true };
     }
-    return INITIAL_SPOTS;
+    return { rows: INITIAL_SPOTS, deletedIds: [], maxUpdatedAt: null, isFullSync: true };
   }
 
-  return data.map(fromDbSpotRecord);
+  const activeRecords = data.filter((r: any) => r.is_deleted !== true);
+  return {
+    rows: activeRecords.map(fromDbSpotRecord),
+    deletedIds: [],
+    maxUpdatedAt: extractMaxTimestamp(data),
+    isFullSync: true,
+  };
 }
 
-/** Supabase로부터 조과 목록 불러오기 (테이블이 비어있으면 기본 조과를 Supabase에 자동 시딩) */
-export async function fetchCloudLogs(): Promise<CatchLog[]> {
+/** Supabase로부터 조과 증분/전체 조회 (updated_at 컬럼 존재 시 변경분만 다운로드, 최신 200건 상한) */
+export async function fetchCloudLogsDelta(sinceIso?: string | null): Promise<DeltaSyncResult<CatchLog>> {
   const client = getSupabase();
+
+  if (sinceIso) {
+    const { data, error } = await client
+      .from('catch_logs')
+      .select('*')
+      .gt('updated_at', sinceIso)
+      .order('updated_at', { ascending: true })
+      .limit(200);
+
+    if (!error) {
+      const records = data || [];
+      const activeRows: CatchLog[] = [];
+      const deletedIds: string[] = [];
+      for (const r of records) {
+        if (r.is_deleted === true) {
+          deletedIds.push(r.id);
+        } else {
+          activeRows.push(fromDbLogRecord(r));
+        }
+      }
+      return {
+        rows: activeRows,
+        deletedIds,
+        maxUpdatedAt: extractMaxTimestamp(records) || sinceIso,
+        isFullSync: false,
+      };
+    }
+
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+  }
+
   const { data, error } = await client
     .from('catch_logs')
     .select('*')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(200);
 
   if (error) {
     console.error('Error fetching Supabase logs:', error);
@@ -368,12 +535,30 @@ export async function fetchCloudLogs(): Promise<CatchLog[]> {
     const { error: seedErr } = await client.from('catch_logs').upsert(seedRecords);
     if (seedErr) {
       console.error('Error seeding initial logs to Supabase:', seedErr);
-      return INITIAL_CATCH_LOGS;
+      return { rows: INITIAL_CATCH_LOGS, deletedIds: [], maxUpdatedAt: null, isFullSync: true };
     }
-    return INITIAL_CATCH_LOGS;
+    return { rows: INITIAL_CATCH_LOGS, deletedIds: [], maxUpdatedAt: null, isFullSync: true };
   }
 
-  return data.map(fromDbLogRecord);
+  const activeRecords = data.filter((r: any) => r.is_deleted !== true);
+  return {
+    rows: activeRecords.map(fromDbLogRecord),
+    deletedIds: [],
+    maxUpdatedAt: extractMaxTimestamp(data),
+    isFullSync: true,
+  };
+}
+
+/** Supabase로부터 포인트 목록 불러오기 (테이블이 비어있으면 기본 5대 포인트를 Supabase에 자동 시딩) */
+export async function fetchCloudSpots(): Promise<FishingSpot[]> {
+  const res = await fetchCloudSpotsDelta(null);
+  return res.rows;
+}
+
+/** Supabase로부터 조과 목록 불러오기 (최신 200건 제한으로 대량 Egress 방지, 테이블이 비어있으면 기본 조과 시딩) */
+export async function fetchCloudLogs(): Promise<CatchLog[]> {
+  const res = await fetchCloudLogsDelta(null);
+  return res.rows;
 }
 
 /** 포인트 Supabase 직접 저장 (신규 등록 및 업데이트) */
@@ -387,9 +572,20 @@ export async function saveCloudSpot(spot: FishingSpot): Promise<boolean> {
   return true;
 }
 
-/** 포인트 Supabase 직접 삭제 */
+/** 포인트 Supabase 삭제 (Soft Delete 우선, is_deleted 미적용 시 Hard Delete 폴백) */
 export async function deleteCloudSpot(spotId: string): Promise<boolean> {
   const client = getSupabase();
+  const { error: softErr } = await client
+    .from('fishing_spots')
+    .update({ is_deleted: true })
+    .eq('id', spotId);
+
+  if (!softErr) return true;
+  if (!isMissingColumnError(softErr)) {
+    console.error('Failed to soft-delete spot from Supabase:', softErr);
+    throw softErr;
+  }
+
   const { error } = await client.from('fishing_spots').delete().eq('id', spotId);
   if (error) {
     console.error('Failed to delete spot from Supabase:', error);
@@ -409,9 +605,20 @@ export async function saveCloudCatchLog(log: CatchLog): Promise<boolean> {
   return true;
 }
 
-/** 조과 기록 Supabase 직접 삭제 */
+/** 조과 기록 Supabase 삭제 (Soft Delete 우선, is_deleted 미적용 시 Hard Delete 폴백) */
 export async function deleteCloudCatchLog(logId: string): Promise<boolean> {
   const client = getSupabase();
+  const { error: softErr } = await client
+    .from('catch_logs')
+    .update({ is_deleted: true })
+    .eq('id', logId);
+
+  if (!softErr) return true;
+  if (!isMissingColumnError(softErr)) {
+    console.error('Failed to soft-delete catch log from Supabase:', softErr);
+    throw softErr;
+  }
+
   const { error } = await client.from('catch_logs').delete().eq('id', logId);
   if (error) {
     console.error('Failed to delete catch log from Supabase:', error);
@@ -500,26 +707,52 @@ function saveLocalMemos(memos: SpotMemo[]): void {
   }
 }
 
-/** 특정 포인트의 현장 메모 목록 조회 */
-export async function fetchCloudMemos(spotId: string): Promise<SpotMemo[]> {
-  try {
-    const client = getSupabase();
-    const { data, error } = await client
-      .from('spot_memos')
-      .select('*')
-      .eq('spot_id', spotId)
-      .order('created_at', { ascending: false });
+const MEMO_CACHE_TTL_MS = 5 * 60 * 1000;
+const memoCache = new Map<string, { expiresAt: number; data: SpotMemo[] }>();
+const memoInFlight = new Map<string, Promise<SpotMemo[]>>();
 
-    if (!error && data && data.length > 0) {
-      return data;
-    }
-  } catch {
-    // Supabase 테이블이 아직 없거나 네트워크 오프라인 시 fallback
+/** 특정 포인트의 현장 메모 목록 조회 (5분 인메모리 TTL 캐시 및 동시 요청 병합 적용) */
+export async function fetchCloudMemos(spotId: string): Promise<SpotMemo[]> {
+  const now = Date.now();
+  const cached = memoCache.get(spotId);
+  if (cached && cached.expiresAt > now) {
+    return cached.data;
   }
 
-  // Local fallback
-  const allMemos = getLocalMemos();
-  return allMemos.filter((m) => m.spot_id === spotId);
+  const existingPromise = memoInFlight.get(spotId);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const request = (async (): Promise<SpotMemo[]> => {
+    try {
+      const client = getSupabase();
+      const { data, error } = await client
+        .from('spot_memos')
+        .select('*')
+        .eq('spot_id', spotId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (!error && data) {
+        memoCache.set(spotId, { expiresAt: Date.now() + MEMO_CACHE_TTL_MS, data });
+        if (data.length > 0) {
+          return data;
+        }
+      }
+    } catch {
+      // Supabase 테이블이 아직 없거나 네트워크 오프라인 시 fallback
+    }
+
+    // Local fallback
+    const allMemos = getLocalMemos();
+    return allMemos.filter((m) => m.spot_id === spotId);
+  })().finally(() => {
+    memoInFlight.delete(spotId);
+  });
+
+  memoInFlight.set(spotId, request);
+  return request;
 }
 
 /** 현장 메모 등록 */
@@ -537,10 +770,17 @@ export async function saveCloudMemo(memo: SpotMemo): Promise<boolean> {
       created_at: memo.created_at,
     });
     if (!error) {
-      // Local 캐시도 동기화
+      // Local 및 인메모리 캐시 즉시 동기화
       const local = getLocalMemos();
       const updated = [memo, ...local.filter((m) => m.id !== memo.id)];
       saveLocalMemos(updated);
+      const cached = memoCache.get(memo.spot_id);
+      if (cached) {
+        memoCache.set(memo.spot_id, {
+          expiresAt: Date.now() + MEMO_CACHE_TTL_MS,
+          data: [memo, ...cached.data.filter((m) => m.id !== memo.id)],
+        });
+      }
       return true;
     }
   } catch {
@@ -551,6 +791,7 @@ export async function saveCloudMemo(memo: SpotMemo): Promise<boolean> {
   const local = getLocalMemos();
   const updated = [memo, ...local.filter((m) => m.id !== memo.id)];
   saveLocalMemos(updated);
+  memoCache.delete(memo.spot_id);
   return true;
 }
 
@@ -566,5 +807,338 @@ export async function deleteCloudMemo(memoId: string): Promise<boolean> {
   const local = getLocalMemos();
   const updated = local.filter((m) => m.id !== memoId);
   saveLocalMemos(updated);
+  memoCache.forEach((entry, key) => {
+    if (entry.data.some((m) => m.id === memoId)) {
+      memoCache.set(key, {
+        expiresAt: entry.expiresAt,
+        data: entry.data.filter((m) => m.id !== memoId),
+      });
+    }
+  });
+  return true;
+}
+
+// ==========================================
+// 낚시점 (FishingShop) & 낚시점 누적 메모 (ShopMemo)
+// ==========================================
+
+function isMissingTableError(error: any): boolean {
+  const msg = String(error?.message || '');
+  return (
+    error?.code === '42P01' ||
+    error?.code === 'PGRST205' ||
+    msg.includes('Could not find the table') ||
+    msg.includes('does not exist')
+  );
+}
+
+function fromDbShopRecord(raw: any): FishingShop {
+  return {
+    id: String(raw.id),
+    user_id: String(raw.user_id || ''),
+    author_name: String(raw.author_name || '관리자'),
+    is_public: raw.is_public !== false,
+    name: String(raw.name || ''),
+    lat: Number(raw.lat),
+    lng: Number(raw.lng),
+    navi_name: raw.navi_name || undefined,
+    navi_url: raw.navi_url || undefined,
+    kakao_place_id: raw.kakao_place_id || undefined,
+    has_restroom: Boolean(raw.has_restroom),
+    has_store: Boolean(raw.has_store),
+    is_promoted: Boolean(raw.is_promoted),
+    promoted_until: raw.promoted_until || undefined,
+    promo_badge_text: raw.promo_badge_text || undefined,
+    is_deleted: Boolean(raw.is_deleted),
+    created_at: raw.created_at || new Date().toISOString(),
+    updated_at: raw.updated_at || raw.created_at || undefined,
+  };
+}
+
+export async function fetchCloudShopsDelta(sinceIso?: string | null): Promise<DeltaSyncResult<FishingShop>> {
+  const client = getSupabase();
+
+  if (sinceIso) {
+    const { data, error } = await client
+      .from('fishing_shops')
+      .select('*')
+      .gt('updated_at', sinceIso)
+      .order('updated_at', { ascending: true });
+
+    if (!error) {
+      const records = data || [];
+      const activeRows: FishingShop[] = [];
+      const deletedIds: string[] = [];
+      for (const r of records) {
+        if (r.is_deleted === true) deletedIds.push(r.id);
+        else activeRows.push(fromDbShopRecord(r));
+      }
+      return {
+        rows: activeRows,
+        deletedIds,
+        maxUpdatedAt: extractMaxTimestamp(records) || sinceIso,
+        isFullSync: false,
+      };
+    }
+
+    if (isMissingTableError(error)) {
+      return { rows: [], deletedIds: [], maxUpdatedAt: null, isFullSync: true };
+    }
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
+  }
+
+  const edgeShopRows = await fetchMasterViaEdgeProxy('fishing_shops');
+  if (edgeShopRows) {
+    const activeRecords = edgeShopRows.filter((r: any) => r.is_deleted !== true);
+    return {
+      rows: activeRecords.map(fromDbShopRecord),
+      deletedIds: [],
+      maxUpdatedAt: extractMaxTimestamp(edgeShopRows),
+      isFullSync: true,
+    };
+  }
+
+  const { data, error } = await client
+    .from('fishing_shops')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    if (isMissingTableError(error)) {
+      console.warn('[Sync:shops] fishing_shops table not migrated yet; returning empty list');
+      return { rows: [], deletedIds: [], maxUpdatedAt: null, isFullSync: true };
+    }
+    throw error;
+  }
+
+  const activeRecords = (data || []).filter((r: any) => r.is_deleted !== true);
+  return {
+    rows: activeRecords.map(fromDbShopRecord),
+    deletedIds: [],
+    maxUpdatedAt: extractMaxTimestamp(data || []),
+    isFullSync: true,
+  };
+}
+
+function getAdminShopsApiUrl(): string {
+  return Capacitor.isNativePlatform() ? 'https://exfish.vercel.app/api/admin/shops' : '/api/admin/shops';
+}
+
+export async function saveCloudShop(shop: FishingShop): Promise<FishingShop> {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('exfish_google_access_token') : null;
+
+  if (token) {
+    try {
+      const res = await fetch(getAdminShopsApiUrl(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(shop),
+      });
+
+      if (res.ok) {
+        const saved = await res.json();
+        const row = Array.isArray(saved) ? saved[0] : saved;
+        return row ? fromDbShopRecord(row) : shop;
+      }
+
+      const errText = await res.text().catch(() => '');
+      // 서버에 SUPABASE_SERVICE_ROLE_KEY가 미설정된 경우 직접 Supabase REST(anon + RLS)로 폴백
+      if (res.status !== 500 || !errText.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+        throw new Error(errText || `낚시점 저장 실패 (HTTP ${res.status})`);
+      }
+    } catch (err: any) {
+      if (!String(err?.message || '').includes('Failed to fetch')) {
+        throw err;
+      }
+    }
+  }
+
+  const client = getSupabase();
+  const payload = {
+    id: shop.id,
+    user_id: shop.user_id,
+    author_name: shop.author_name || '관리자',
+    is_public: shop.is_public !== false,
+    name: shop.name,
+    lat: shop.lat,
+    lng: shop.lng,
+    navi_name: shop.navi_name ?? null,
+    navi_url: shop.navi_url ?? null,
+    kakao_place_id: shop.kakao_place_id ?? null,
+    has_restroom: Boolean(shop.has_restroom),
+    has_store: Boolean(shop.has_store),
+    is_deleted: false,
+    created_at: shop.created_at || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await client
+    .from('fishing_shops')
+    .upsert(payload, { onConflict: 'id' })
+    .select('*')
+    .single();
+
+  if (error) {
+    if (isMissingTableError(error)) {
+      throw new Error('Supabase에 fishing_shops 테이블이 아직 생성되지 않았습니다. 마이그레이션 SQL을 실행해 주세요.');
+    }
+    throw error;
+  }
+
+  return data ? fromDbShopRecord(data) : shop;
+}
+
+export async function deleteCloudShop(shopId: string): Promise<void> {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('exfish_google_access_token') : null;
+
+  if (token) {
+    try {
+      const res = await fetch(`${getAdminShopsApiUrl()}?id=${encodeURIComponent(shopId)}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) return;
+
+      const errText = await res.text().catch(() => '');
+      if (res.status !== 500 || !errText.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+        throw new Error(errText || `낚시점 삭제 실패 (HTTP ${res.status})`);
+      }
+    } catch (err: any) {
+      if (!String(err?.message || '').includes('Failed to fetch')) {
+        throw err;
+      }
+    }
+  }
+
+  const client = getSupabase();
+  const { error } = await client
+    .from('fishing_shops')
+    .update({ is_deleted: true, updated_at: new Date().toISOString() })
+    .eq('id', shopId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+const shopMemoCache = new Map<string, { expiresAt: number; data: ShopMemo[] }>();
+const shopMemoInFlight = new Map<string, Promise<ShopMemo[]>>();
+
+function getLocalShopMemos(): ShopMemo[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SHOP_MEMOS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalShopMemos(memos: ShopMemo[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY_SHOP_MEMOS, JSON.stringify(memos));
+  } catch {
+    // ignore
+  }
+}
+
+export async function fetchShopMemos(shopId: string): Promise<ShopMemo[]> {
+  const now = Date.now();
+  const cached = shopMemoCache.get(shopId);
+  if (cached && cached.expiresAt > now) {
+    return cached.data;
+  }
+
+  const pending = shopMemoInFlight.get(shopId);
+  if (pending) return pending;
+
+  const task = (async () => {
+    try {
+      const client = getSupabase();
+      const { data, error } = await client
+        .from('shop_memos')
+        .select('*')
+        .eq('shop_id', shopId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (!error && Array.isArray(data)) {
+        const list = data as ShopMemo[];
+        shopMemoCache.set(shopId, { expiresAt: Date.now() + MEMO_CACHE_TTL_MS, data: list });
+        return list;
+      }
+    } catch {
+      // ignore -> local fallback
+    }
+    const localList = getLocalShopMemos().filter((m) => m.shop_id === shopId);
+    shopMemoCache.set(shopId, { expiresAt: Date.now() + 60_000, data: localList });
+    return localList;
+  })();
+
+  shopMemoInFlight.set(shopId, task);
+  try {
+    return await task;
+  } finally {
+    shopMemoInFlight.delete(shopId);
+  }
+}
+
+export async function saveShopMemo(memo: ShopMemo): Promise<boolean> {
+  try {
+    const client = getSupabase();
+    const { error } = await client.from('shop_memos').insert({
+      id: memo.id,
+      shop_id: memo.shop_id,
+      user_id: memo.user_id,
+      user_name: memo.user_name,
+      content: memo.content,
+      tag: memo.tag || 'GENERAL',
+      created_at: memo.created_at,
+    });
+    if (!error) {
+      const cached = shopMemoCache.get(memo.shop_id);
+      if (cached) {
+        shopMemoCache.set(memo.shop_id, {
+          expiresAt: Date.now() + MEMO_CACHE_TTL_MS,
+          data: [memo, ...cached.data.filter((m) => m.id !== memo.id)],
+        });
+      }
+      return true;
+    }
+  } catch {
+    // ignore -> local fallback
+  }
+
+  const local = getLocalShopMemos();
+  saveLocalShopMemos([memo, ...local.filter((m) => m.id !== memo.id)]);
+  shopMemoCache.delete(memo.shop_id);
+  return true;
+}
+
+export async function deleteShopMemo(memoId: string): Promise<boolean> {
+  try {
+    const client = getSupabase();
+    await client.from('shop_memos').delete().eq('id', memoId);
+  } catch {
+    // ignore
+  }
+
+  const local = getLocalShopMemos();
+  saveLocalShopMemos(local.filter((m) => m.id !== memoId));
+  shopMemoCache.forEach((entry, key) => {
+    if (entry.data.some((m) => m.id === memoId)) {
+      shopMemoCache.set(key, {
+        expiresAt: entry.expiresAt,
+        data: entry.data.filter((m) => m.id !== memoId),
+      });
+    }
+  });
   return true;
 }

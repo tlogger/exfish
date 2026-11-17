@@ -19,6 +19,13 @@ const inFlightPromises = new Map<string, Promise<unknown>>();
 // Supabase 테이블 존재 여부 플래그 (테이블 미생성 시 불필요한 반복 쿼리 방지)
 let isSupabaseTableAvailable = true;
 
+const NEGATIVE_SENTINEL = '__khoaNull';
+const NEGATIVE_DEPTH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 수심 격자 미존재(null) 7일 L1 캐시
+
+function isNegativeSentinel(val: unknown): boolean {
+  return Boolean(val && typeof val === 'object' && (val as Record<string, unknown>)[NEGATIVE_SENTINEL] === true);
+}
+
 /**
  * KHOA 5대 공공데이터 전 종목 계층형 캐싱 파이프라인
  * L1 (메모리 + localStorage) -> L2 (Supabase 중앙 DB) -> L3 (fetchFn API 호출 & 중앙 DB 저장)
@@ -28,14 +35,16 @@ export async function getOrFetchKhoaData<T>(
   apiType: KhoaApiType,
   subKey: string | undefined,
   ttlMs: number,
-  fetchFn: () => Promise<T | null>
+  fetchFn: () => Promise<T | null>,
+  options?: { useSupabaseL2?: boolean }
 ): Promise<T | null> {
+  const useSupabaseL2 = options?.useSupabaseL2 === true;
   const now = Date.now();
 
   // 1. L1 인메모리 캐시 검사
   const memHit = memoryCache.get(cacheKey);
   if (memHit && memHit.expiresAt > now) {
-    return memHit.payload as T;
+    return isNegativeSentinel(memHit.payload) ? null : (memHit.payload as T);
   }
 
   // 2. L1 localStorage 캐시 검사
@@ -46,7 +55,7 @@ export async function getOrFetchKhoaData<T>(
         const parsed = JSON.parse(raw);
         if (parsed && parsed.expiresAt > now && parsed.payload !== undefined) {
           memoryCache.set(cacheKey, { expiresAt: parsed.expiresAt, payload: parsed.payload });
-          return parsed.payload as T;
+          return isNegativeSentinel(parsed.payload) ? null : (parsed.payload as T);
         }
       }
     } catch {}
@@ -58,14 +67,15 @@ export async function getOrFetchKhoaData<T>(
   }
 
   const queryPromise = (async (): Promise<T | null> => {
-    // 4. L2 Supabase 중앙 DB 캐시 검사
-    if (isSupabaseTableAvailable) {
+    // 4. L2 Supabase 중앙 DB 캐시 검사 (장기/정적 데이터만 사용, 단기 휘발 슬롯은 L1 전용으로 DB 쓰기 폭주 차단)
+    if (useSupabaseL2 && isSupabaseTableAvailable) {
       try {
         const sb = getSupabase();
         const { data, error } = await sb
           .from('khoa_global_cache')
           .select('payload, expires_at')
           .eq('cache_key', cacheKey)
+          .gt('expires_at', new Date(now).toISOString())
           .limit(1)
           .maybeSingle();
 
@@ -89,15 +99,21 @@ export async function getOrFetchKhoaData<T>(
     // 5. L3 원천 API 호출 (KHOA OpenAPI)
     try {
       const freshData = await fetchFn();
-      if (freshData == null) return null;
+      if (freshData == null) {
+        // DEPTH 격자 미존재(null) 결과는 L1에만 7일간 Negative 캐싱하여 반복 Supabase/KHOA 호출 차단
+        if (apiType === 'DEPTH') {
+          saveToL1Cache(cacheKey, { [NEGATIVE_SENTINEL]: true }, now + NEGATIVE_DEPTH_TTL_MS);
+        }
+        return null;
+      }
 
       const expiresAt = now + ttlMs;
 
       // L1 캐시 저장
       saveToL1Cache(cacheKey, freshData, expiresAt);
 
-      // L2 Supabase 중앙 DB 비동기 Upsert (다른 모든 사용자와 즉시 공유)
-      if (isSupabaseTableAvailable) {
+      // L2 Supabase 중앙 DB 비동기 Upsert (장기/정적 데이터만 공유 저장)
+      if (useSupabaseL2 && isSupabaseTableAvailable) {
         saveToSupabaseDb(cacheKey, apiType, subKey, freshData, expiresAt).catch(() => {});
       }
 
