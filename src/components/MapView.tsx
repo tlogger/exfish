@@ -7,21 +7,31 @@ import {
   Circle,
   useKakaoLoader,
 } from 'react-kakao-maps-sdk';
-import { Check, Star, Sliders, LocateFixed, Plus, Minus } from 'lucide-react';
+import { Check, Star, Sliders, LocateFixed, Plus, Minus, Store, Layers, ShieldAlert, PenTool } from 'lucide-react';
 import { MaterialSpotMarker } from './MaterialSpotMarker';
-import type { FishingSpot, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo, SweetSpot } from '../types';
+import { HaeRoadEncOverlay } from './HaeRoadEncOverlay';
+import { ProhibitedZoneOverlay } from './ProhibitedZoneOverlay';
+import { ZoneDigitizer } from './ZoneDigitizer';
+import { loadZonesForBounds } from '../utils/zoneCache';
+import { findZoneHitsAtPoint } from '../utils/zoneSpatial';
+import type { ProhibitedZoneFeature } from '../types/prohibitedZone';
+import type { FishingSpot, FishingShop, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo, SweetSpot } from '../types';
 import type { AuthUser } from './LoginModal';
-import { isUserAdmin } from '../services/oauthService';
+import { isUserAdmin, isStrictPaedrosAdmin } from '../services/oauthService';
 import {
   formatWindSpeed,
   formatCurrentVelocity,
 } from '../utils/weatherApi';
-import { estimateDepthAtPoint } from '../data/depthContours';
+import { resolveUnifiedWaterDepth } from '../utils/depthSinkEngine';
+import { computeCastingLandingPoint, useLandingKhoaDepth } from '../utils/castingLanding';
+import { findNearestKhoaStation } from '../utils/tideService';
 import {
   getSavedTackleConfig,
   saveTackleConfig,
+  getTackleShortLabel,
   calculateSinkingPhysics,
   calculateAerodynamicCastingDrift,
+  solveLeadCastAimPoint,
   RodPower,
   TackleRigConfig,
   WEIGHT_PRESETS,
@@ -121,6 +131,10 @@ interface MapViewProps {
   selectedSpot: FishingSpot | null;
   onSelectSpot: (spot: FishingSpot) => void;
   onMapClickForNewSpot: (lat: number, lng: number) => void;
+  shops?: FishingShop[];
+  selectedShop?: FishingShop | null;
+  onSelectShop?: (shop: FishingShop) => void;
+  onMapClickForNewShop?: (lat: number, lng: number) => void;
   weather: WeatherData | null;
   marine: MarineData | null;
   tide: TideDayInfo | null;
@@ -141,6 +155,7 @@ interface MapViewProps {
   isSunMode?: boolean;
   mapMode?: MapMode;
   onChangeMapMode?: (mode: MapMode) => void;
+  userCoords?: { lat: number; lng: number } | null;
 }
 
 export const MapView: React.FC<MapViewProps> = ({
@@ -148,6 +163,10 @@ export const MapView: React.FC<MapViewProps> = ({
   selectedSpot,
   onSelectSpot,
   onMapClickForNewSpot,
+  shops = [],
+  selectedShop = null,
+  onSelectShop,
+  onMapClickForNewShop,
   weather,
   marine,
   tide,
@@ -168,8 +187,16 @@ export const MapView: React.FC<MapViewProps> = ({
   isSunMode = false,
   mapMode: externalMapMode,
   onChangeMapMode,
+  userCoords = null,
 }) => {
   const isAdmin = isUserAdmin(currentUser);
+  const isStrictAdmin = isStrictPaedrosAdmin(currentUser);
+  const [showHaeroadEnc, setShowHaeroadEnc] = React.useState(false);
+  const [prohibitedZones, setProhibitedZones] = React.useState<ProhibitedZoneFeature[]>([]);
+  const [zoneReloadTick, setZoneReloadTick] = React.useState(0);
+  const [isDigitizingZones, setIsDigitizingZones] = React.useState(false);
+  const [digitizerPoints, setDigitizerPoints] = React.useState<Array<{ lat: number; lng: number }>>([]);
+  const prevMapModeBeforeDigitizeRef = React.useRef<MapMode | null>(null);
 
   // 카카오 지도 SDK 동적 로더
   const [loading, error] = useKakaoLoader({
@@ -200,6 +227,46 @@ export const MapView: React.FC<MapViewProps> = ({
     },
     [onChangeMapMode]
   );
+
+  React.useEffect(() => {
+    if (level > 6) {
+      setProhibitedZones([]);
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      const map = mapRef.current;
+      if (!map) return;
+      const bounds = map.getBounds();
+      if (!bounds) return;
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      const list = await loadZonesForBounds(sw.getLat(), sw.getLng(), ne.getLat(), ne.getLng());
+      setProhibitedZones(list);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [level, center.lat, center.lng, zoneReloadTick]);
+
+  const startZoneDigitizing = React.useCallback(() => {
+    if (!currentUser) {
+      window.alert('금지구역 작도는 로그인 후 이용할 수 있습니다.');
+      return;
+    }
+    prevMapModeBeforeDigitizeRef.current = mapMode;
+    if (mapMode !== 'HYBRID') {
+      setMapMode('HYBRID');
+    }
+    setDigitizerPoints([]);
+    setIsDigitizingZones(true);
+  }, [currentUser, mapMode, setMapMode]);
+
+  const exitZoneDigitizing = React.useCallback(() => {
+    setIsDigitizingZones(false);
+    setDigitizerPoints([]);
+    if (prevMapModeBeforeDigitizeRef.current && prevMapModeBeforeDigitizeRef.current !== 'HYBRID') {
+      setMapMode(prevMapModeBeforeDigitizeRef.current);
+    }
+    prevMapModeBeforeDigitizeRef.current = null;
+  }, [setMapMode]);
 
   // 내 현재 GPS 위치 및 추적 상태 (GPS 수평 오차 반경 원 포함)
   const [myLocation, setMyLocation] = React.useState<{ lat: number; lng: number } | null>(null);
@@ -281,6 +348,26 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // 공기역학 채비 캘리브레이션 (루어 무게 g & PE 라인 호수)
   const [tackleConfig, setTackleConfig] = React.useState<TackleRigConfig>(() => getSavedTackleConfig());
+  const { landingPoint, khoaDepthRecord: landingKhoaDepth } = useLandingKhoaDepth(
+    selectedSpot,
+    tackleConfig.calibratedDistanceMeters
+  );
+
+  const selectedSpotZoneHits = React.useMemo(() => {
+    if (!selectedSpot || !prohibitedZones.length) return [];
+    const spotHits = findZoneHitsAtPoint(selectedSpot.lat, selectedSpot.lng, prohibitedZones);
+    const landingHits =
+      landingPoint?.hasCasting
+        ? findZoneHitsAtPoint(landingPoint.lat, landingPoint.lng, prohibitedZones)
+        : [];
+    const merged = new globalThis.Map<string, (typeof spotHits)[number]>();
+    for (const h of [...spotHits, ...landingHits]) {
+      if (!merged.has(h.feature.properties.zone_id)) {
+        merged.set(h.feature.properties.zone_id, h);
+      }
+    }
+    return Array.from(merged.values());
+  }, [selectedSpot, landingPoint, prohibitedZones]);
   const [isTacklePopoverOpen, setIsTacklePopoverOpen] = React.useState(false);
   const [jigheadUnit, setJigheadUnit] = React.useState<'g' | 'oz'>('g');
 
@@ -522,6 +609,12 @@ export const MapView: React.FC<MapViewProps> = ({
   }, [level, digitalZoom]);
 
   React.useEffect(() => {
+    if (level > 1 && digitalZoom > 1.0) {
+      setDigitalZoom(1.0);
+    }
+  }, [level, digitalZoom]);
+
+  React.useEffect(() => {
     if (volumeToast) {
       const timer = setTimeout(() => setVolumeToast(null), 1500);
       return () => clearTimeout(timer);
@@ -643,44 +736,33 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   };
 
-  // 초기 진입 시 사용자 위치 자동 이동 보장을 위한 플래그
+  // 초기 진입 시 App.tsx에서 전달받은 userCoords를 재사용하여 중복 GPS 요청 없이 내 위치 및 최근접 포인트 이동
   const hasAutoLocatedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!hasAutoLocatedRef.current) {
-      hasAutoLocatedRef.current = true;
-      setIsLocating(true);
-      getNativeLocation()
-        .then((pos) => {
-          setIsLocating(false);
-          const userPos = { lat: pos.lat, lng: pos.lng };
-          setMyLocation(userPos);
-          setGpsAccuracy(pos.accuracy || 12);
-          if (spots && spots.length > 0) {
-            let nearest = spots[0];
-            let minDist = Infinity;
-            for (const s of spots) {
-              const dLat = s.lat - pos.lat;
-              const dLng = (s.lng - pos.lng) * Math.cos(pos.lat * Math.PI / 180);
-              const distSq = dLat * dLat + dLng * dLng;
-              if (distSq < minDist) {
-                minDist = distSq;
-                nearest = s;
-              }
-            }
-            setCenter({ lat: nearest.lat, lng: nearest.lng });
-            setLevel(2); // 최근접 포인트 상세 레벨
-          } else {
-            setCenter(userPos);
-            setLevel(4); // 약 100m~250m 상세 레벨
-          }
-        })
-        .catch((err) => {
-          setIsLocating(false);
-          console.warn('Initial geolocation failed or denied:', err);
-        });
+    if (!userCoords || hasAutoLocatedRef.current) return;
+    hasAutoLocatedRef.current = true;
+    setMyLocation(userCoords);
+    setGpsAccuracy(12);
+    if (spots && spots.length > 0) {
+      let nearest = spots[0];
+      let minDist = Infinity;
+      for (const s of spots) {
+        const dLat = s.lat - userCoords.lat;
+        const dLng = (s.lng - userCoords.lng) * Math.cos(userCoords.lat * Math.PI / 180);
+        const distSq = dLat * dLat + dLng * dLng;
+        if (distSq < minDist) {
+          minDist = distSq;
+          nearest = s;
+        }
+      }
+      setCenter({ lat: nearest.lat, lng: nearest.lng });
+      setLevel(2);
+    } else {
+      setCenter(userCoords);
+      setLevel(4);
     }
-  }, []);
+  }, [userCoords, spots]);
 
   // 최근 선택 타겟 또는 포인트 이동 감지
   React.useEffect(() => {
@@ -908,11 +990,13 @@ export const MapView: React.FC<MapViewProps> = ({
           }
         }}
       >
+        <div className="w-full h-full kakao-dark-target">
         <Map
           onCreate={(map) => {
             mapRef.current = map;
           }}
           draggable={digitalZoom === 1.0}
+          zoomable={digitalZoom === 1.0}
           center={center}
           level={level}
           mapTypeId={kakaoMapTypeId}
@@ -945,6 +1029,12 @@ export const MapView: React.FC<MapViewProps> = ({
                   clickedLng = corrected.lng;
                 }
               }
+            }
+
+            // 금지구역 다각형 작도 모드: 클릭 좌표를 꼭짓점으로 추가하고 새 포인트 핀 방지
+            if (isDigitizingZones) {
+              setDigitizerPoints((prev) => (prev.length < 60 ? [...prev, { lat: clickedLat, lng: clickedLng }] : prev));
+              return;
             }
 
             // [요구사항 2-1-6] 스윗 스팟 추가 모드: 지도를 누를 때마다 초안 위치 변경 ('추가' 버튼으로 최종 승인)
@@ -1117,27 +1207,71 @@ export const MapView: React.FC<MapViewProps> = ({
           const bearing = (startDeg + span / 2) % 360; // 중심 방위각
 
           const baseDist = tackleConfig.calibratedDistanceMeters;
-          const tipDist = Math.max(20, Math.round(baseDist * 0.9));
+          const tipDist = Math.max(8, Math.round(baseDist));
           const tip = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, tipDist);
-          const badgePos = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, bearing, tipDist + 4);
-
-          // 착수 지점 수심 선형 추정 (KHOA 국가해양격자 수심 모델 기반)
-          const landingDepth = estimateDepthAtPoint(
+          // 캐스팅 레이더 정면(착수) 지점에 수심 + 선택 채비 안착 시간 배지 배치 (화살표·조류선 겹침 회피)
+          const badgePos = calculateDestinationPoint(
             selectedSpot.lat,
             selectedSpot.lng,
-            tip[0],
-            tip[1],
-            selectedSpot.spot_type
+            bearing,
+            tipDist + 6
           );
+          const badgeYAnchor = bearing > 110 && bearing < 250 ? -0.15 : 1.25;
 
-          // 수중 침강 물리 및 조류 연동 바닥 안착 소요 시간/흘림 계산
+          // 착수 지점 수심 통합 연산 (착수점 KHOA 150m 실측 수심 + 현 시각 조위 + 역기압)
+          const curHourNow = new Date().getHours();
+          const curTidePt =
+            tide?.hourlyCurve?.find((c) => c.isCurrent || c.hour === curHourNow) ||
+            tide?.hourlyCurve?.[0];
+          const nearestSt = findNearestKhoaStation(selectedSpot.lat, selectedSpot.lng);
+          const landingDepthInfo = resolveUnifiedWaterDepth({
+            spotLat: selectedSpot.lat,
+            spotLng: selectedSpot.lng,
+            targetLat: tip[0],
+            targetLng: tip[1],
+            spotType: selectedSpot.spot_type,
+            khoaDpwt: landingKhoaDepth?.dpwt ?? null,
+            khoaDpwtIsAtTarget: true,
+            datumZ0: nearestSt.station.datumZ0,
+            tideHeightCm: curTidePt?.height,
+            pressureHpa: weather?.pressureHpa,
+            isPredictedTide: true,
+          });
+          const landingDepth = landingDepthInfo.realDepthM;
+
+          // 방향성(Δθ) 반영 수중 침강 물리 및 조류 연동 바닥 안착 시간/흘림 계산
           const currentVel = marine?.currentVelocity ?? 0.3;
           const sinkPhysics = calculateSinkingPhysics(
             tackleConfig.weightGrams,
             landingDepth,
             currentVel,
-            tackleConfig.baitConfig
+            tackleConfig.baitConfig,
+            {
+              castBearingDeg: bearing,
+              currentDirectionDeg: marine?.currentDirection,
+              peLineSize: tackleConfig.peLineSize,
+              honorFloatLayer: true,
+            }
           );
+
+          const leadAim = solveLeadCastAimPoint(
+            bearing,
+            tipDist,
+            weather?.windSpeed ?? 0,
+            weather?.windDirection ?? 0,
+            currentVel,
+            marine?.currentDirection ?? bearing,
+            Math.max(1.0, landingDepth),
+            tackleConfig
+          );
+
+          // 수중 침강 중 채비가 실제로 흘러가는 궤적 (착수점 -> 수중 조류 방향 흘림)
+          const hasSubsurfaceDrift =
+            sinkPhysics.driftDistanceM >= 1.5 && marine?.currentDirection != null;
+          const driftPreviewDist = Math.min(35, sinkPhysics.driftDistanceM);
+          const subsurfaceEnd = hasSubsurfaceDrift
+            ? calculateDestinationPoint(tip[0], tip[1], marine!.currentDirection, driftPreviewDist)
+            : null;
 
           const castingLines = (
             <React.Fragment key={`selected-casting-${selectedSpot.id}`}>
@@ -1152,31 +1286,54 @@ export const MapView: React.FC<MapViewProps> = ({
                 strokeOpacity={0.95}
                 zIndex={50}
               />
+              {subsurfaceEnd && (
+                <Polyline
+                  path={[
+                    { lat: tip[0], lng: tip[1] },
+                    { lat: subsurfaceEnd[0], lng: subsurfaceEnd[1] },
+                  ]}
+                  endArrow={true}
+                  strokeWeight={2.5}
+                  strokeColor="#22d3ee"
+                  strokeOpacity={0.85}
+                  strokeStyle="shortdash"
+                  zIndex={51}
+                />
+              )}
               <CustomOverlayMap
                 position={{ lat: badgePos[0], lng: badgePos[1] }}
-                yAnchor={0.5}
+                yAnchor={badgeYAnchor}
                 xAnchor={0.5}
-                zIndex={55}
+                zIndex={58}
                 clickable={false}
               >
-                <div className="flex flex-col items-center gap-1 pointer-events-none kakao-invert-restore select-none whitespace-nowrap">
-                  <div className="px-2 py-0.5 rounded-full bg-slate-950/95 text-cyan-300 border border-cyan-500/80 text-[9px] sm:text-[10px] font-mono font-bold shadow-lg flex items-center gap-1.5">
-                    <span>🌊 착수수심: -{landingDepth}m</span>
-                    <span className="text-slate-500">|</span>
-                    <span className="text-amber-300">⏱️ 바닥 안착: 약 {sinkPhysics.fallTimeSec}초</span>
-                    {sinkPhysics.driftDistanceM > 0.3 && (
-                      <>
-                        <span className="text-slate-500">|</span>
-                        <span className="text-emerald-300">조류 흘림 +{sinkPhysics.driftDistanceM}m</span>
-                      </>
-                    )}
+                <div className="pointer-events-none kakao-invert-restore select-none max-w-[260px] sm:max-w-none">
+                  <div className="px-2.5 py-1 rounded-xl bg-slate-950/95 text-cyan-300 border border-cyan-500/80 text-[9px] sm:text-[10px] font-mono font-bold shadow-lg flex flex-col items-center justify-center leading-tight gap-0.5 whitespace-nowrap">
+                    <div className="flex items-center gap-1">
+                      <span className="text-sky-200">{getTackleShortLabel(tackleConfig)}</span>
+                      <span>
+                        {landingDepthInfo.isExposed ? '간출(0m)' : `수심 ${landingDepth.toFixed(1)}m`}
+                      </span>
+                      {sinkPhysics.driftDistanceM > 0.3 && (
+                        <span className="text-emerald-300">, 흘림 +{sinkPhysics.driftDistanceM}m</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-amber-300">안착 {sinkPhysics.fallTimeSec}초</span>
+                      <span className="text-cyan-200">
+                        하강 {Math.round(sinkPhysics.effSinkSpeedMps * 100)}cm/s
+                      </span>
+                      {sinkPhysics.canReachBottom === false && (
+                        <span className="text-rose-400">· {sinkPhysics.recommendedMinWeightG}g+ 권장</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </CustomOverlayMap>
             </React.Fragment>
           );
 
-          // 2. 실시간 풍향·풍속 및 합사줄(PE) 길이/두께 + 지그헤드/2인치 쉐드 웜 채비 공기역학 편류(밀림) 오렌지 라인
+          // 2. 실시간 풍향·풍속 및 합사줄(PE) 길이/두께 + 미끼 형상 공기역학 편류(밀림) 오렌지 라인
           // weather.windDirection: 바람이 불어오는 방위 (From)
           // windVectorDeg: 바람이 불어가는 진행 방위 (To) = (windDirection + 180) % 360
           let windElements = null;
@@ -1186,11 +1343,11 @@ export const MapView: React.FC<MapViewProps> = ({
             const wormLenInches = tackleConfig.baitConfig?.lengthInches ?? 2;
             const peLine = tackleConfig.peLineSize;
 
-            // 공략각 시점, 중간, 종점 3개 포인트에 대한 정밀 편류(Drift) 물리 계산
+            // 공략각 시점, 중간, 종점 3개 포인트에 대한 정밀 편류(Drift) 물리 계산 (미끼 형상 공기항력 반영)
             const midDeg = (startDeg + span / 2) % 360;
-            const driftStart = calculateAerodynamicCastingDrift(startDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches);
-            const driftMid = calculateAerodynamicCastingDrift(midDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches);
-            const driftEnd = calculateAerodynamicCastingDrift(endDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches);
+            const driftStart = calculateAerodynamicCastingDrift(startDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches, tackleConfig.baitConfig);
+            const driftMid = calculateAerodynamicCastingDrift(midDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches, tackleConfig.baitConfig);
+            const driftEnd = calculateAerodynamicCastingDrift(endDeg, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches, tackleConfig.baitConfig);
 
             // 공략각 시점~종점 전체 구간에서 바람/합사줄에 의해 밀린 실제 착수 지점들을 이은 오렌지색 arc 폴리라인 생성
             const orangeArcPts: { lat: number; lng: number }[] = [];
@@ -1198,7 +1355,7 @@ export const MapView: React.FC<MapViewProps> = ({
             const arcStep = Math.max(1, Math.min(3, Math.round(span / 30)));
             for (let offset = 0; offset <= span; offset += arcStep) {
               const b = (startDeg + offset) % 360;
-              const dRes = calculateAerodynamicCastingDrift(b, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches);
+              const dRes = calculateAerodynamicCastingDrift(b, baseDist, weather.windSpeed, weather.windDirection, rigWeight, peLine, wormLenInches, tackleConfig.baitConfig);
               // 실제 밀린 착수 좌표
               const [pActualLat, pActualLng] = calculateDestinationPoint(selectedSpot.lat, selectedSpot.lng, dRes.actualBearingDeg, dRes.actualDistanceM);
               orangeArcPts.push({ lat: pActualLat, lng: pActualLng });
@@ -1705,6 +1862,49 @@ export const MapView: React.FC<MapViewProps> = ({
 
 
 
+        {/* 공용 낚시점(편의시설) 마커 상시 렌더링 (포인트 마커와 구별되는 앰버 스토어 아이콘) */}
+        {shops.map((shop) => {
+          const isShopSelected = selectedShop?.id === shop.id;
+          return (
+            <CustomOverlayMap
+              key={`shop-marker-${shop.id}`}
+              position={{ lat: shop.lat, lng: shop.lng }}
+              yAnchor={0.5}
+              xAnchor={0.5}
+              zIndex={isShopSelected ? 32 : 18}
+              clickable={true}
+            >
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  isMarkerClickRef.current = true;
+                  setPendingNewSpot(null);
+                  setContextMenuSpot(null);
+                  skipAutoRecenterRef.current = true;
+                  onSelectShop?.(shop);
+                }}
+                className="relative flex items-center justify-center cursor-pointer group kakao-invert-restore"
+                title={`${shop.name} (낚시점 · 편의시설)`}
+              >
+                <div
+                  className={`w-7 h-7 rounded-xl border-2 flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 ${
+                    isShopSelected
+                      ? 'bg-amber-500 border-white text-slate-950 scale-110'
+                      : 'bg-slate-950/95 border-amber-400 text-amber-300'
+                  }`}
+                >
+                  <Store className="w-3.5 h-3.5" />
+                </div>
+                <div className="absolute top-full mt-1 flex flex-col items-center pointer-events-none">
+                  <span className="px-1.5 py-0.5 rounded bg-slate-950/95 border border-amber-500/50 text-[10px] text-amber-200 font-semibold whitespace-nowrap shadow">
+                    {shop.name}
+                  </span>
+                </div>
+              </div>
+            </CustomOverlayMap>
+          );
+        })}
+
         {/* [요구사항 2] 위성지도 기반 2D 평면 포인트 마커 드래깅 미세조정 */}
         {microAdjustSpot && (
           <React.Fragment key="micro-adjust-marker-group">
@@ -1796,8 +1996,48 @@ export const MapView: React.FC<MapViewProps> = ({
             </CustomOverlayMap>
           </React.Fragment>
         )}
+        <ProhibitedZoneOverlay
+          enabled={level <= 6}
+          zones={prohibitedZones}
+          currentUser={currentUser}
+          onZonesMutated={() => setZoneReloadTick((t) => t + 1)}
+        />
+        <ZoneDigitizer
+          active={isDigitizingZones}
+          points={digitizerPoints}
+          currentUser={currentUser}
+          onUndo={() => setDigitizerPoints((prev) => prev.slice(0, -1))}
+          onReset={() => setDigitizerPoints([])}
+          onCancel={exitZoneDigitizing}
+          onSuccess={() => {
+            exitZoneDigitizing();
+            setZoneReloadTick((t) => t + 1);
+          }}
+        />
       </Map>
+        </div>
+        <HaeRoadEncOverlay mapRef={mapRef} enabled={isStrictAdmin && showHaeroadEnc} opacity={0.5} />
       </div>
+
+      {selectedSpot && selectedSpotZoneHits.length > 0 && (
+        <div className="fixed left-1/2 top-16 z-[55] w-[calc(100%-24px)] max-w-md -translate-x-1/2 rounded-xl border border-red-500/50 bg-red-950/90 px-3.5 py-2.5 text-xs text-red-100 shadow-xl backdrop-blur-md">
+          <div className="flex items-start gap-2">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+            <div>
+              <div className="font-bold text-red-200">
+                {selectedSpotZoneHits[0].tier === 'confirmed_polygon'
+                  ? '낚시금지/통제구역 경고 (공공 고시)'
+                  : selectedSpotZoneHits[0].tier === 'community_reported'
+                  ? '사용자 제보 금지구역 (공식 고시 미확인)'
+                  : `인근 통제구역 주의 (${selectedSpotZoneHits[0].distanceM ?? ''}m 이내)`}
+              </div>
+              <div className="mt-0.5 text-[11px] text-red-200/90">
+                {selectedSpotZoneHits[0].feature.properties.zone_name} — {selectedSpotZoneHits[0].feature.properties.reason}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* [요구사항 4] 새 포인트 등록 확인 미니 팝업 (디지털 줌 왜곡 방지를 위해 비스케일 뷰포트 레이어에서 정확한 1:1 픽셀 배치) */}
       {pendingNewSpot && (() => {
@@ -1854,6 +2094,19 @@ export const MapView: React.FC<MapViewProps> = ({
               >
                 포인트 등록
               </button>
+              {isStrictAdmin && onMapClickForNewShop && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    isMarkerClickRef.current = true;
+                    onMapClickForNewShop(pendingNewSpot.lat, pendingNewSpot.lng);
+                    setPendingNewSpot(null);
+                  }}
+                  className="flex-1 py-1.5 px-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold transition shadow text-[11px] cursor-pointer"
+                >
+                  낚시점 등록
+                </button>
+              )}
             </div>
           </div>
         );
@@ -1988,6 +2241,34 @@ export const MapView: React.FC<MapViewProps> = ({
             >
               <Star size={16} className={viewOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''} />
             </button>
+
+            {/* 연안 낚시금지구역 작도 */}
+            <button
+              onClick={() => (isDigitizingZones ? exitZoneDigitizing() : startZoneDigitizing())}
+              className={`p-1.5 rounded-xl flex items-center justify-center transition active:scale-95 ${
+                isDigitizingZones
+                  ? 'bg-orange-600 text-white shadow-md shadow-orange-500/30'
+                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title="낚시금지구역 직접 작도하기"
+            >
+              <PenTool size={15} />
+            </button>
+
+            {/* paedros@gmail.com 개인 실험용 해로드 ENC 오버레이 토글 */}
+            {isStrictAdmin && (
+              <button
+                onClick={() => setShowHaeroadEnc((v) => !v)}
+                className={`p-1.5 rounded-xl flex items-center justify-center transition active:scale-95 ${
+                  showHaeroadEnc
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30'
+                    : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+                title="해로드 ENC 지형 오버레이 (paedros@gmail.com 실험용)"
+              >
+                <Layers size={16} />
+              </button>
+            )}
           </div>
 
           <div className="px-0.5">
@@ -2055,50 +2336,84 @@ export const MapView: React.FC<MapViewProps> = ({
                 </button>
               </div>
 
-              {/* [요구사항 2-6-8, 2-6-10, 2-6-11] 예상 비거리 및 수심별 바닥 안착 카운트 고정 표시 */}
-              <div className="bg-slate-950/80 rounded-xl p-2.5 border border-cyan-500/30 space-y-2">
-                <div className="flex justify-between items-baseline">
-                  <span className="text-xs text-slate-300 font-medium">예상 비거리</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-bold font-mono text-cyan-300 tracking-tight">
-                      {tackleConfig.calibratedDistanceMeters}m
-                    </span>
-                    <span className="text-[11px] text-slate-400 font-mono">
-                      (총 {tackleConfig.totalWeightGrams ?? tackleConfig.weightGrams}g)
-                    </span>
+              {/* [요구사항 1] 현재 선택 채비 기준 비거리·수심·유속·바닥안착·하강속도·흘림(증량권고) 단순 표기 */}
+              {(() => {
+                const currentVel = marine?.currentVelocity ?? 0.3;
+                let depthM = 5.0;
+                let isExposed = false;
+                let bearingDeg: number | undefined;
+                if (selectedSpot) {
+                  const landingPt = computeCastingLandingPoint(selectedSpot, tackleConfig.calibratedDistanceMeters);
+                  bearingDeg = landingPt.bearingDeg;
+                  const curHr = new Date().getHours();
+                  const tidePt =
+                    tide?.hourlyCurve?.find((c) => c.isCurrent || c.hour === curHr) ||
+                    tide?.hourlyCurve?.[0];
+                  const nearestSt = findNearestKhoaStation(selectedSpot.lat, selectedSpot.lng);
+                  const dInfo = resolveUnifiedWaterDepth({
+                    spotLat: selectedSpot.lat,
+                    spotLng: selectedSpot.lng,
+                    targetLat: landingPt.lat,
+                    targetLng: landingPt.lng,
+                    spotType: selectedSpot.spot_type,
+                    khoaDpwt: landingKhoaDepth?.dpwt ?? null,
+                    khoaDpwtIsAtTarget: true,
+                    datumZ0: nearestSt.station.datumZ0,
+                    tideHeightCm: tidePt?.height,
+                    pressureHpa: weather?.pressureHpa,
+                    isPredictedTide: true,
+                  });
+                  depthM = dInfo.realDepthM;
+                  isExposed = dInfo.isExposed;
+                }
+                const sinkRes = calculateSinkingPhysics(
+                  tackleConfig.weightGrams,
+                  depthM,
+                  currentVel,
+                  tackleConfig.baitConfig,
+                  {
+                    castBearingDeg: bearingDeg,
+                    currentDirectionDeg: marine?.currentDirection,
+                    peLineSize: tackleConfig.peLineSize,
+                    honorFloatLayer: true,
+                  }
+                );
+                const sinkCmPerSec = Math.round(sinkRes.effSinkSpeedMps * 100);
+                return (
+                  <div className="bg-slate-950/80 rounded-xl px-2.5 py-2 border border-cyan-500/30 space-y-1 text-[11px] font-mono">
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+                      <span className="text-slate-300">
+                        비거리 <strong className="text-cyan-300 text-xs">{tackleConfig.calibratedDistanceMeters}m</strong>
+                        <span className="text-slate-500 text-[10px]"> ({tackleConfig.totalWeightGrams ?? tackleConfig.weightGrams}g)</span>
+                      </span>
+                      <span className="text-slate-300">
+                        수심 <strong className="text-sky-300">{isExposed ? '간출(0m)' : `${depthM.toFixed(1)}m`}</strong>
+                      </span>
+                      <span className="text-slate-300">
+                        유속 <strong className="text-emerald-300">{currentVel.toFixed(1)}m/s</strong>
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 pt-1 border-t border-slate-800/80">
+                      <span className="text-slate-300">
+                        바닥안착 <strong className="text-amber-300">{sinkRes.fallTimeSec}초</strong>
+                      </span>
+                      <span className="text-slate-300">
+                        하강속도 <strong className="text-cyan-200">{sinkCmPerSec}cm/s</strong>
+                      </span>
+                      {sinkRes.driftDistanceM > 0.3 && (
+                        <span className="text-slate-300">
+                          흘림 <strong className="text-emerald-300">+{sinkRes.driftDistanceM}m</strong>
+                        </span>
+                      )}
+                    </div>
+                    {sinkRes.canReachBottom === false && (
+                      <div className="text-[10px] text-rose-400 font-semibold pt-0.5">
+                        흘림 과도 · {sinkRes.recommendedMinWeightG}g+ 증량 권장
+                      </div>
+                    )}
                   </div>
-                </div>
-
-                {/* [요구사항 2-6-8, 2-6-11] 예상 바닥 안착 카운트 (3m, 5m, 10m, 20m, 모바일에서는 '수심' 생략) */}
-                <div className="pt-1.5 border-t border-slate-800/80">
-                  <div className="text-[11px] text-slate-400 mb-1 flex items-center justify-between">
-                    <span>예상 바닥 안착 카운트</span>
-                    <span className="text-[10px] text-emerald-400/80 font-mono">
-                      (유속 {marine?.currentVelocity ?? 0.3}m/s)
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-4 gap-1 text-center font-mono">
-                    {[3, 5, 10, 20].map((d) => {
-                      const sinkRes = calculateSinkingPhysics(
-                        tackleConfig.weightGrams,
-                        d,
-                        marine?.currentVelocity ?? 0.3,
-                        tackleConfig.baitConfig
-                      );
-                      return (
-                        <div key={d} className="bg-slate-900/90 py-1 px-0.5 rounded border border-slate-800/80">
-                          <div className="text-[10px] text-slate-400">
-                            {isCoarsePointer ? `${d}m` : `수심 ${d}m`}
-                          </div>
-                          <div className="text-xs font-bold text-emerald-300">
-                            {sinkRes.fallTimeSec}초
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
             </div>
 
             {/* [요구사항 2-6-9, 1] 스크롤 가능한 상세 설정 영역 (flex-1 min-h-0으로 상단 고정 헤더 제외 남은 전체 높이 활용 및 하단 여백 확보) */}
@@ -3296,8 +3611,8 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
       )}
 
-      {/* [요구사항 10.1] 지도 좌하단 포인트 조작 안내 칩 (맵을 가리지 않는 반투명 컴팩트 표시) */}
-      <div className="absolute bottom-3 left-3 z-20 bg-slate-950/80 backdrop-blur-sm border border-slate-800/90 rounded-full px-2.5 py-1 text-[10px] text-slate-300 flex items-center gap-1.5 shadow-md select-none pointer-events-none">
+      {/* [요구사항 10.1] 지도 좌하단 포인트 조작 안내 칩 (카카오맵 로고·축척 바와 겹치지 않도록 상단 여백 확보) */}
+      <div className="absolute bottom-10 left-3 z-20 bg-slate-950/80 backdrop-blur-sm border border-slate-800/90 rounded-full px-2.5 py-1 text-[10px] text-slate-300 flex items-center gap-1.5 shadow-md select-none pointer-events-none">
         <span>포인트 클릭=보기, 길게 클릭=메뉴</span>
       </div>
     </div>

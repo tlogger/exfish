@@ -1,4 +1,5 @@
 import React from 'react';
+import { CompactEnvHud } from './CompactEnvHud';
 import {
   Bell,
   ChevronDown,
@@ -38,7 +39,8 @@ import type {
   WeatherData,
   WindUnit
 } from '../types';
-import { calculateSingleSpeciesScore } from '../utils/biteScore';
+import { calculateBiteScore, calculateSingleSpeciesScore, findTopGoldenWindows48h } from '../utils/biteScore';
+import { calculateTideDay } from '../utils/tideEngine';
 import { ChecklistModal } from './ChecklistModal';
 import { BiteScoreHelpModal } from './BiteScoreHelpModal';
 import type { AuthUser } from './LoginModal';
@@ -59,9 +61,14 @@ import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { playEvacuationBeep } from '../utils/tideAlertSound';
 import { sendEmergencyEvacuationNotification, requestNotificationPermission } from '../utils/nativeBridge';
 import { findNearestKhoaStation } from '../utils/tideService';
-import { getCachedKhoaDepth } from '../utils/khoaCache';
-import { calculateRealWaterDepth, calculateSinkTimeToBottom } from '../utils/depthSinkEngine';
-import { KhoaDepthRecord } from '../utils/khoaApi';
+import { resolveUnifiedWaterDepth } from '../utils/depthSinkEngine';
+import { useLandingKhoaDepth } from '../utils/castingLanding';
+import {
+  calculateSinkingPhysics,
+  getSavedTackleConfig,
+  getTackleShortLabel,
+  solveLeadCastAimPoint,
+} from '../utils/tackleCalibration';
 import { Share } from '@capacitor/share';
 import { Capacitor } from '@capacitor/core';
 import { APP_VERSION } from '../version';
@@ -87,6 +94,9 @@ interface SpotDetailPanelProps {
   onDeleteSpot: (spotId: string) => void;
   onClose: () => void;
   onMinimize?: () => void;
+  allSpots?: FishingSpot[];
+  onSelectSpot?: (spot: FishingSpot) => void;
+  onOpenCompare?: (spotIds: string[]) => void;
 }
 
 export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
@@ -110,6 +120,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   onDeleteSpot,
   onClose,
   onMinimize,
+  allSpots = [],
+  onSelectSpot,
+  onOpenCompare,
 }) => {
   const [activeTab, setActiveTab] = React.useState<'WEATHER_TIDE' | 'LOGS' | 'DIRECTIONS' | 'MEMOS'>('WEATHER_TIDE');
   const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
@@ -185,37 +198,23 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   const [memoFilterTag, setMemoFilterTag] = React.useState<string>('ALL');
   const [isSubmittingMemo, setIsSubmittingMemo] = React.useState(false);
 
-  // 국립해양조사원 150m 격자 자연과학 수심 비동기 취득
-  const [khoaDepthRecord, setKhoaDepthRecord] = React.useState<KhoaDepthRecord | null>(null);
-
+  // 채비 캘리브레이션 상태 동기화 (MapView 팝오버 변경 즉시 반영)
+  const [tackleConfig, setTackleConfig] = React.useState(() => getSavedTackleConfig());
   React.useEffect(() => {
-    let isCancelled = false;
-    getCachedKhoaDepth(spot.lat, spot.lng)
-      .then((rec) => {
-        if (!isCancelled) {
-          setKhoaDepthRecord(rec);
-        }
-      })
-      .catch(() => {});
+    const handleTackleUpdate = () => setTackleConfig(getSavedTackleConfig());
+    window.addEventListener('exfish_tackle_updated', handleTackleUpdate);
+    return () => window.removeEventListener('exfish_tackle_updated', handleTackleUpdate);
+  }, []);
 
-    return () => {
-      isCancelled = true;
-    };
-  }, [spot.lat, spot.lng]);
+  // 국립해양조사원 150m 격자 자연과학 수심 비동기 취득 (캐스팅 방향 정중앙 + 채비 비거리 착수점 기준)
+  const { landingPoint, khoaDepthRecord } = useLandingKhoaDepth(
+    spot,
+    tackleConfig.calibratedDistanceMeters
+  );
 
   const nearestStationInfo = React.useMemo(() => {
     return findNearestKhoaStation(spot.lat, spot.lng);
   }, [spot.lat, spot.lng]);
-
-  const realDepthResult = React.useMemo(() => {
-    const mslDepth = khoaDepthRecord?.dpwt != null ? khoaDepthRecord.dpwt : 8.5;
-    const datumZ0 = nearestStationInfo.station.datumZ0 ?? 3.5;
-    const nowHour = currentTime.getHours();
-    const curPoint = tide?.hourlyCurve?.find((c) => c.hour === nowHour) || tide?.hourlyCurve?.[0];
-    const currentTideCm = curPoint?.height ?? 350;
-
-    return calculateRealWaterDepth(mslDepth, datumZ0, currentTideCm);
-  }, [khoaDepthRecord, nearestStationInfo, tide?.hourlyCurve, currentTime]);
 
   // 포인트 변경 시 해당 포인트의 현장 메모 로드
   React.useEffect(() => {
@@ -393,6 +392,220 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
     weatherIdx >= 0 && weather?.hourly?.pop && weather.hourly.pop[weatherIdx] != null
       ? weather.hourly.pop[weatherIdx]
       : 0;
+
+  const simPressureHpa = isNow
+    ? weather?.pressureHpa
+    : weatherIdx >= 0 && weather?.hourly?.pressureHpa && weather.hourly.pressureHpa[weatherIdx] != null
+    ? weather.hourly.pressureHpa[weatherIdx]
+    : weather?.pressureHpa;
+
+  // 48h 시뮬레이션 타임라인과 실시간 조위/역기압 연동 현장 수심 계산
+  const realDepthResult = React.useMemo(() => {
+    const simHourIdx = currentHour + timelineOffsetHours;
+    const simPoint =
+      tide?.hourly72Curve?.find((c) => c.hour === simHourIdx) ||
+      tide?.hourlyCurve?.find((c) => c.hour === targetHour) ||
+      tide?.hourlyCurve?.[0];
+    const simTideCm = simPoint?.height ?? Math.round((nearestStationInfo.station.datumZ0 ?? 2.5) * 100);
+
+    return resolveUnifiedWaterDepth({
+      spotLat: spot.lat,
+      spotLng: spot.lng,
+      targetLat: landingPoint?.lat,
+      targetLng: landingPoint?.lng,
+      spotType: spot.spot_type,
+      khoaDpwt: khoaDepthRecord?.dpwt ?? null,
+      khoaDpwtIsAtTarget: true,
+      datumZ0: nearestStationInfo.station.datumZ0 ?? 2.5,
+      tideHeightCm: simTideCm,
+      pressureHpa: simPressureHpa,
+      isPredictedTide: true,
+    });
+  }, [spot.lat, spot.lng, spot.spot_type, landingPoint?.lat, landingPoint?.lng, khoaDepthRecord, nearestStationInfo, tide?.hourly72Curve, tide?.hourlyCurve, currentHour, timelineOffsetHours, targetHour, simPressureHpa]);
+
+  // 포인트 중심 캐스팅 방위각 산출 (방향성 Δθ 안착·선행조준 연산용)
+  const castBearingDeg = React.useMemo(() => {
+    if (spot.casting_start_deg !== undefined && spot.casting_end_deg !== undefined) {
+      const span =
+        spot.casting_end_deg >= spot.casting_start_deg
+          ? spot.casting_end_deg - spot.casting_start_deg
+          : 360 - spot.casting_start_deg + spot.casting_end_deg;
+      return (spot.casting_start_deg + span / 2) % 360;
+    }
+    const compassMap: Record<string, number> = {
+      N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315,
+    };
+    const first = spot.casting_directions?.find((d) => d !== 'ALL');
+    return first ? compassMap[first] : undefined;
+  }, [spot.casting_start_deg, spot.casting_end_deg, spot.casting_directions]);
+
+  // 맞춤형 채비 선행 조준 / 적정 무게 처방
+  const leadCastPrescription = React.useMemo(() => {
+    const bearing = castBearingDeg ?? 90;
+    return solveLeadCastAimPoint(
+      bearing,
+      tackleConfig.calibratedDistanceMeters,
+      simWindSpeed,
+      simWindDir,
+      simCurrentVel,
+      simCurrentDir,
+      Math.max(1.0, realDepthResult.realDepthM),
+      tackleConfig
+    );
+  }, [castBearingDeg, tackleConfig, simWindSpeed, simWindDir, simCurrentVel, simCurrentDir, realDepthResult.realDepthM]);
+
+  // 현재 선택된 채비의 착수점 수심·조류 연동 예상 안착 시간 (MapView 레이더와 동일 물리 모델)
+  const selectedSinkPhysics = React.useMemo(() => {
+    return calculateSinkingPhysics(
+      tackleConfig.weightGrams,
+      realDepthResult.realDepthM,
+      simCurrentVel,
+      tackleConfig.baitConfig,
+      {
+        castBearingDeg,
+        currentDirectionDeg: simCurrentDir,
+        peLineSize: tackleConfig.peLineSize,
+        honorFloatLayer: true,
+      }
+    );
+  }, [tackleConfig, realDepthResult.realDepthM, simCurrentVel, castBearingDeg, simCurrentDir]);
+
+  // 48시간 황금 피딩 타임라인 Top 3 (원클릭 타임점프용)
+  const topGoldenWindows48h = React.useMemo(
+    () => findTopGoldenWindows48h(spot, weather, marine, tide, favoriteSpecies, currentTime),
+    [spot, weather, marine, tide, favoriteSpecies, currentTime]
+  );
+
+  // 시뮬레이션 시각(timelineOffsetHours)에 동기화되는 환경 스냅샷 기반 종합/어종별 입질 점수
+  const simTideSnapshot = React.useMemo(() => {
+    if (!tide) return null;
+    if (isNow) return tide;
+    const simHourIdx = currentHour + timelineOffsetHours;
+    const dayShift = Math.floor(simHourIdx / 24);
+    const simMulNumber = (((tide.mulNumber - 1 + dayShift) % 15) + 15) % 15 + 1;
+    const simCurvePt =
+      tide.hourly72Curve?.find((c) => c.hour === simHourIdx) ||
+      tide.hourlyCurve?.find((c) => c.hour === targetHour);
+    return {
+      ...tide,
+      mulNumber: simMulNumber,
+      hourlyCurve: simCurvePt ? [{ ...simCurvePt, hour: targetHour }] : tide.hourlyCurve,
+    };
+  }, [tide, isNow, currentHour, timelineOffsetHours, targetHour]);
+
+  const effectiveBiteScore = React.useMemo(() => {
+    if (isNow || !weather || !marine || !simTideSnapshot) return biteScore;
+    const simWeatherObj: WeatherData = {
+      ...weather,
+      temp: simTemp,
+      windSpeed: simWindSpeed,
+      windDirection: simWindDir,
+      windGust: simWindGust,
+      pressureHpa: simPressureHpa,
+    };
+    const simMarineObj: MarineData = {
+      ...marine,
+      seaSurfaceTemp: simWaterTemp,
+      waveHeight: simWaveHeight,
+      currentVelocity: simCurrentVel,
+      currentDirection: simCurrentDir,
+    };
+    return calculateBiteScore(spot, simWeatherObj, simMarineObj, simTideSnapshot, favoriteSpecies, targetTime, realDepthResult.realDepthM);
+  }, [isNow, biteScore, spot, weather, marine, simTideSnapshot, favoriteSpecies, targetTime, realDepthResult.realDepthM, simTemp, simWindSpeed, simWindDir, simWindGust, simPressureHpa, simWaterTemp, simWaveHeight, simCurrentVel, simCurrentDir]);
+
+  const scoredList = React.useMemo(() => {
+    const spotTargetSpecies = spot.target_species || [];
+    const caughtSpeciesFromLogs = Array.from(new Set(catchLogs.map((l) => l.fish_species).filter(Boolean)));
+    const combinedSpecies = Array.from(new Set([...spotTargetSpecies, ...caughtSpeciesFromLogs]));
+    const availableSpeciesList = combinedSpecies.length > 0 ? combinedSpecies : ['우럭', '광어', '감성돔', '농어'];
+
+    const userFavorites =
+      favoriteSpecies && favoriteSpecies.length > 0
+        ? favoriteSpecies
+        : (() => {
+            try {
+              const local = localStorage.getItem('exfish_favorite_species');
+              return local ? JSON.parse(local) : ['우럭', '광어'];
+            } catch {
+              return ['우럭', '광어'];
+            }
+          })();
+
+    const simWeatherObj: WeatherData | null = weather
+      ? isNow
+        ? weather
+        : {
+            ...weather,
+            temp: simTemp,
+            windSpeed: simWindSpeed,
+            windDirection: simWindDir,
+            windGust: simWindGust,
+            pressureHpa: simPressureHpa,
+          }
+      : null;
+    const simMarineObj: MarineData | null = marine
+      ? isNow
+        ? marine
+        : {
+            ...marine,
+            seaSurfaceTemp: simWaterTemp,
+            waveHeight: simWaveHeight,
+            currentVelocity: simCurrentVel,
+            currentDirection: simCurrentDir,
+          }
+      : null;
+
+    const evalMonth = targetTime.getMonth() + 1;
+    const list = availableSpeciesList.map((spName) => {
+      const ecology =
+        SPECIES_ENCYCLOPEDIA[spName] ||
+        Object.values(SPECIES_ENCYCLOPEDIA).find((sp) => sp.name.includes(spName) || spName.includes(sp.name)) ||
+        SPECIES_ENCYCLOPEDIA['우럭'];
+
+      const scoreInfo =
+        simWeatherObj && simMarineObj && simTideSnapshot
+          ? calculateSingleSpeciesScore(
+              ecology,
+              spot,
+              simWeatherObj,
+              simMarineObj,
+              simTideSnapshot,
+              targetHour,
+              evalMonth,
+              targetTime,
+              realDepthResult.realDepthM
+            )
+          : {
+              speciesName: spName,
+              score: 50,
+              verdict: '환경 데이터 수신 중...',
+              activityMatch: ecology.activityName,
+              tempMatch: `최적수온 ${ecology.tempRange.optMin}~${ecology.tempRange.optMax}°C`,
+            };
+
+      const isFavorite = userFavorites.some((fav: string) => fav.includes(spName) || spName.includes(fav));
+      const hitsCount = catchLogs.filter((l) => l.fish_species === spName && (l.fish_count ?? 0) > 0 && !l.is_hitless).length;
+      const hitlessCount = catchLogs.filter((l) => l.fish_species === spName && ((l.fish_count ?? 0) === 0 || l.is_hitless)).length;
+      const isPeakSeason = ecology.peakMonths ? ecology.peakMonths.includes(evalMonth) : false;
+
+      return {
+        name: spName,
+        ecology,
+        scoreInfo,
+        isFavorite,
+        hitsCount,
+        hitlessCount,
+        isPeakSeason,
+      };
+    });
+
+    list.sort((a, b) => {
+      if (a.isFavorite && !b.isFavorite) return -1;
+      if (!a.isFavorite && b.isFavorite) return 1;
+      return b.scoreInfo.score - a.scoreInfo.score;
+    });
+    return list;
+  }, [spot, catchLogs, favoriteSpecies, weather, marine, simTideSnapshot, isNow, simTemp, simWindSpeed, simWindDir, simWindGust, simPressureHpa, simWaterTemp, simWaveHeight, simCurrentVel, simCurrentDir, targetHour, targetTime, realDepthResult.realDepthM]);
 
   return (
     <div className="spot-detail-panel flex flex-col h-full bg-slate-900 border-l border-slate-800 text-white overflow-hidden shadow-2xl">
@@ -582,9 +795,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         >
                           {biteScore.topSpecies.speciesName} ({biteScore.topSpecies.score}점)
                         </button>
-                        {hasPhotos && (
-                          <span className="text-slate-400 text-[10px] hidden xs:inline">· {biteScore.topSpecies.activityMatch}</span>
-                        )}
                       </div>
                     )}
 
@@ -723,6 +933,17 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {activeTab === 'WEATHER_TIDE' && (
           <div className="space-y-4">
+            {/* v6 컴팩트 실시간 환경 HUD (스크롤 없는 2x3 6대 지표 + 1탭 채비 프리셋 + 등바람 대피) */}
+            <CompactEnvHud
+              spot={spot}
+              allSpots={allSpots}
+              weather={weather}
+              marine={marine}
+              activeRig={getSavedTackleConfig()}
+              onSelectSpot={onSelectSpot}
+              onOpenCompare={onOpenCompare}
+            />
+
             {/* [제안 2] 국립해양조사원·해양경찰청 연안안전사고 위험예보제 위젯 (석축, 갯바위, 해변, 백사장에만 적용) */}
             {(() => {
               const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
@@ -1160,10 +1381,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/90 shadow-md">
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
-                        <tr className="border-b border-slate-800 bg-slate-900/80 text-[11px] text-slate-400 font-semibold">
-                          <th className="py-1.5 px-3 w-16 text-center">시간</th>
-                          <th className="py-1.5 px-3 w-16 text-center">구분</th>
-                          <th className="py-1.5 px-3 text-right">조위 (수위 변화)</th>
+                        <tr className="border-b border-slate-800 bg-slate-900/80 text-[10px] text-slate-400 font-semibold">
+                          <th className="py-1 px-2.5 w-14 text-center">시간</th>
+                          <th className="py-1 px-2.5 w-14 text-center">구분</th>
+                          <th className="py-1 px-2.5 text-right">조위 (수위 변화)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/70 font-mono">
@@ -1184,31 +1405,31 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                   : 'hover:bg-slate-900/40'
                               }`}
                             >
-                              <td className="py-2 px-3 text-center font-bold text-slate-200 text-xs whitespace-nowrap">
+                              <td className="py-1 px-2.5 text-center font-bold text-slate-200 text-[11px] whitespace-nowrap">
                                 {item.time}
                               </td>
-                              <td className="py-2 px-3 text-center whitespace-nowrap">
+                              <td className="py-1 px-2.5 text-center whitespace-nowrap">
                                 {isHigh && (
-                                  <span className="font-bold text-rose-400 text-xs">만조</span>
+                                  <span className="font-bold text-rose-400 text-[11px]">만조</span>
                                 )}
                                 {isLow && (
-                                  <span className="font-bold text-cyan-400 text-xs">간조</span>
+                                  <span className="font-bold text-cyan-400 text-[11px]">간조</span>
                                 )}
                                 {isSunrise && (
-                                  <span className="font-medium text-amber-400 text-xs">일출</span>
+                                  <span className="font-medium text-amber-400 text-[11px]">일출</span>
                                 )}
                                 {isSunset && (
-                                  <span className="font-medium text-indigo-400 text-xs">일몰</span>
+                                  <span className="font-medium text-indigo-400 text-[11px]">일몰</span>
                                 )}
                               </td>
-                              <td className="py-2 px-3 text-right whitespace-nowrap">
+                              <td className="py-1 px-2.5 text-right whitespace-nowrap">
                                 {item.height !== undefined ? (
-                                  <span className="inline-flex items-center justify-end gap-1.5">
-                                    <span className="font-extrabold text-white text-xs sm:text-sm">
+                                  <span className="inline-flex items-center justify-end gap-1">
+                                    <span className="font-extrabold text-white text-[11px]">
                                       {item.height}cm
                                     </span>
                                     <span
-                                      className={`text-[11px] font-semibold ${
+                                      className={`text-[10px] font-semibold ${
                                         isHigh ? 'text-rose-400' : 'text-cyan-400'
                                       }`}
                                     >
@@ -1216,7 +1437,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                     </span>
                                   </span>
                                 ) : (
-                                  <span className="text-slate-600 font-sans text-xs">-</span>
+                                  <span className="text-slate-600 font-sans text-[11px]">-</span>
                                 )}
                               </td>
                             </tr>
@@ -1318,10 +1539,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
                   {/* 4대 실시간/예측 해양·기상 카드 그리드
                       - 위험 수준 시 경고 배경색(bg-rose-950/80, border-rose-600) 자동 적용 */}
-                  <div className="grid grid-cols-2 gap-2.5 text-xs">
+                  <div className="grid grid-cols-2 gap-1.5 text-xs">
                     {/* 1. 바람 위젯 (풍향 + 풍속 + 나침반 화살표) */}
                     <div
-                      className={`p-2.5 rounded-xl space-y-1 transition-colors border ${
+                      className={`px-2.5 py-1.5 rounded-xl space-y-0.5 transition-colors border ${
                         isWindDanger
                           ? 'bg-rose-950/80 border-rose-600 shadow-[0_0_15px_rgba(244,63,94,0.35)]'
                           : isWindWarning
@@ -1329,10 +1550,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           : 'bg-slate-800/70 border-slate-700/60'
                       }`}
                     >
-                      <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                      <div className="flex items-center justify-between text-slate-400 text-[10px]">
                         <span className="flex items-center gap-1 font-semibold truncate">
                           <Wind
-                            size={13}
+                            size={12}
                             className={isWindDanger ? 'text-rose-400 shrink-0 animate-pulse' : isWindWarning ? 'text-amber-400 shrink-0' : 'text-cyan-400 shrink-0'}
                           />{' '}
                           <span className={isWindDanger ? 'text-rose-200 font-bold' : isWindWarning ? 'text-amber-200 font-bold' : ''}>
@@ -1341,19 +1562,19 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         </span>
                         <div className="flex items-center gap-1 shrink-0">
                           {isWindDanger ? (
-                            <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-bold text-[9px] animate-pulse">
+                            <span className="px-1 rounded bg-rose-600 text-white font-bold text-[9px] animate-pulse">
                               위험
                             </span>
                           ) : isWindWarning ? (
-                            <span className="px-1.5 py-0.2 rounded bg-amber-600 text-slate-950 font-bold text-[9px]">
+                            <span className="px-1 rounded bg-amber-600 text-slate-950 font-bold text-[9px]">
                               주의
                             </span>
                           ) : null}
-                          <span className="text-[11px] font-bold text-cyan-200">
+                          <span className="text-[10px] font-bold text-cyan-200">
                             {getWindDirectionKor(simWindDir)}
                           </span>
                           <div
-                            className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold transition-transform duration-300 ${
+                            className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold transition-transform duration-300 ${
                               isWindDanger ? 'bg-rose-500/30 text-rose-200' : 'bg-cyan-500/20 text-cyan-300'
                             }`}
                             style={{ transform: `rotate(${simWindDir}deg)` }}
@@ -1362,19 +1583,16 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-baseline justify-between mt-0.5">
+                      <div className="flex items-baseline justify-between gap-1">
                         <div
-                          className={`text-sm sm:text-base font-bold truncate ${
+                          className={`text-sm font-bold truncate ${
                             isWindDanger ? 'text-rose-200' : isWindWarning ? 'text-amber-300' : 'text-cyan-300'
                           }`}
                         >
                           {formatWindSpeed(simWindSpeed, windUnit)}
                         </div>
-                      </div>
-                      <div className={`text-[10px] flex justify-between pt-1 border-t ${isWindDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-400'}`}>
-                        <span>돌풍:</span>
-                        <span className={isWindDanger ? 'text-rose-200 font-bold' : 'text-amber-400 font-medium'}>
-                          {formatWindSpeed(simWindGust, windUnit)}
+                        <span className={`text-[10px] shrink-0 ${isWindDanger ? 'text-rose-200 font-bold' : 'text-amber-400 font-medium'}`}>
+                          돌풍 {formatWindSpeed(simWindGust, windUnit)}
                         </span>
                       </div>
                       {weather?.isObserved && (
@@ -1387,7 +1605,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
                     {/* 2. 조류 방향 / 유속 위젯 (풍향풍속 바로 옆에 배치) */}
                     <div
-                      className={`p-2.5 rounded-xl space-y-1 transition-colors border ${
+                      className={`px-2.5 py-1.5 rounded-xl space-y-0.5 transition-colors border ${
                         isCurrentDanger
                           ? 'bg-rose-950/80 border-rose-600 shadow-[0_0_15px_rgba(244,63,94,0.35)]'
                           : isCurrentWarning
@@ -1395,10 +1613,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           : 'bg-slate-800/70 border-slate-700/60'
                       }`}
                     >
-                      <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                      <div className="flex items-center justify-between text-slate-400 text-[10px]">
                         <span className="flex items-center gap-1 font-semibold truncate">
                           <Compass
-                            size={13}
+                            size={12}
                             className={isCurrentDanger ? 'text-rose-400 shrink-0 animate-pulse' : isCurrentWarning ? 'text-amber-400 shrink-0' : 'text-emerald-400 shrink-0'}
                           />{' '}
                           <span className={isCurrentDanger ? 'text-rose-200 font-bold' : isCurrentWarning ? 'text-amber-200 font-bold' : ''}>
@@ -1407,19 +1625,19 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         </span>
                         <div className="flex items-center gap-1 shrink-0">
                           {isCurrentDanger ? (
-                            <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-bold text-[9px] animate-pulse">
+                            <span className="px-1 rounded bg-rose-600 text-white font-bold text-[9px] animate-pulse">
                               위험
                             </span>
                           ) : isCurrentWarning ? (
-                            <span className="px-1.5 py-0.2 rounded bg-amber-600 text-slate-950 font-bold text-[9px]">
+                            <span className="px-1 rounded bg-amber-600 text-slate-950 font-bold text-[9px]">
                               주의
                             </span>
                           ) : null}
-                          <span className={`text-[11px] font-bold ${isCurrentDanger ? 'text-rose-200' : isCurrentWarning ? 'text-amber-200' : 'text-emerald-300'}`}>
+                          <span className={`text-[10px] font-bold ${isCurrentDanger ? 'text-rose-200' : isCurrentWarning ? 'text-amber-200' : 'text-emerald-300'}`}>
                             {getCurrentDirectionKor(simCurrentDir)}
                           </span>
                           <div
-                            className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold transition-transform duration-300 ${
+                            className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold transition-transform duration-300 ${
                               isCurrentDanger ? 'bg-rose-500/30 text-rose-200' : 'bg-emerald-500/20 text-emerald-300'
                             }`}
                             style={{ transform: `rotate(${simCurrentDir}deg)` }}
@@ -1428,19 +1646,16 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-baseline justify-between mt-0.5">
+                      <div className="flex items-baseline justify-between gap-1">
                         <div
-                          className={`text-sm sm:text-base font-bold truncate ${
+                          className={`text-sm font-bold truncate ${
                             isCurrentDanger ? 'text-rose-200' : isCurrentWarning ? 'text-amber-300' : 'text-emerald-300'
                           }`}
                         >
                           {formatCurrentVelocity(simCurrentVel, currentUnit)}
                         </div>
-                      </div>
-                      <div className={`text-[10px] pt-1 border-t flex justify-between ${isCurrentDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-400'}`}>
-                        <span>흐름:</span>
-                        <span className={`font-mono text-[10px] font-semibold ${isCurrentDanger ? 'text-rose-200' : isCurrentWarning ? 'text-amber-300' : 'text-emerald-400'}`}>
-                          {simCurrentVel > 0.8 ? '급류 (위험)' : simCurrentVel > 0.5 ? '빠른 본류대' : simCurrentVel > 0.2 ? '완만한 조류' : '정조/약류'}
+                        <span className={`font-mono text-[10px] font-semibold shrink-0 ${isCurrentDanger ? 'text-rose-200' : isCurrentWarning ? 'text-amber-300' : 'text-emerald-400'}`}>
+                          {simCurrentVel > 0.8 ? '급류' : simCurrentVel > 0.5 ? '본류대' : simCurrentVel > 0.2 ? '완만' : '정조/약류'}
                         </span>
                       </div>
                       {marine?.isRomsCurrent && (
@@ -1451,23 +1666,20 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     </div>
 
                     {/* 3. 표층 수온 및 기온 위젯 */}
-                    <div className="p-2.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-1">
-                      <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                    <div className="px-2.5 py-1.5 bg-slate-800/70 border border-slate-700/60 rounded-xl space-y-0.5">
+                      <div className="flex items-center justify-between text-slate-400 text-[10px]">
                         <span className="flex items-center gap-1 font-semibold truncate">
-                          <Thermometer size={13} className="text-rose-400 shrink-0" /> 표층 수온 (SST)
+                          <Thermometer size={12} className="text-rose-400 shrink-0" /> 표층 수온
                         </span>
+                        <span className="text-cyan-300 font-medium shrink-0">강수 {simPop}%</span>
                       </div>
-                      <div className="flex items-baseline justify-between mt-0.5">
-                        <div className="text-sm sm:text-base font-bold text-rose-300 truncate">
+                      <div className="flex items-baseline justify-between gap-1">
+                        <div className="text-sm font-bold text-rose-300 truncate">
                           {simWaterTemp.toFixed(1)}°C
                         </div>
-                        <span className="text-[11px] text-slate-300 shrink-0 ml-1">
+                        <span className="text-[11px] text-slate-300 shrink-0">
                           기온 {simTemp.toFixed(1)}°C
                         </span>
-                      </div>
-                      <div className="text-[10px] text-slate-400 flex justify-between pt-1 border-t border-slate-700/50">
-                        <span>강수확률:</span>
-                        <span className="text-cyan-300 font-medium">{simPop}%</span>
                       </div>
                       {marine?.isObservedTemp && (
                         <div className="text-[9px] text-rose-300 font-bold bg-rose-950/70 px-1.5 py-0.5 rounded border border-rose-800/60">
@@ -1478,7 +1690,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
                     {/* 4. 파고 / 날씨 위젯 (표층수온 바로 옆에 배치) */}
                     <div
-                      className={`p-2.5 rounded-xl space-y-1 transition-colors border ${
+                      className={`px-2.5 py-1.5 rounded-xl space-y-0.5 transition-colors border ${
                         isWaveDanger
                           ? 'bg-rose-950/80 border-rose-600 shadow-[0_0_15px_rgba(244,63,94,0.35)]'
                           : isWaveWarning
@@ -1486,119 +1698,129 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           : 'bg-slate-800/70 border-slate-700/60'
                       }`}
                     >
-                      <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                      <div className="flex items-center justify-between text-slate-400 text-[10px]">
                         <span className="flex items-center gap-1 font-semibold truncate">
                           <Waves
-                            size={13}
+                            size={12}
                             className={isWaveDanger ? 'text-rose-400 shrink-0 animate-pulse' : isWaveWarning ? 'text-amber-400 shrink-0' : 'text-blue-400 shrink-0'}
                           />{' '}
                           <span className={isWaveDanger ? 'text-rose-200 font-bold' : isWaveWarning ? 'text-amber-200 font-bold' : ''}>
                             파고 · 날씨
                           </span>
                         </span>
-                        {isWaveDanger ? (
-                          <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-bold text-[9px] animate-pulse">
-                            위험
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isWaveDanger ? (
+                            <span className="px-1 rounded bg-rose-600 text-white font-bold text-[9px] animate-pulse">
+                              위험
+                            </span>
+                          ) : isWaveWarning ? (
+                            <span className="px-1 rounded bg-amber-600 text-slate-950 font-bold text-[9px]">
+                              주의
+                            </span>
+                          ) : null}
+                          <span className={isWaveDanger ? 'text-rose-300' : 'text-slate-400'}>
+                            {marine?.wavePeriod ? `${marine.wavePeriod}초` : '--'}
                           </span>
-                        ) : isWaveWarning ? (
-                          <span className="px-1.5 py-0.2 rounded bg-amber-600 text-slate-950 font-bold text-[9px]">
-                            주의
-                          </span>
-                        ) : null}
+                        </div>
                       </div>
-                      <div className="flex items-baseline justify-between mt-0.5">
+                      <div className="flex items-baseline justify-between gap-1">
                         <div
-                          className={`text-sm sm:text-base font-bold truncate ${
+                          className={`text-sm font-bold truncate ${
                             isWaveDanger ? 'text-rose-200' : isWaveWarning ? 'text-amber-300' : 'text-blue-300'
                           }`}
                         >
                           {simWaveHeight.toFixed(1)} m
                         </div>
-                        <span className={`text-[11px] shrink-0 ml-1 ${isWaveDanger ? 'text-rose-300' : 'text-slate-300'}`}>
-                          {marine?.wavePeriod ? `${marine.wavePeriod}초 주기` : '--'}
-                        </span>
-                      </div>
-                      <div className={`text-[10px] pt-1 border-t flex justify-between ${isWaveDanger ? 'border-rose-800/80 text-rose-300' : 'border-slate-700/50 text-slate-300'}`}>
-                        <span className={isWaveDanger ? 'text-rose-300' : 'text-slate-400'}>날씨:</span>
-                        <span className={`font-semibold truncate ${isWaveDanger ? 'text-rose-200' : 'text-cyan-300'}`}>
+                        <span className={`text-[11px] font-semibold truncate ${isWaveDanger ? 'text-rose-200' : 'text-cyan-300'}`}>
                           {simWeatherText}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* 2-1. [KHOA 연동] 실시간 현장 유효 수심 및 채비 착저 시간 (Sink Time) 카드 */}
-                  <div className="p-3 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/40 border border-cyan-800/60 rounded-2xl space-y-2.5 shadow-lg">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-base">🌊</span>
-                        <span className="font-bold text-xs text-slate-100">
+                  {/* 2-1. [KHOA 연동] 수심 및 안착시간 (채비 비거리 예측과 동일 지표) */}
+                  <div className="p-2.5 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/40 border border-cyan-800/60 rounded-2xl space-y-2 shadow-lg">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-bold text-xs text-slate-100 shrink-0">
                           수심 및 안착시간
                         </span>
+                        <span className="text-[10px] text-slate-400 truncate">
+                          {getTackleShortLabel(tackleConfig)}
+                        </span>
                       </div>
-                      <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                        {khoaDepthRecord ? 'KHOA 150m 정밀 격자' : '해안 수심 추정'}
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shrink-0">
+                        {khoaDepthRecord ? `KHOA · ${nearestStationInfo.station.name}` : `추정 · ${nearestStationInfo.station.name}`}
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
-                      <div>
-                        <div className="text-[10px] text-slate-400">실시간 유효 수심</div>
-                        <div className="text-lg font-black text-cyan-300 font-mono tracking-tight flex items-baseline gap-1">
-                          <span>{realDepthResult.realDepthM.toFixed(1)}</span>
-                          <span className="text-xs font-normal text-slate-400">m</span>
-                        </div>
+                    <div className="bg-slate-950/80 rounded-xl px-2.5 py-2 border border-cyan-500/30 space-y-1 text-[11px] font-mono">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+                        <span className="text-slate-300">
+                          비거리 <strong className="text-cyan-300 text-xs">{tackleConfig.calibratedDistanceMeters}m</strong>
+                          <span className="text-slate-500 text-[10px]"> ({tackleConfig.totalWeightGrams ?? tackleConfig.weightGrams}g)</span>
+                        </span>
+                        <span className="text-slate-300">
+                          수심 <strong className="text-sky-300">{realDepthResult.isExposed ? '간출(0m)' : `${realDepthResult.realDepthM.toFixed(1)}m`}</strong>
+                        </span>
+                        <span className="text-slate-300">
+                          유속 <strong className="text-emerald-300">{simCurrentVel.toFixed(1)}m/s</strong>
+                        </span>
                       </div>
-
-                      <div>
-                        <div className="text-[10px] text-slate-400">기준 관측소 (Z₀)</div>
-                        <div className="text-xs font-bold text-slate-200 mt-1 truncate">
-                          {nearestStationInfo.station.name} 관측소
-                        </div>
-                        <div className="text-[9.5px] text-slate-400">
-                          거리 {nearestStationInfo.distanceKm}km · 기준 수심 {nearestStationInfo.station.datumZ0}m
-                        </div>
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 pt-1 border-t border-slate-800/80">
+                        <span className="text-slate-300">
+                          바닥안착 <strong className="text-amber-300">{selectedSinkPhysics.fallTimeSec}초</strong>
+                        </span>
+                        <span className="text-slate-300">
+                          하강속도 <strong className="text-cyan-200">{Math.round(selectedSinkPhysics.effSinkSpeedMps * 100)}cm/s</strong>
+                        </span>
+                        {selectedSinkPhysics.driftDistanceM > 0.3 && (
+                          <span className="text-slate-300">
+                            흘림 <strong className="text-emerald-300">+{selectedSinkPhysics.driftDistanceM}m</strong>
+                          </span>
+                        )}
                       </div>
+                      {selectedSinkPhysics.canReachBottom === false && (
+                        <div className="text-[10px] text-rose-400 font-semibold pt-0.5">
+                          흘림 과도 · {selectedSinkPhysics.recommendedMinWeightG}g+ 증량 권장
+                        </div>
+                      )}
                     </div>
 
-                    {/* 봉돌별 착저 예상 시간 (Sink Time) 3단 그리드 */}
-                    <div className="space-y-1">
-                      <div className="text-[10px] font-bold text-slate-300 flex items-center justify-between">
-                        <span>채비 바닥 안착 시간</span>
-                        <span className="text-[9px] text-slate-400 font-normal">유속 {simCurrentVel.toFixed(1)}m/s 기준</span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-1.5 text-center">
-                        <div className="p-1.5 bg-slate-900/90 rounded-lg border border-amber-900/40">
-                          <div className="text-[9.5px] text-amber-300 font-bold">25호 원투 (94g)</div>
-                          <div className="text-xs font-mono font-bold text-amber-200">
-                            {calculateSinkTimeToBottom(realDepthResult.realDepthM, 1.35, simCurrentVel).sinkSeconds.toFixed(1)}초
-                          </div>
-                          <div className="text-[9px] text-slate-400">
-                            밀림 {calculateSinkTimeToBottom(realDepthResult.realDepthM, 1.35, simCurrentVel).driftOffsetM.toFixed(1)}m
-                          </div>
+                    {/* ⏰ 48시간 황금 피딩 타임 Top 3 원클릭 점프 */}
+                    {topGoldenWindows48h.length > 0 && (
+                      <div className="space-y-1 pt-0.5">
+                        <div className="text-[10px] font-bold text-amber-300 flex items-center justify-between">
+                          <span>⏰ 향후 48h 골든 피딩 Top 3</span>
+                          <span className="text-[9px] text-slate-400 font-normal">클릭 시 해당 시각으로 이동</span>
                         </div>
-
-                        <div className="p-1.5 bg-slate-900/90 rounded-lg border border-cyan-900/40">
-                          <div className="text-[9.5px] text-cyan-300 font-bold">1/2oz 지그헤드</div>
-                          <div className="text-xs font-mono font-bold text-cyan-200">
-                            {calculateSinkTimeToBottom(realDepthResult.realDepthM, 0.8, simCurrentVel).sinkSeconds.toFixed(1)}초
-                          </div>
-                          <div className="text-[9px] text-slate-400">
-                            밀림 {calculateSinkTimeToBottom(realDepthResult.realDepthM, 0.8, simCurrentVel).driftOffsetM.toFixed(1)}m
-                          </div>
-                        </div>
-
-                        <div className="p-1.5 bg-slate-900/90 rounded-lg border border-purple-900/40">
-                          <div className="text-[9.5px] text-purple-300 font-bold">3.5호 에기 (20g)</div>
-                          <div className="text-xs font-mono font-bold text-purple-200">
-                            {calculateSinkTimeToBottom(realDepthResult.realDepthM, 0.33, simCurrentVel).sinkSeconds.toFixed(1)}초
-                          </div>
-                          <div className="text-[9px] text-slate-400">
-                            밀림 {calculateSinkTimeToBottom(realDepthResult.realDepthM, 0.33, simCurrentVel).driftOffsetM.toFixed(1)}m
-                          </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {topGoldenWindows48h.map((win, idx) => (
+                            <button
+                              key={`golden-win-${win.offsetHours}`}
+                              type="button"
+                              onClick={() => {
+                                setIsPlaying(false);
+                                setTimelineOffsetHours(win.offsetHours);
+                              }}
+                              className={`p-1.5 rounded-lg border text-left transition cursor-pointer ${
+                                timelineOffsetHours === win.offsetHours
+                                  ? 'bg-amber-500/20 border-amber-400 text-amber-100'
+                                  : 'bg-slate-900/90 border-slate-800 hover:border-amber-600/60 text-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between text-[9.5px] font-bold">
+                                <span className="text-amber-300">#{idx + 1} {win.timeLabel}</span>
+                                <span className="font-mono text-emerald-300">{win.score}점</span>
+                              </div>
+                              <div className="text-[9px] text-slate-400 truncate mt-0.5">
+                                {win.topSpeciesName} · {win.reason}
+                              </div>
+                            </button>
+                          ))}
                         </div>
                       </div>
-                    </div>
+                    )}
 
                     {realDepthResult.isExposed && (
                       <div className="text-[10px] text-rose-300 bg-rose-950/40 p-1.5 rounded-lg border border-rose-800/50">
@@ -1781,49 +2003,46 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
         {activeTab === 'LOGS' && (
           <div className="space-y-3">
-            {/* [요구사항 7] 입질 종합 지수 브리핑 카드 (상단에서 조과 기록 및 실측 통계 탭으로 이전) */}
-            {biteScore && (
+            {/* [요구사항 7] 입질 종합 지수 브리핑 카드 (타임라인 오프셋 연동) */}
+            {effectiveBiteScore && (
               <div className="p-3 rounded-2xl bg-slate-900/90 border border-cyan-500/40 flex items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white font-extrabold shadow shrink-0">
-                    <span className="text-[10px] leading-none opacity-80">종합</span>
-                    <span className="text-lg leading-none font-mono font-black">{biteScore.totalScore}</span>
+                    <span className="text-[10px] leading-none opacity-80">{isNow ? '종합' : `+${timelineOffsetHours}h`}</span>
+                    <span className="text-lg leading-none font-mono font-black">{effectiveBiteScore.totalScore}</span>
                   </div>
                   <div className="min-w-0">
                     <div className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5 flex-wrap">
-                      <span>실시간 종합 입질 {biteScore.totalScore}점</span>
+                      <span>{isNow ? '실시간' : '예측'} 종합 입질 {effectiveBiteScore.totalScore}점</span>
                       <span
                         className={`px-1.5 py-0.2 rounded text-[9px] ${
-                          biteScore.windRelation.includes('최적')
+                          effectiveBiteScore.windRelation.includes('최적')
                             ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                            : biteScore.windRelation.includes('주의')
+                            : effectiveBiteScore.windRelation.includes('주의')
                             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                             : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                         }`}
                       >
-                        {biteScore.windRelation}
+                        {effectiveBiteScore.windRelation}
                       </span>
-                      {biteScore.targetSummaryLabel && (
+                      {effectiveBiteScore.targetSummaryLabel && (
                         <span className="px-1.5 py-0.2 rounded text-[9px] bg-cyan-900/60 text-cyan-200 border border-cyan-700/50 truncate max-w-[140px]">
-                          🎯 {biteScore.targetSummaryLabel}
+                          🎯 {effectiveBiteScore.targetSummaryLabel}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-300 truncate pt-0.5">{biteScore.verdict}</p>
-                    {biteScore.waveSweepWarning && (
+                    <p className="text-xs text-slate-300 truncate pt-0.5">{effectiveBiteScore.verdict}</p>
+                    {effectiveBiteScore.waveSweepWarning && (
                       <p className="text-[10.5px] text-amber-300 font-medium truncate pt-0.5 flex items-center gap-1">
-                        <span>{biteScore.waveSweepWarning}</span>
+                        <span>{effectiveBiteScore.waveSweepWarning}</span>
                       </p>
                     )}
                   </div>
                 </div>
-                {biteScore.topSpecies && (
+                {effectiveBiteScore.topSpecies && (
                   <div className="hidden sm:block text-right shrink-0">
                     <div className="text-xs font-bold text-emerald-300">
-                      🏆 1순위: {biteScore.topSpecies.speciesName} ({biteScore.topSpecies.score}점)
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      {biteScore.topSpecies.activityMatch}
+                      🏆 1순위: {effectiveBiteScore.topSpecies.speciesName} ({effectiveBiteScore.topSpecies.score}점)
                     </div>
                   </div>
                 )}
@@ -1832,67 +2051,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
             {/* 1. 이 포인트에서 낚이는 어종별 실시간 입질 지수 */}
             {(() => {
-              // 해당 포인트의 대표 대상어종 + 실제 조과 로그에 등록된 어종 목록 취합
-              const spotTargetSpecies = spot.target_species || [];
-              const caughtSpeciesFromLogs = Array.from(new Set(catchLogs.map((l) => l.fish_species).filter(Boolean)));
-              const combinedSpecies = Array.from(new Set([...spotTargetSpecies, ...caughtSpeciesFromLogs]));
-              const availableSpeciesList = combinedSpecies.length > 0 ? combinedSpecies : ['우럭', '광어', '감성돔', '농어'];
-
-              // 사용자 관심 어종 목록 (props 또는 localStorage)
-              const userFavorites = (favoriteSpecies && favoriteSpecies.length > 0)
-                ? favoriteSpecies
-                : (() => {
-                    try {
-                      const local = localStorage.getItem('exfish_favorite_species');
-                      return local ? JSON.parse(local) : ['우럭', '광어'];
-                    } catch {
-                      return ['우럭', '광어'];
-                    }
-                  })();
-
-              const now = currentTime;
-              const curHour = now.getHours();
-              const curMonth = now.getMonth() + 1;
-
-              const scoredList = availableSpeciesList.map((spName) => {
-                const ecology =
-                  SPECIES_ENCYCLOPEDIA[spName] ||
-                  Object.values(SPECIES_ENCYCLOPEDIA).find((sp) => sp.name.includes(spName) || spName.includes(sp.name)) ||
-                  SPECIES_ENCYCLOPEDIA['우럭'];
-
-                const scoreInfo = (weather && marine && tide)
-                  ? calculateSingleSpeciesScore(ecology, spot, weather, marine, tide, curHour, curMonth, now)
-                  : {
-                      speciesName: spName,
-                      score: 50,
-                      verdict: '환경 데이터 수신 중...',
-                      activityMatch: ecology.activityName,
-                      tempMatch: `최적수온 ${ecology.tempRange.optMin}~${ecology.tempRange.optMax}°C`,
-                    };
-
-                const isFavorite = userFavorites.some((fav: string) => fav.includes(spName) || spName.includes(fav));
-                const hitsCount = catchLogs.filter((l) => l.fish_species === spName && (l.fish_count ?? 0) > 0 && !l.is_hitless).length;
-                const hitlessCount = catchLogs.filter((l) => l.fish_species === spName && ((l.fish_count ?? 0) === 0 || l.is_hitless)).length;
-                const isPeakSeason = ecology.peakMonths ? ecology.peakMonths.includes(curMonth) : false;
-
-                return {
-                  name: spName,
-                  ecology,
-                  scoreInfo,
-                  isFavorite,
-                  hitsCount,
-                  hitlessCount,
-                  isPeakSeason,
-                };
-              });
-
-              // 정렬: 1순위 내 관심어종(⭐), 2순위 실시간 입질 점수 높은 순
-              scoredList.sort((a, b) => {
-                if (a.isFavorite && !b.isFavorite) return -1;
-                if (!a.isFavorite && b.isFavorite) return 1;
-                return b.scoreInfo.score - a.scoreInfo.score;
-              });
-
               return (
                 <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl shadow-lg space-y-2.5">
                   <button
@@ -2315,6 +2473,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
                     {/* AI 꽝 사후 복기 브리핑 ("떠나버린 물고기를 기리며") */}
                     {isHitless && (() => {
+                      const rawLogDate = log.catch_date ? new Date(`${log.catch_date}T${log.catch_time || '12:00'}:00`) : new Date();
+                      const validLogDate = isNaN(rawLogDate.getTime()) ? new Date() : rawLogDate;
+                      const historicalTide = calculateTideDay(spot.lat, spot.lng, validLogDate);
                       const pm = generatePostMortemReport({
                         targetSpecies: log.fish_species || '우럭',
                         catchTime: log.catch_time || '16:00',
@@ -2333,12 +2494,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           seaSurfaceTemp: log.water_temp || 16.5,
                           waveHeight: 0.8,
                           wavePeriod: 6.0,
-                          currentVelocity: log.current_velocity || 0.35,
+                          currentVelocity: log.current_velocity ?? 0.35,
                           waveDirection: 180,
                           currentDirection: 135,
                           hourly: { time: [], seaSurfaceTemp: [], waveHeight: [], currentVelocity: [], currentDirection: [] },
                         },
-                        tide: null,
+                        tide: historicalTide,
                         biteScore: null,
                       });
                       return (
