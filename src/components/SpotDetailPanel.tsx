@@ -1532,44 +1532,18 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     </div>
                   </div>
 
-                  {/* 실시간/예측 환경 2x3 컴팩트 6박스 그리드 */}
+                  {/* 실시간/예측 환경 1x3 컴팩트 3박스 (바람, 조류, 파고·주기 - 상단 헤더와 중복 제거) */}
                   {(() => {
                     const castCenter = resolveCastCenterDeg(spot);
                     const { windClass } = classifyRelativeWind(castCenter, simWindDir);
                     const hasCastArc = castCenter !== null;
                     const relWindLabel = hasCastArc ? getRelativeWindLabel(windClass) : '';
-                    const simApparentTemp = isNow ? (weather?.apparentTemp ?? simTemp) : simTemp;
-                    const weatherEmojiMatch = simWeatherText.match(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/u);
-                    const weatherIcon = weatherEmojiMatch ? weatherEmojiMatch[0] : '🌤️';
                     const currentStateLabel =
                       simCurrentVel > 0.8 ? '급류' : simCurrentVel > 0.5 ? '본류' : simCurrentVel > 0.2 ? '완만' : '정조·약류';
 
                     return (
                       <div className="grid grid-cols-3 gap-1.5 text-xs">
-                        {/* 1행 박스1: 날씨 아이콘, 기온(체감 기온) */}
-                        <div className="px-2 py-1.5 bg-slate-800/70 border border-slate-700/60 rounded-xl">
-                          <div className="flex items-center justify-between text-[10px] text-slate-400 leading-tight">
-                            <span>날씨·기온</span>
-                            <span className="text-xs leading-none">{weatherIcon}</span>
-                          </div>
-                          <div className="mt-0.5 flex items-baseline gap-1 truncate">
-                            <span className="text-xs font-bold text-slate-100">{simTemp.toFixed(1)}°</span>
-                            <span className="text-[10px] text-slate-400 truncate">({simApparentTemp.toFixed(1)}°)</span>
-                          </div>
-                        </div>
-
-                        {/* 1행 박스2: 강수확률, 기압 */}
-                        <div className="px-2 py-1.5 bg-slate-800/70 border border-slate-700/60 rounded-xl">
-                          <div className="text-[10px] text-slate-400 leading-tight">강수·기압</div>
-                          <div className="mt-0.5 flex items-baseline justify-between gap-1 truncate">
-                            <span className="text-xs font-bold text-cyan-300">{simPop}%</span>
-                            <span className="text-[10px] text-slate-300 font-mono">
-                              {simPressureHpa ? `${Math.round(simPressureHpa)}hPa` : '-'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* 1행 박스3: 풍향 화살표(상대풍향), 풍속(돌풍) */}
+                        {/* 박스1: 풍향 화살표(상대풍향), 풍속(돌풍) */}
                         <div
                           className={`px-2 py-1.5 rounded-xl border transition-colors ${
                             isWindDanger
@@ -1609,15 +1583,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           </div>
                         </div>
 
-                        {/* 2행 박스1: 수온 */}
-                        <div className="px-2 py-1.5 bg-slate-800/70 border border-slate-700/60 rounded-xl">
-                          <div className="text-[10px] text-slate-400 leading-tight">수온</div>
-                          <div className="mt-0.5 text-xs font-bold text-rose-300">
-                            {simWaterTemp.toFixed(1)}°C
-                          </div>
-                        </div>
-
-                        {/* 2행 박스2: 조류 화살표, 조류 속도 (정조/약류 등) */}
+                        {/* 박스2: 조류 화살표, 조류 속도 (정조/약류 등) */}
                         <div
                           className={`px-2 py-1.5 rounded-xl border transition-colors ${
                             isCurrentDanger
@@ -1646,7 +1612,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           </div>
                         </div>
 
-                        {/* 2행 박스3: 파고, 파고 주기 */}
+                        {/* 박스3: 파고, 파고 주기 */}
                         <div
                           className={`px-2 py-1.5 rounded-xl border transition-colors ${
                             isWaveDanger

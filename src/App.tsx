@@ -1343,20 +1343,8 @@ export function App() {
             )}
         </div>
 
-        {/* 툴바: PC 웹 로그인 / 회원 정보 버튼 및 최신 APK 다운로드 버튼 */}
+        {/* 툴바: PC 웹 로그인 / 회원 정보 버튼 */}
         <div className="flex items-center gap-1.5 shrink-0 text-xs">
-          {!isNativePlatform() && (
-            <a
-              href="./exfish.apk"
-              download="exfish.apk"
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 hover:text-white font-bold text-xs shadow-sm transition active:scale-95 cursor-pointer"
-              title="최신 ExFish Android APK 직접 다운로드"
-            >
-              <Download size={14} className="text-emerald-400" />
-              <span>APK 다운로드</span>
-            </a>
-          )}
-
           <button
             onClick={() => setIsLoginModalOpen(true)}
             className={`hidden md:flex items-center justify-center p-2 rounded-lg border text-xs font-semibold transition ${

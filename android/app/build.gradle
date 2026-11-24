@@ -7,13 +7,13 @@ android {
         applicationId "com.tlogger.exfish"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 16
-        versionName "1.02.12-20261114"
+        versionCode 20
+        versionName "1.04.00-20261124"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:*.apk:*.APK'
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:*.apk:*.APK:*.aab:*.AAB'
         }
     }
     signingConfigs {
@@ -27,8 +27,9 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.release
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     applicationVariants.all { variant ->
@@ -66,10 +67,41 @@ tasks.register('copyReleaseApkToWeb') {
     }
 }
 
+// 릴리즈 AAB 빌드 완료 시 웹 다운로드 경로(public/exfish.aab 및 dist/exfish.aab)로 자동 동기화
+tasks.register('copyReleaseBundleToWeb') {
+    description = "Automatically copies built release AAB to public/exfish.aab and dist/exfish.aab."
+    doLast {
+        def aabFile = file("${projectDir}/build/outputs/bundle/release/app-release.aab")
+        if (aabFile.exists()) {
+            def publicDir = file("${rootDir}/../public")
+            def distDir = file("${rootDir}/../dist")
+            if (!publicDir.exists()) publicDir.mkdirs()
+            copy {
+                from aabFile
+                into publicDir
+                rename { 'exfish.aab' }
+            }
+            if (distDir.exists()) {
+                copy {
+                    from aabFile
+                    into distDir
+                    rename { 'exfish.aab' }
+                }
+            }
+            println ">>> [ExFish Auto-Deploy] Successfully mirrored release AAB to public/exfish.aab (${aabFile.length()} bytes)"
+        }
+    }
+}
+
 afterEvaluate {
     if (tasks.findByName('assembleRelease')) {
         tasks.named('assembleRelease').configure {
             finalizedBy 'copyReleaseApkToWeb'
+        }
+    }
+    if (tasks.findByName('bundleRelease')) {
+        tasks.named('bundleRelease').configure {
+            finalizedBy 'copyReleaseBundleToWeb'
         }
     }
 }

@@ -1,9 +1,9 @@
 import React from 'react';
 import { useKakaoLoader } from 'react-kakao-maps-sdk';
-import { Check, LocateFixed, Plus, Minus, Layers, ShieldAlert, PenTool, Sliders } from 'lucide-react';
+import { Check, LocateFixed, Plus, Minus, Layers, ShieldAlert, PenTool, Sliders, Ruler } from 'lucide-react';
 import { KakaoMapCanvas } from './KakaoMapCanvas';
 import { VWorldMapCanvas } from './VWorldMapCanvas';
-import type { MapCanvasBridge, MapMode, SharedMapCanvasProps } from './mapCanvasTypes';
+import type { MapCanvasBridge, MapMode, MeasureSegment, SharedMapCanvasProps } from './mapCanvasTypes';
 import { computeApproxViewportBounds, normalizeWgs84Center } from '../utils/mapCoordSync';
 import { loadZonesForBounds } from '../utils/zoneCache';
 import { findZoneHitsAtPoint } from '../utils/zoneSpatial';
@@ -274,6 +274,50 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // 실수 터치 방지: 지도 빈 자리 클릭 시 임시 핀 & 미니 확인 팝업 상태
   const [pendingNewSpot, setPendingNewSpot] = React.useState<{ lat: number; lng: number } | null>(null);
+
+  // 거리 측정 모드 및 다중 선분 상태 (두 지점 클릭으로 선분 생성, 아이콘 재클릭 시 전체 초기화)
+  const [isMeasuringDistance, setIsMeasuringDistance] = React.useState(false);
+  const [measureSegments, setMeasureSegments] = React.useState<MeasureSegment[]>([]);
+  const [measureDraftStart, setMeasureDraftStart] = React.useState<{ lat: number; lng: number } | null>(null);
+
+  const handleToggleMeasureDistance = React.useCallback(() => {
+    setIsMeasuringDistance((prev) => {
+      if (prev) {
+        setMeasureSegments([]);
+        setMeasureDraftStart(null);
+        return false;
+      }
+      setPendingNewSpot(null);
+      setContextMenuSpot(null);
+      return true;
+    });
+  }, []);
+
+  const handleMeasureMapClick = React.useCallback(
+    (lat: number, lng: number) => {
+      if (!measureDraftStart) {
+        setMeasureDraftStart({ lat, lng });
+        return;
+      }
+      const { distance } = calculateDistanceAndBearing(
+        measureDraftStart.lat,
+        measureDraftStart.lng,
+        lat,
+        lng
+      );
+      setMeasureSegments((segs) => [
+        ...segs,
+        {
+          id: `ms-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          start: measureDraftStart,
+          end: { lat, lng },
+          distanceM: distance,
+        },
+      ]);
+      setMeasureDraftStart(null);
+    },
+    [measureDraftStart]
+  );
 
   // [요구사항 1] 기본 줌(Level 1)을 초과하는 2단계 추가 디지털 줌 (1.0x -> 2.0x -> 3.0x)
   const [digitalZoom, setDigitalZoom] = React.useState<number>(1.0);
@@ -901,6 +945,10 @@ export const MapView: React.FC<MapViewProps> = ({
           },
           isStrictAdmin,
           showHaeroadEnc,
+          isMeasuringDistance,
+          measureSegments,
+          measureDraftStart,
+          onMeasureMapClick: handleMeasureMapClick,
           isMarkerClickRef,
           lastClientPosRef,
           longPressTimerRef,
@@ -1116,6 +1164,25 @@ export const MapView: React.FC<MapViewProps> = ({
         {/* 보조 액션 단일 머티리얼 툴바 패널 (순수 지도 관련 아이콘만 유지) */}
         <div className="flex items-center bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-0.5 shadow-2xl divide-x divide-slate-800/80">
           <div className="flex items-center gap-0 pr-0.5">
+            {/* 거리 측정 (자 아이콘: 두 지점 연결 다중 측정, 재클릭 시 전체 제거) */}
+            <button
+              onClick={handleToggleMeasureDistance}
+              className={`p-1.5 rounded-xl flex items-center justify-center transition active:scale-95 ${
+                isMeasuringDistance
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
+                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title={
+                isMeasuringDistance
+                  ? '거리 측정 종료 (모든 측정선 제거)'
+                  : '거리 측정 (두 지점 클릭으로 다중 측정)'
+              }
+              aria-label="거리 측정"
+              aria-pressed={isMeasuringDistance}
+            >
+              <Ruler size={15} />
+            </button>
+
             {/* 연안 낚시금지구역 작도 */}
             <button
               onClick={() => (isDigitizingZones ? exitZoneDigitizing() : startZoneDigitizing())}

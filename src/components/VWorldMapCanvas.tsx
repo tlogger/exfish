@@ -46,6 +46,10 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
   tackleConfig,
   landingPoint,
   myLocation,
+  expandedSweetId,
+  setExpandedSweetId,
+  setPendingDeleteSweetIdx,
+  selectedNewRadius,
   prohibitedZones,
   isDigitizingZones,
   digitizerPoints,
@@ -57,6 +61,10 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
   currentUser,
   isStrictAdmin,
   showHaeroadEnc,
+  isMeasuringDistance,
+  measureSegments,
+  measureDraftStart,
+  onMeasureMapClick,
   isMarkerClickRef,
   longPressTimerRef,
   isLongPressTriggeredRef,
@@ -88,6 +96,9 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
     onSelectShop,
     onOpenContextMenu,
     setAdjustedPos,
+    onMeasureMapClick,
+    setExpandedSweetId,
+    setPendingDeleteSweetIdx,
   });
   callbacksRef.current = {
     onCenterChange,
@@ -100,9 +111,13 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
     onSelectShop,
     onOpenContextMenu,
     setAdjustedPos,
+    onMeasureMapClick,
+    setExpandedSweetId,
+    setPendingDeleteSweetIdx,
   };
 
   const stateRef = React.useRef({
+    isMeasuringDistance,
     isDigitizingZones,
     isAddingSweetSpot,
     sweetSpotConfigSpot,
@@ -111,6 +126,7 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
     digitalZoom,
   });
   stateRef.current = {
+    isMeasuringDistance,
     isDigitizingZones,
     isAddingSweetSpot,
     sweetSpotConfigSpot,
@@ -131,6 +147,9 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
       zoomControl: false,
       attributionControl: false,
     });
+
+    // VWorld 축척 바 (좌하단, 미터법 전용)
+    L.control.scale({ metric: true, imperial: false, position: 'bottomleft', maxWidth: 120 }).addTo(map);
 
     baseLayerGroupRef.current = L.layerGroup().addTo(map);
     zonesLayerRef.current = L.layerGroup().addTo(map);
@@ -162,6 +181,10 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
       const { lat, lng } = ev.latlng;
       const st = stateRef.current;
 
+      if (st.isMeasuringDistance) {
+        callbacksRef.current.onMeasureMapClick(lat, lng);
+        return;
+      }
       if (st.isDigitizingZones) {
         callbacksRef.current.setDigitizerPoints((prev) =>
           prev.length < 60 ? [...prev, { lat, lng }] : prev
@@ -416,29 +439,74 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
       if (startDeg !== undefined && endDeg !== undefined) {
         const radii = tackleConfig.radii;
         const maxRadius = radii[2];
+        const rawSpan = (endDeg - startDeg + 360) % 360;
+        const span = rawSpan === 0 ? 360 : rawSpan;
+        const centerBearing = (startDeg + span / 2) % 360;
+        const step = Math.max(1, Math.min(3, Math.round(span / 25)));
+
+        // 반투명 부채꼴 섹터 채우기
+        const sectorPolygonPoints: [number, number][] = [[targetSpot.lat, targetSpot.lng]];
+        for (let offset = 0; offset <= span; offset += step) {
+          const b = (startDeg + offset) % 360;
+          sectorPolygonPoints.push(calculateDestinationPoint(targetSpot.lat, targetSpot.lng, b, maxRadius));
+        }
+        sectorPolygonPoints.push(calculateDestinationPoint(targetSpot.lat, targetSpot.lng, endDeg, maxRadius));
+        L.polygon(sectorPolygonPoints, {
+          stroke: false,
+          fillColor: '#06b6d4',
+          fillOpacity: 0.09,
+          interactive: false,
+        }).addTo(group);
+
+        // 좌우 유효 경계선
         const leftEdge = calculateDestinationPoint(targetSpot.lat, targetSpot.lng, startDeg, maxRadius);
         const rightEdge = calculateDestinationPoint(targetSpot.lat, targetSpot.lng, endDeg, maxRadius);
         L.polyline([[targetSpot.lat, targetSpot.lng], leftEdge], {
           color: '#10b981',
           weight: 1.5,
           dashArray: '4 4',
-          opacity: 0.7,
+          opacity: 0.75,
+          interactive: false,
         }).addTo(group);
         L.polyline([[targetSpot.lat, targetSpot.lng], rightEdge], {
           color: '#06b6d4',
           weight: 1.5,
           dashArray: '4 4',
-          opacity: 0.7,
+          opacity: 0.75,
+          interactive: false,
         }).addTo(group);
-        for (const r of radii) {
-          L.circle([targetSpot.lat, targetSpot.lng], {
-            radius: r,
-            color: '#22d3ee',
-            weight: 1,
-            opacity: 0.35,
-            fillOpacity: 0.03,
+
+        // 거리(radii)별 부채꼴 호(Arc) 및 거리 라벨
+        radii.forEach((r, rIdx) => {
+          const arcPoints: [number, number][] = [];
+          for (let offset = 0; offset <= span; offset += step) {
+            const b = (startDeg! + offset) % 360;
+            arcPoints.push(calculateDestinationPoint(targetSpot.lat, targetSpot.lng, b, r));
+          }
+          arcPoints.push(calculateDestinationPoint(targetSpot.lat, targetSpot.lng, endDeg!, r));
+
+          L.polyline(arcPoints, {
+            color: '#06b6d4',
+            weight: rIdx === 0 ? 2 : 1.5,
+            opacity: rIdx === 0 ? 0.85 : rIdx === 1 ? 0.65 : 0.45,
+            dashArray: '5 4',
+            interactive: false,
           }).addTo(group);
-        }
+
+          const [labelLat, labelLng] = calculateDestinationPoint(
+            targetSpot.lat,
+            targetSpot.lng,
+            centerBearing,
+            r
+          );
+          const distIcon = L.divIcon({
+            html: `<div style="transform:translate(-50%,-50%);padding:1px 6px;border-radius:9999px;background:rgba(2,6,23,0.9);color:#67e8f9;border:1px solid rgba(34,211,238,0.6);font-size:10px;font-weight:700;font-family:ui-monospace,monospace;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.45);pointer-events:none;">${r}m</div>`,
+            className: '',
+            iconSize: [0, 0],
+            iconAnchor: [0, 0],
+          });
+          L.marker([labelLat, labelLng], { icon: distIcon, interactive: false }).addTo(group);
+        });
       }
 
       if (landingPoint && !castingConfigSpot && !sweetSpotConfigSpot && selectedSpot) {
@@ -455,28 +523,97 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
     }
 
     // 스윗 스팟
+    const isSweetConfig = !!sweetSpotConfigSpot;
     const ssSpot = sweetSpotConfigSpot || selectedSpot;
     if (ssSpot) {
-      const enabled = sweetSpotConfigSpot ? tempUseSweetSpot : ssSpot.use_sweet_spot !== false;
-      const list = sweetSpotConfigSpot ? tempSweetSpots : ssSpot.sweet_spots || [];
+      const enabled = isSweetConfig ? tempUseSweetSpot : (ssSpot.use_sweet_spot ?? false);
+      const list = isSweetConfig ? tempSweetSpots : ssSpot.sweet_spots || [];
       if (enabled) {
-        for (const ss of list) {
+        list.forEach((ss, idx) => {
           const [sLat, sLng] = calculateDestinationPoint(ssSpot.lat, ssSpot.lng, ss.direction, ss.distance);
+
+          // 포인트 -> 스윗스팟 연결 점선
+          L.polyline(
+            [
+              [ssSpot.lat, ssSpot.lng],
+              [sLat, sLng],
+            ],
+            {
+              color: '#f59e0b',
+              weight: 1.5,
+              dashArray: '4 4',
+              opacity: 0.7,
+              interactive: false,
+            }
+          ).addTo(group);
+
+          // 스윗 스팟 반경 원
           L.circle([sLat, sLng], {
             radius: ss.radius,
             color: '#f59e0b',
             fillColor: '#f59e0b',
-            fillOpacity: 0.18,
-            weight: 1.5,
+            fillOpacity: 0.32,
+            weight: 2,
+            opacity: 0.9,
+            interactive: false,
           }).addTo(group);
-        }
+
+          // 스윗 스팟 거리/메모 배지 (설정 모드 시 삭제 버튼 포함)
+          const ssKey = ss.id || `idx-${idx}`;
+          const isExpanded = expandedSweetId === ssKey;
+          const rawMemo = (ss.memo || '').replace(/[<>&"']/g, (ch) =>
+            ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[ch] || ch)
+          );
+          const shortMemo = rawMemo.length > 10 ? `${rawMemo.slice(0, 10)}…` : rawMemo;
+          const deleteBtnHtml = isSweetConfig
+            ? `<span data-ss-delete="${idx}" style="margin-left:3px;padding:0 4px;border-radius:4px;background:#e11d48;color:#fff;font-weight:700;font-size:9px;cursor:pointer;">✕ 삭제</span>`
+            : '';
+          const memoBoxHtml =
+            isExpanded && rawMemo
+              ? `<div style="margin-top:2px;padding:3px 7px;border-radius:8px;background:rgba(2,6,23,0.95);color:#fde68a;border:1px solid rgba(245,158,11,0.6);font-size:10px;max-width:180px;white-space:normal;word-break:break-word;text-align:center;">${rawMemo}</div>`
+              : '';
+          const ssIcon = L.divIcon({
+            html: `<div style="display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-50%);cursor:pointer;white-space:nowrap;">
+              <div style="padding:2px 7px;border-radius:9999px;background:#f59e0b;color:#020617;font-size:10px;font-weight:900;border:1px solid rgba(255,255,255,0.85);box-shadow:0 3px 10px rgba(0,0,0,0.45);display:flex;align-items:center;gap:4px;">
+                <span>${ss.distance}m</span>
+                ${shortMemo && !isExpanded ? `<span style="font-weight:600;">${shortMemo}</span>` : ''}
+                ${deleteBtnHtml}
+              </div>
+              ${memoBoxHtml}
+            </div>`,
+            className: '',
+            iconSize: [0, 0],
+            iconAnchor: [0, 0],
+          });
+          const ssMarker = L.marker([sLat, sLng], { icon: ssIcon }).addTo(group);
+          ssMarker.on('click', (ev) => {
+            L.DomEvent.stopPropagation(ev);
+            isMarkerClickRef.current = true;
+            const targetEl = (ev.originalEvent?.target as HTMLElement | null)?.closest?.('[data-ss-delete]');
+            if (targetEl && isSweetConfig) {
+              callbacksRef.current.setPendingDeleteSweetIdx(idx);
+              return;
+            }
+            callbacksRef.current.setExpandedSweetId((prev) => (prev === ssKey ? null : ssKey));
+          });
+        });
       }
-      if (draftSweetPos && sweetSpotConfigSpot) {
-        L.circleMarker([draftSweetPos.lat, draftSweetPos.lng], {
-          radius: 7,
+      if (draftSweetPos && sweetSpotConfigSpot && isAddingSweetSpot) {
+        L.circle([draftSweetPos.lat, draftSweetPos.lng], {
+          radius: selectedNewRadius,
           color: '#22d3ee',
           fillColor: '#06b6d4',
-          fillOpacity: 0.9,
+          fillOpacity: 0.25,
+          weight: 2,
+          dashArray: '4 4',
+          interactive: false,
+        }).addTo(group);
+        L.circleMarker([draftSweetPos.lat, draftSweetPos.lng], {
+          radius: 6,
+          color: '#ffffff',
+          fillColor: '#06b6d4',
+          fillOpacity: 1,
+          weight: 2,
         }).addTo(group);
       }
     }
@@ -493,12 +630,79 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
         L.circleMarker(pt, { radius: 4, color: '#fff', fillColor: '#f97316', fillOpacity: 1, weight: 1.5 }).addTo(group);
       });
     }
+
+    // 거리 측정 다중 선분 및 끝점 거리(m) 표기
+    if (measureSegments.length > 0) {
+      measureSegments.forEach((seg) => {
+        L.polyline(
+          [
+            [seg.start.lat, seg.start.lng],
+            [seg.end.lat, seg.end.lng],
+          ],
+          {
+            color: '#38bdf8',
+            weight: 2.5,
+            dashArray: '6 4',
+            opacity: 0.95,
+            interactive: false,
+          }
+        ).addTo(group);
+        L.circleMarker([seg.start.lat, seg.start.lng], {
+          radius: 4.5,
+          color: '#ffffff',
+          fillColor: '#0284c7',
+          fillOpacity: 1,
+          weight: 2,
+          interactive: false,
+        }).addTo(group);
+        L.circleMarker([seg.end.lat, seg.end.lng], {
+          radius: 4.5,
+          color: '#ffffff',
+          fillColor: '#06b6d4',
+          fillOpacity: 1,
+          weight: 2,
+          interactive: false,
+        }).addTo(group);
+
+        const distLabelIcon = L.divIcon({
+          html: `<div style="transform:translate(8px,-50%);padding:2px 7px;border-radius:9999px;background:rgba(2,6,23,0.92);color:#67e8f9;border:1.5px solid #38bdf8;font-size:11px;font-weight:800;font-family:ui-monospace,monospace;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,0.55);pointer-events:none;">${seg.distanceM.toLocaleString()}m</div>`,
+          className: '',
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
+        });
+        L.marker([seg.end.lat, seg.end.lng], { icon: distLabelIcon, interactive: false }).addTo(group);
+      });
+    }
+
+    if (measureDraftStart) {
+      L.circleMarker([measureDraftStart.lat, measureDraftStart.lng], {
+        radius: 6,
+        color: '#ffffff',
+        fillColor: '#f59e0b',
+        fillOpacity: 1,
+        weight: 2,
+        interactive: false,
+      }).addTo(group);
+      const startIcon = L.divIcon({
+        html: `<div style="transform:translate(-50%,-150%);padding:1px 6px;border-radius:9999px;background:rgba(2,6,23,0.9);color:#fcd34d;border:1px solid #f59e0b;font-size:10px;font-weight:700;white-space:nowrap;pointer-events:none;">시작점</div>`,
+        className: '',
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+      });
+      L.marker([measureDraftStart.lat, measureDraftStart.lng], { icon: startIcon, interactive: false }).addTo(group);
+    }
   }, [
     castingConfigSpot,
     digitizerPoints,
     draftSweetPos,
+    expandedSweetId,
+    isAddingSweetSpot,
     isDigitizingZones,
+    isMarkerClickRef,
     landingPoint,
+    measureDraftStart,
+    measureSegments,
+    selectedNewRadius,
     selectedSpot,
     showCastingArrows,
     sweetSpotConfigSpot,
@@ -621,12 +825,20 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
 
   return (
     <div
-      className="relative isolate z-0 w-full h-full transition-transform duration-200 origin-center select-none"
+      className={`relative isolate z-0 w-full h-full transition-transform duration-200 origin-center select-none ${
+        isDarkMode ? 'bg-slate-950' : 'bg-slate-900'
+      }`}
       style={{
         transform: digitalZoom > 1.0 ? `scale(${digitalZoom})` : 'none',
         transformOrigin: 'center center',
         touchAction: digitalZoom > 1.0 ? 'none' : 'auto',
-        cursor: digitalZoom > 1.0 ? (dragTrackerRef.current.isDragging ? 'grabbing' : 'grab') : 'default',
+        cursor: isMeasuringDistance
+          ? 'crosshair'
+          : digitalZoom > 1.0
+          ? dragTrackerRef.current.isDragging
+            ? 'grabbing'
+            : 'grab'
+          : 'default',
       }}
       onDragStart={(e) => e.preventDefault()}
       onPointerDown={(e) => {
@@ -701,9 +913,10 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
         }
       }}
     >
+      {/* Leaflet 컨테이너의 className은 반드시 정적으로 유지해야 isDarkMode 전환 시 .leaflet-container 클래스가 소실되지 않음 */}
       <div
         ref={leafletDivRef}
-        className={`w-full h-full ${isDarkMode ? 'bg-slate-950' : 'bg-slate-900'}`}
+        className="w-full h-full"
       />
       <ZoneDigitizer
         active={isDigitizingZones}

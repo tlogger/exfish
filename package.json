@@ -1,7 +1,7 @@
 {
   "name": "exfish",
   "private": true,
-  "version": "1.02.12",
+  "version": "1.04.00",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -31,6 +31,7 @@
     "@capacitor/share": "^8.0.3",
     "@supabase/supabase-js": "^2.118.0",
     "@types/d3-contour": "^3.0.6",
+    "@vercel/blob": "^2.9.0",
     "clsx": "^2.1.1",
     "d3-contour": "^4.0.2",
     "exif-js": "^2.3.0",

@@ -85,6 +85,10 @@ export const KakaoMapCanvas: React.FC<SharedMapCanvasProps> = ({
   onSuccessDigitize,
   isStrictAdmin,
   showHaeroadEnc,
+  isMeasuringDistance,
+  measureSegments,
+  measureDraftStart,
+  onMeasureMapClick,
   isMarkerClickRef,
   lastClientPosRef,
   longPressTimerRef,
@@ -188,7 +192,13 @@ export const KakaoMapCanvas: React.FC<SharedMapCanvasProps> = ({
           transform: digitalZoom > 1.0 ? `scale(${digitalZoom})` : 'none',
           transformOrigin: 'center center',
           touchAction: digitalZoom > 1.0 ? 'none' : 'auto',
-          cursor: digitalZoom > 1.0 ? (dragTrackerRef.current.isDragging ? 'grabbing' : 'grab') : 'default',
+          cursor: isMeasuringDistance
+            ? 'crosshair'
+            : digitalZoom > 1.0
+            ? dragTrackerRef.current.isDragging
+              ? 'grabbing'
+              : 'grab'
+            : 'default',
         }}
         onDragStart={(e) => e.preventDefault()}
         onPointerDown={(e) => {
@@ -298,6 +308,12 @@ export const KakaoMapCanvas: React.FC<SharedMapCanvasProps> = ({
                   clickedLng = corrected.lng;
                 }
               }
+            }
+
+            // 거리 측정 모드: 두 지점을 순서대로 클릭하여 다중 선분 생성
+            if (isMeasuringDistance) {
+              onMeasureMapClick(clickedLat, clickedLng);
+              return;
             }
 
             // 금지구역 다각형 작도 모드: 클릭 좌표를 꼭짓점으로 추가하고 새 포인트 핀 방지
@@ -1265,6 +1281,42 @@ export const KakaoMapCanvas: React.FC<SharedMapCanvasProps> = ({
           </React.Fragment>
           );
         })()}
+        {/* 거리 측정 다중 선분 및 끝점 거리(m) 표기 */}
+        {measureSegments.map((seg) => (
+          <React.Fragment key={seg.id}>
+            <Polyline
+              path={[seg.start, seg.end]}
+              strokeWeight={2.5}
+              strokeColor="#38bdf8"
+              strokeOpacity={0.95}
+              strokeStyle="dash"
+              zIndex={120}
+            />
+            <CustomOverlayMap position={seg.start} xAnchor={0.5} yAnchor={0.5} zIndex={121} clickable={false}>
+              <div className="w-2.5 h-2.5 rounded-full bg-sky-600 border-2 border-white shadow pointer-events-none kakao-invert-restore" />
+            </CustomOverlayMap>
+            <CustomOverlayMap position={seg.end} xAnchor={0.5} yAnchor={0.5} zIndex={122} clickable={false}>
+              <div className="flex items-center pointer-events-none kakao-invert-restore">
+                <div className="w-2.5 h-2.5 rounded-full bg-cyan-500 border-2 border-white shadow shrink-0" />
+                <div className="ml-1.5 px-2 py-0.5 rounded-full bg-slate-950/92 text-cyan-300 border border-sky-400 text-[11px] font-extrabold font-mono shadow-lg whitespace-nowrap">
+                  {seg.distanceM.toLocaleString()}m
+                </div>
+              </div>
+            </CustomOverlayMap>
+          </React.Fragment>
+        ))}
+
+        {measureDraftStart && (
+          <CustomOverlayMap position={measureDraftStart} xAnchor={0.5} yAnchor={0.5} zIndex={125} clickable={false}>
+            <div className="flex flex-col items-center pointer-events-none kakao-invert-restore">
+              <div className="mb-1 px-1.5 py-0.5 rounded-full bg-slate-950/90 text-amber-300 border border-amber-500 text-[10px] font-bold whitespace-nowrap shadow">
+                시작점
+              </div>
+              <div className="w-3 h-3 rounded-full bg-amber-500 border-2 border-white shadow" />
+            </div>
+          </CustomOverlayMap>
+        )}
+
         <ProhibitedZoneOverlay
           enabled={level <= 6}
           zones={prohibitedZones}

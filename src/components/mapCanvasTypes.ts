@@ -15,6 +15,13 @@ import type { CastingLandingPoint } from '../utils/castingLanding';
 
 export type MapMode = 'ROADMAP' | 'HYBRID' | 'DARK';
 
+export interface MeasureSegment {
+  id: string;
+  start: { lat: number; lng: number };
+  end: { lat: number; lng: number };
+  distanceM: number;
+}
+
 export interface MapCanvasBridge {
   latLngToScreen: (lat: number, lng: number) => { x: number; y: number } | null;
   screenToLatLng: (clientX: number, clientY: number) => { lat: number; lng: number } | null;
@@ -160,6 +167,11 @@ export interface SharedMapCanvasProps {
 
   isStrictAdmin: boolean;
   showHaeroadEnc: boolean;
+
+  isMeasuringDistance: boolean;
+  measureSegments: MeasureSegment[];
+  measureDraftStart: { lat: number; lng: number } | null;
+  onMeasureMapClick: (lat: number, lng: number) => void;
 
   isMarkerClickRef: React.MutableRefObject<boolean>;
   lastClientPosRef: React.MutableRefObject<{ x: number; y: number }>;

@@ -617,17 +617,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           )}
         </div>
 
-        {/* 모바일 앱 최신 릴리즈 다운로드 및 버전 배지 */}
-        <div className="px-5 py-2.5 bg-slate-950/90 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0">
-          <a
-            href="./exfish.apk"
-            download="exfish.apk"
-            className="flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 font-bold transition py-1 px-2.5 rounded-lg bg-cyan-950/40 border border-cyan-500/30 hover:border-cyan-400 cursor-pointer"
-            title="최신 ExFish Android APK 다운로드"
-          >
-            <Download size={13} />
-            <span>최신 앱(.apk) 다운로드</span>
-          </a>
+        {/* 버전 배지 */}
+        <div className="px-5 py-2.5 bg-slate-950/90 border-t border-slate-800 flex items-center justify-end text-xs text-slate-400 shrink-0">
           <span className="text-[11px] text-slate-500 font-mono">v{APP_VERSION}</span>
         </div>
       </div>
