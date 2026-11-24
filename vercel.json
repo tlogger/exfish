@@ -1,15 +1,44 @@
 {
+  "headers": [
+    {
+      "source": "/exfish.aab",
+      "headers": [
+        { "key": "Content-Type", "value": "application/octet-stream" },
+        { "key": "Content-Disposition", "value": "attachment; filename=\"exfish.aab\"" }
+      ]
+    },
+    {
+      "source": "/zones/manifest.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=60, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/zones/:ver/:cell.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/api-khoa/:path*",
-      "destination": "https://apis.data.go.kr/:path*"
+      "destination": "/api/khoa-proxy?__path=:path*"
     },
     {
       "source": "/api-swtc/:path*",
       "destination": "https://www.khoa.go.kr/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/api-openmeteo/:path*",
+      "destination": "/api/openmeteo-proxy?__path=:path*"
+    },
+    {
+      "source": "/api/vworld-tile",
+      "destination": "/api/haeroad-tile?__provider=vworld"
+    },
+    {
+      "source": "/((?!api/|zones/).*)",
       "destination": "/"
     }
   ]
