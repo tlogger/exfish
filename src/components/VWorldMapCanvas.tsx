@@ -282,31 +282,39 @@ export const VWorldMapCanvas: React.FC<SharedMapCanvasProps> = ({
   }, [digitalZoom]);
 
   // VWorld 타일 레이어 전환 (Base / Satellite+Hybrid / midnight)
+  // Vercel CDN 프록시(/api/vworld-tile)를 우선 사용하고, 프록시 장애(502 등) 시 브라우저 직접 xdworld 타일로 자동 폴백
   React.useEffect(() => {
     const group = baseLayerGroupRef.current;
     if (!group) return;
     group.clearLayers();
     const apiBase = getApiBaseUrl();
 
+    const addVWorldLayer = (layerName: 'Base' | 'Satellite' | 'Hybrid' | 'midnight', maxNativeZoom: number) => {
+      const ext = layerName === 'Satellite' ? 'jpeg' : 'png';
+      const tl = L.tileLayer(
+        `${apiBase}/api/vworld-tile?layer=${layerName}&z={z}&x={x}&y={y}`,
+        {
+          maxZoom: 19,
+          maxNativeZoom,
+        }
+      );
+      tl.on('tileerror', (ev: any) => {
+        const img = ev?.tile as HTMLImageElement | undefined;
+        const coords = ev?.coords as { z: number; x: number; y: number } | undefined;
+        if (!img || !coords || img.dataset.vworldFallbackTried === '1') return;
+        img.dataset.vworldFallbackTried = '1';
+        img.src = `https://xdworld.vworld.kr/2d/${layerName}/service/${coords.z}/${coords.x}/${coords.y}.${ext}`;
+      });
+      tl.addTo(group);
+    };
+
     if (mapMode === 'HYBRID') {
-      L.tileLayer(`${apiBase}/api/vworld-tile?layer=Satellite&z={z}&x={x}&y={y}`, {
-        maxZoom: 19,
-        maxNativeZoom: 19,
-      }).addTo(group);
-      L.tileLayer(`${apiBase}/api/vworld-tile?layer=Hybrid&z={z}&x={x}&y={y}`, {
-        maxZoom: 19,
-        maxNativeZoom: 19,
-      }).addTo(group);
+      addVWorldLayer('Satellite', 19);
+      addVWorldLayer('Hybrid', 19);
     } else if (mapMode === 'DARK') {
-      L.tileLayer(`${apiBase}/api/vworld-tile?layer=midnight&z={z}&x={x}&y={y}`, {
-        maxZoom: 19,
-        maxNativeZoom: 18,
-      }).addTo(group);
+      addVWorldLayer('midnight', 18);
     } else {
-      L.tileLayer(`${apiBase}/api/vworld-tile?layer=Base&z={z}&x={x}&y={y}`, {
-        maxZoom: 19,
-        maxNativeZoom: 19,
-      }).addTo(group);
+      addVWorldLayer('Base', 19);
     }
   }, [mapMode]);
 
