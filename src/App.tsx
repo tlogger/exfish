@@ -1,9 +1,12 @@
 import React from 'react';
-import { Download, Filter, List, Loader2, LogIn, Map as MapIcon, Moon, Satellite, Search, Sun, User, X } from 'lucide-react';
+import { Download, Filter, List, Loader2, LogIn, Map as MapIcon, Moon, Satellite, Search, Sliders, Star, Sun, User, X } from 'lucide-react';
 import { MapView, type MapMode } from './components/MapView';
 import { SpotDetailPanel } from './components/SpotDetailPanel';
 import { SpotFormModal } from './components/SpotFormModal';
+import { ShopDetailPanel } from './components/ShopDetailPanel';
+import { ShopFormModal } from './components/ShopFormModal';
 import { CatchLogModal } from './components/CatchLogModal';
+import { MultiSpotCompareModal } from './components/MultiSpotCompareModal';
 import { type AuthUser, getSavedAuthUser, LoginModal } from './components/LoginModal';
 import { SpotListModal, type SpotRealtimeSummary } from './components/SpotListModal';
 import { BiteScoreHelpModal } from './components/BiteScoreHelpModal';
@@ -14,8 +17,11 @@ import type {
   CatchLog,
   CurrentUnit,
   FishingMethod,
+  FishingShop,
   FishingSpot,
+  MapProvider,
   MarineData,
+  ShopMemo,
   TideDayInfo,
   WeatherData,
   WindUnit
@@ -24,31 +30,44 @@ import { calculateTideDay, getDistanceKm } from './utils/tideEngine';
 import { getKhoaTideForecast } from './utils/tideService';
 import type { KhoaSwtcWeeklyResult } from './utils/khoaSwtcApi';
 import { fetchMarineData, fetchWeatherData } from './utils/weatherApi';
+import { syncTackleWithUserCookie } from './utils/tackleCalibration';
 import { calculateBiteScore } from './utils/biteScore';
 import { extractExifFromImage } from './utils/exifExtractor';
 import { searchPoi, type PoiSearchResult } from './utils/poiSearch';
 import {
   deleteCloudCatchLog,
+  deleteCloudShop,
   deleteCloudSpot,
-  fetchCloudLogs,
-  fetchCloudSpots,
-  getSupabase,
+  fetchCloudLogsDelta,
+  fetchCloudShopsDelta,
+  fetchCloudSpotsDelta,
   saveCloudCatchLog,
+  saveCloudShop,
   saveCloudSpot,
+  saveShopMemo,
 } from './utils/cloudDb';
-import { cacheSpotMetadata, getAllCachedSpots, subscribeNetworkStatus } from './utils/offlineStorage';
+import {
+  cacheSpotMetadata,
+  getAllCachedShops,
+  getAllCachedSpots,
+  saveAllCachedShops,
+  saveAllCachedSpots,
+  subscribeNetworkStatus,
+} from './utils/offlineStorage';
 import { loadLogsFromStorage, saveLogsToStorage } from './utils/storage';
 import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { setupHardwareBackButtonListener, isNativePlatform, getNativeLocation } from './utils/nativeBridge';
-import { parseOAuthCallback, processOAuthCallbackResult, parseAppDeepLink } from './services/oauthService';
+import { parseOAuthCallback, processOAuthCallbackResult, parseAppDeepLink, isStrictPaedrosAdmin } from './services/oauthService';
 
 export function App() {
   const [spots, setSpots] = React.useState<FishingSpot[]>([]);
+  const [shops, setShops] = React.useState<FishingShop[]>(() => getAllCachedShops());
   const [catchLogs, setCatchLogs] = React.useState<CatchLog[]>(() => {
     return loadLogsFromStorage();
   });
   const [selectedSpot, setSelectedSpot] = React.useState<FishingSpot | null>(null);
+  const [selectedShop, setSelectedShop] = React.useState<FishingShop | null>(null);
   const [editingSpot, setEditingSpot] = React.useState<FishingSpot | null>(null);
   const [editingCatchLog, setEditingCatchLog] = React.useState<CatchLog | null>(null);
 
@@ -64,6 +83,12 @@ export function App() {
   const [currentUser, setCurrentUser] = React.useState<AuthUser | null>(() => getSavedAuthUser());
   const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
 
+  // 로그인·계정 전환·로그아웃(초기 마운트/OAuth/딥링크 포함) 시 사용자 채비 쿠키 동기화
+  React.useEffect(() => {
+    const userKey = currentUser?.id || currentUser?.email || null;
+    syncTackleWithUserCookie(userKey);
+  }, [currentUser?.id, currentUser?.email]);
+
   // 단위 변환 설정 상태 (사용자 프로필 설정과 동기화)
   const [windUnit, setWindUnit] = React.useState<WindUnit>(() => {
     const user = getSavedAuthUser();
@@ -73,11 +98,27 @@ export function App() {
     const user = getSavedAuthUser();
     return user?.currentUnit || 'ms';
   });
+  const [mapProvider, setMapProvider] = React.useState<MapProvider>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('exfish_map_provider');
+      if (saved === 'kakao' || saved === 'vworld') return saved;
+    }
+    return 'vworld';
+  });
+  const handleChangeMapProvider = React.useCallback((provider: MapProvider) => {
+    setMapProvider(provider);
+    try {
+      localStorage.setItem('exfish_map_provider', provider);
+    } catch {}
+  }, []);
+  const [viewOnlyFavorites, setViewOnlyFavorites] = React.useState<boolean>(false);
+  const [isTacklePopoverOpen, setIsTacklePopoverOpen] = React.useState<boolean>(false);
 
   // 환경 데이터 상태
   const [weather, setWeather] = React.useState<WeatherData | null>(null);
   const [marine, setMarine] = React.useState<MarineData | null>(null);
   const [tide, setTide] = React.useState<TideDayInfo | null>(null);
+  const tideRef = React.useRef<TideDayInfo | null>(null);
   const activeSwtcWeeklyRef = React.useRef<KhoaSwtcWeeklyResult | null>(null);
   const khoaRequestRef = React.useRef(0);
   const weatherRef = React.useRef<WeatherData | null>(null);
@@ -150,6 +191,9 @@ export function App() {
 
   // 모달 상태
   const [isSpotModalOpen, setIsSpotModalOpen] = React.useState(false);
+  const [isShopModalOpen, setIsShopModalOpen] = React.useState(false);
+  const [editingShop, setEditingShop] = React.useState<FishingShop | null>(null);
+  const [newShopCoords, setNewShopCoords] = React.useState<{ lat: number; lng: number } | null>(null);
   const [isCatchLogModalOpen, setIsCatchLogModalOpen] = React.useState(false);
   const [isSpotListModalOpen, setIsSpotListModalOpen] = React.useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = React.useState(false);
@@ -185,6 +229,11 @@ export function App() {
   React.useEffect(() => {
     const cleanup = setupHardwareBackButtonListener(() => {
       // 1. 모달들이 열려 있으면 최우선으로 닫기
+      if (isShopModalOpen) {
+        setIsShopModalOpen(false);
+        setEditingShop(null);
+        return true;
+      }
       if (isSpotModalOpen) {
         setIsSpotModalOpen(false);
         return true;
@@ -219,9 +268,10 @@ export function App() {
         setIsMobileDrawerOpen(false);
         return true;
       }
-      // 4. 선택된 포인트가 있으면 선택 해제 (기본 지도 뷰)
-      if (selectedSpot) {
+      // 4. 선택된 포인트 또는 낚시점이 있으면 선택 해제 (기본 지도 뷰)
+      if (selectedSpot || selectedShop) {
         setSelectedSpot(null);
+        setSelectedShop(null);
         return true;
       }
       // 5. 기본 지도 뷰 상태: false 반환하여 앱 종료 방지 및 2초 내 더블 클릭 감지
@@ -287,6 +337,7 @@ export function App() {
   // 포인트 선택 시 날씨/해양/물때/입질지수 Fetch & 연산
   const handleSelectSpot = React.useCallback(
     async (spot: FishingSpot, shouldRecenter: boolean = true, openMobileDrawer: boolean = false) => {
+      setSelectedShop(null);
       setSelectedSpot(spot);
       if (openMobileDrawer) {
         setIsMobileDrawerOpen(true);
@@ -301,6 +352,7 @@ export function App() {
       activeSwtcWeeklyRef.current = null;
       // 1. 단일 마스터 시계열 조위 엔진 정밀 계산 (곡선 및 시간표 100% 완전 동기화)
       const tideData = calculateTideDay(spot.lat, spot.lng, new Date());
+      tideRef.current = tideData;
       setTide(tideData);
 
       // [KHOA 중앙 DB 캐싱 연동] 당일 실측/예측 조위 시계열과 1:1 결합하여 단일 마스터 시계열 캘리브레이션 갱신
@@ -310,6 +362,7 @@ export function App() {
           if (khoaRequestId !== khoaRequestRef.current) return;
           if (kForecast?.tideDayInfo) {
             activeSwtcWeeklyRef.current = kForecast.swtcWeekly || null;
+            tideRef.current = kForecast.tideDayInfo;
             setTide(kForecast.tideDayInfo);
             const w = weatherRef.current;
             const m = marineRef.current;
@@ -333,12 +386,13 @@ export function App() {
         setWeather(weatherData);
         setMarine(marineData);
 
-        // 3. ExFish AI 입질 지수 도출 (로그인 유저의 관심 어종 가중치 자동 반영)
-        const score = calculateBiteScore(spot, weatherData, marineData, tideData, currentUser?.favoriteSpecies);
+        // 3. ExFish AI 입질 지수 도출 (이미 도착한 KHOA 실측 조위가 있으면 덮어쓰지 않고 우선 유지)
+        const latestTide = tideRef.current || tideData;
+        const score = calculateBiteScore(spot, weatherData, marineData, latestTide, currentUser?.favoriteSpecies);
         setBiteScore(score);
 
         // 4. 오프라인 대비 메타데이터 로컬 캐싱
-        cacheSpotMetadata(spot, tideData, weatherData, marineData);
+        cacheSpotMetadata(spot, latestTide, weatherData, marineData);
       } catch (err) {
         console.error('Error fetching marine/weather data:', err);
       }
@@ -346,131 +400,318 @@ export function App() {
     [currentUser]
   );
 
-  // 기기 로컬 저장소 및 Supabase DB 조과 데이터 로드 (오프라인 시 로컬 캐시 폴백)
-  const reloadData = React.useCallback(async () => {
+  const isStrictAdmin = React.useMemo(() => isStrictPaedrosAdmin(currentUser), [currentUser]);
+
+  const handleSelectShop = React.useCallback((shop: FishingShop, openMobileDrawer: boolean = false) => {
+    setSelectedSpot(null);
+    setSelectedShop(shop);
+    setRecenterTarget({ lat: shop.lat, lng: shop.lng, zoom: 15 });
+    if (openMobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) {
+      setIsMobileDrawerOpen(true);
+    }
+  }, []);
+
+  const LAST_SYNC_STORAGE_KEY = 'exfish_last_sync_at';
+  const SPOTS_CURSOR_KEY = 'exfish_spots_cursor';
+  const SHOPS_CURSOR_KEY = 'exfish_shops_cursor';
+  const LOGS_CURSOR_KEY = 'exfish_logs_cursor';
+  const SYNC_COOLDOWN_MS = 15 * 60 * 1000;
+
+  const selectedSpotRef = React.useRef<FishingSpot | null>(null);
+  selectedSpotRef.current = selectedSpot;
+  const userLocationRef = React.useRef<{ lat: number; lng: number } | null>(null);
+  userLocationRef.current = userLocation;
+  const handleSelectSpotRef = React.useRef(handleSelectSpot);
+  handleSelectSpotRef.current = handleSelectSpot;
+  const lastSyncAtRef = React.useRef<number>(
+    typeof window !== 'undefined' ? Number(localStorage.getItem(LAST_SYNC_STORAGE_KEY) || '0') || 0 : 0
+  );
+  const isSyncingRef = React.useRef<boolean>(false);
+  const isGpsResolvedRef = React.useRef<boolean>(false);
+
+  // 기기 로컬 저장소 및 Supabase DB 조과 데이터 로드 (TTL 내 재방문/새로고침 시 로컬 캐시 우선, 만료 시에만 Supabase 조회)
+  const reloadData = React.useCallback(async (force: boolean = false) => {
+    if (isSyncingRef.current) return;
+
+    const selectInitialSpot = (spotList: FishingSpot[]) => {
+      if (spotList.length === 0 || selectedSpotRef.current) return;
+      let targetSpot = spotList[0];
+      let shouldCenter = false;
+      let hasUrlParam = false;
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const spotParam = params.get('spot');
+        if (spotParam) {
+          const found = spotList.find((s) => s.id === spotParam || s.id === decodeURIComponent(spotParam));
+          if (found) {
+            targetSpot = found;
+            shouldCenter = true;
+            hasUrlParam = true;
+            setIsMobileDrawerOpen(true);
+          }
+        }
+      }
+      const currentLoc = userLocationRef.current;
+      if (!hasUrlParam && currentLoc) {
+        let minDist = Infinity;
+        for (const s of spotList) {
+          const d = getDistanceKm(currentLoc.lat, currentLoc.lng, s.lat, s.lng);
+          if (d < minDist) {
+            minDist = d;
+            targetSpot = s;
+          }
+        }
+        shouldCenter = true;
+      } else if (!hasUrlParam && !isGpsResolvedRef.current) {
+        // GPS가 아직 대기 중이면 최대 1.5초 유예 후에도 미응답일 때만 기본 포인트 선택 (부팅 시 2회 중복 선택 방지)
+        setTimeout(() => {
+          if (!selectedSpotRef.current && spotList.length > 0) {
+            handleSelectSpotRef.current(spotList[0], false);
+          }
+        }, 1500);
+        return;
+      }
+      handleSelectSpotRef.current(targetSpot, shouldCenter);
+    };
+
+    // 5분 TTL 내 재진입/새로고침이면 로컬 캐시로 즉시 복원하고 Supabase 조회 생략
+    if (!force && Date.now() - lastSyncAtRef.current < SYNC_COOLDOWN_MS) {
+      const cachedSpots = getAllCachedSpots();
+      if (cachedSpots.length > 0) {
+        setSpots(cachedSpots);
+        const cachedShops = getAllCachedShops();
+        if (cachedShops.length > 0) {
+          setShops(cachedShops);
+        }
+        const localLogs = loadLogsFromStorage();
+        if (localLogs && localLogs.length > 0) {
+          setCatchLogs(localLogs);
+        }
+        selectInitialSpot(cachedSpots);
+        return;
+      }
+    }
+
+    isSyncingRef.current = true;
     try {
-      const [cSpots, cLogs] = await Promise.all([
-        fetchCloudSpots(),
-        fetchCloudLogs(),
+      const cachedSpots = getAllCachedSpots();
+      const cachedShops = getAllCachedShops();
+      const localLogs = loadLogsFromStorage() || [];
+      const spotsCursor =
+        typeof window !== 'undefined' && cachedSpots.length > 0
+          ? localStorage.getItem(SPOTS_CURSOR_KEY)
+          : null;
+      const shopsCursor =
+        typeof window !== 'undefined' && cachedShops.length > 0
+          ? localStorage.getItem(SHOPS_CURSOR_KEY)
+          : null;
+      const logsCursor =
+        typeof window !== 'undefined' && localLogs.length > 0
+          ? localStorage.getItem(LOGS_CURSOR_KEY)
+          : null;
+
+      const [spotsRes, logsRes, shopsSettled] = await Promise.all([
+        fetchCloudSpotsDelta(spotsCursor),
+        fetchCloudLogsDelta(logsCursor),
+        fetchCloudShopsDelta(shopsCursor).then(
+          (value) => ({ status: 'fulfilled' as const, value }),
+          (reason) => ({ status: 'rejected' as const, reason })
+        ),
       ]);
-      setSpots(cSpots);
-      setCatchLogs(cLogs);
-      saveLogsToStorage(cLogs);
-      // 오프라인 대비 로컬 캐시 백업
-      cSpots.forEach((s) => cacheSpotMetadata(s));
-      if (cSpots.length > 0 && !selectedSpot) {
-        // [요구사항 6] URL Query Parameter에 ?spot=spotId 가 있는 경우 해당 스팟을 우선 선택 및 중심 이동
-        let targetSpot = cSpots[0];
-        let shouldCenter = false;
-        let hasUrlParam = false;
-        if (typeof window !== 'undefined') {
-          const params = new URLSearchParams(window.location.search);
-          const spotParam = params.get('spot');
-          if (spotParam) {
-            const found = cSpots.find((s) => s.id === spotParam || s.id === decodeURIComponent(spotParam));
-            if (found) {
-              targetSpot = found;
-              shouldCenter = true;
-              hasUrlParam = true;
-              setIsMobileDrawerOpen(true);
-            }
-          }
+
+      // 증분(Delta) 또는 전체(Full) 결과 병합
+      let nextSpots: FishingSpot[];
+      if (spotsRes.isFullSync) {
+        nextSpots = spotsRes.rows;
+      } else {
+        const deletedSet = new Set(spotsRes.deletedIds);
+        const mergedMap = new Map<string, FishingSpot>();
+        for (const s of cachedSpots) {
+          if (!deletedSet.has(s.id)) mergedMap.set(s.id, s);
         }
-        // URL 지정 스팟이 없고 사용자 위치가 파악되어 있다면 가장 가까운 포인트로 자동 중심 이동
-        if (!hasUrlParam && userLocation) {
-          let minDist = Infinity;
-          for (const s of cSpots) {
-            const d = getDistanceKm(userLocation.lat, userLocation.lng, s.lat, s.lng);
-            if (d < minDist) {
-              minDist = d;
-              targetSpot = s;
-            }
-          }
-          shouldCenter = true;
+        for (const s of spotsRes.rows) {
+          mergedMap.set(s.id, s);
         }
-        handleSelectSpot(targetSpot, shouldCenter);
+        nextSpots = Array.from(mergedMap.values());
+      }
+
+      let nextLogs: CatchLog[];
+      if (logsRes.isFullSync) {
+        nextLogs = logsRes.rows;
+      } else {
+        const deletedLogSet = new Set(logsRes.deletedIds);
+        const mergedLogMap = new Map<string, CatchLog>();
+        for (const l of localLogs) {
+          if (!deletedLogSet.has(l.id)) mergedLogMap.set(l.id, l);
+        }
+        for (const l of logsRes.rows) {
+          mergedLogMap.set(l.id, l);
+        }
+        nextLogs = Array.from(mergedLogMap.values())
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 200);
+      }
+
+      const now = Date.now();
+      lastSyncAtRef.current = now;
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(LAST_SYNC_STORAGE_KEY, String(now));
+          if (spotsRes.maxUpdatedAt) localStorage.setItem(SPOTS_CURSOR_KEY, spotsRes.maxUpdatedAt);
+          if (logsRes.maxUpdatedAt) localStorage.setItem(LOGS_CURSOR_KEY, logsRes.maxUpdatedAt);
+        } catch {}
+      }
+
+      setSpots(nextSpots);
+      setCatchLogs(nextLogs);
+      saveLogsToStorage(nextLogs);
+      saveAllCachedSpots(nextSpots);
+      selectInitialSpot(nextSpots);
+
+      if (shopsSettled.status === 'fulfilled') {
+        const shopsRes = shopsSettled.value;
+        let nextShops: FishingShop[];
+        if (shopsRes.isFullSync) {
+          nextShops = shopsRes.rows;
+        } else {
+          const deletedShopSet = new Set(shopsRes.deletedIds);
+          const mergedShopMap = new Map<string, FishingShop>();
+          for (const sh of cachedShops) {
+            if (!deletedShopSet.has(sh.id)) mergedShopMap.set(sh.id, sh);
+          }
+          for (const sh of shopsRes.rows) {
+            mergedShopMap.set(sh.id, sh);
+          }
+          nextShops = Array.from(mergedShopMap.values());
+        }
+        if (typeof window !== 'undefined' && shopsRes.maxUpdatedAt) {
+          try {
+            localStorage.setItem(SHOPS_CURSOR_KEY, shopsRes.maxUpdatedAt);
+          } catch {}
+        }
+        setShops(nextShops);
+        saveAllCachedShops(nextShops);
+      } else {
+        console.warn('낚시점 동기화 건너뜀:', shopsSettled.reason);
       }
     } catch (err) {
       console.warn('Supabase 데이터 로드 실패, 오프라인 로컬 캐시 복원 시도:', err);
       const cached = getAllCachedSpots();
       if (cached.length > 0) {
         setSpots(cached);
-        if (!selectedSpot) handleSelectSpot(cached[0], false);
+        if (!selectedSpotRef.current) handleSelectSpotRef.current(cached[0], false);
       }
       const localLogs = loadLogsFromStorage();
       if (localLogs && localLogs.length > 0) {
         setCatchLogs(localLogs);
       }
+    } finally {
+      isSyncingRef.current = false;
     }
-  }, [selectedSpot, userLocation, handleSelectSpot]);
+  }, []);
 
   React.useEffect(() => {
-    reloadData();
+    reloadData(false);
   }, [reloadData]);
 
-  // 사용자 GPS 현재 위치 백그라운드 확인 및 초기 지도 중심을 내 위치에서 가장 가까운 포인트로 이동
+  // 1) 사용자 GPS 현재 위치 마운트 시 1회 백그라운드 확인 (spots 변경 시 재호출 방지)
   const hasAutoNearestSpotRef = React.useRef(false);
 
   React.useEffect(() => {
     getNativeLocation()
       .then((pos) => {
-        const userPos = { lat: pos.lat, lng: pos.lng };
-        setUserLocation(userPos);
-
-        const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-        const hasUrlSpot = Boolean(params && params.get('spot'));
-
-        if (!hasUrlSpot && spots.length > 0 && !hasAutoNearestSpotRef.current) {
-          hasAutoNearestSpotRef.current = true;
-          let nearestSpot = spots[0];
-          let minDist = Infinity;
-          for (const s of spots) {
-            const d = getDistanceKm(userPos.lat, userPos.lng, s.lat, s.lng);
-            if (d < minDist) {
-              minDist = d;
-              nearestSpot = s;
-            }
-          }
-          handleSelectSpot(nearestSpot, true);
-          setRecenterTarget({ lat: nearestSpot.lat, lng: nearestSpot.lng, zoom: 15 });
-        }
+        isGpsResolvedRef.current = true;
+        setUserLocation({ lat: pos.lat, lng: pos.lng });
       })
       .catch((err) => {
+        isGpsResolvedRef.current = true;
         console.warn('Initial geolocation notice:', err);
       });
-  }, [spots, handleSelectSpot]);
+  }, []);
 
-  // 모든 포인트의 실시간 요약 데이터(환경 & 물때 & 입질지수) 백그라운드 병렬 수집
+  // 2) 위치와 포인트가 모두 준비되었을 때 가장 가까운 포인트 1회 자동 선택
   React.useEffect(() => {
-    if (spots.length === 0) return;
+    if (!userLocation || spots.length === 0 || hasAutoNearestSpotRef.current) return;
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const hasUrlSpot = Boolean(params && params.get('spot'));
+    if (hasUrlSpot) {
+      hasAutoNearestSpotRef.current = true;
+      return;
+    }
+
+    hasAutoNearestSpotRef.current = true;
+    let nearestSpot = spots[0];
+    let minDist = Infinity;
+    for (const s of spots) {
+      const d = getDistanceKm(userLocation.lat, userLocation.lng, s.lat, s.lng);
+      if (d < minDist) {
+        minDist = d;
+        nearestSpot = s;
+      }
+    }
+    handleSelectSpot(nearestSpot, true);
+    setRecenterTarget({ lat: nearestSpot.lat, lng: nearestSpot.lng, zoom: 15 });
+  }, [spots, userLocation, handleSelectSpot]);
+
+  // 리스트 보기 모달을 열었을 때만 가까운 상위 15개 포인트의 요약 데이터 지연 수집 (부팅 시 80개 일괄 폭격 차단)
+  const summaryFetchedAtRef = React.useRef<Record<string, number>>({});
+
+  React.useEffect(() => {
+    if (!isSpotListModalOpen || spots.length === 0) return;
 
     let isMounted = true;
     const loadSummaries = async () => {
       const now = new Date();
+      const nowMs = now.getTime();
       const currentHour = now.getHours();
+      const SUMMARY_TTL_MS = 15 * 60 * 1000;
+      const MAX_LIST_SUMMARY_SPOTS = 15;
 
-      // 주요 포인트별 동시 요청 수 제한(배치 4개씩)을 통한 네트워크 과부하 및 Open-Meteo 429 차단 방지
+      const sortedSpots = userLocation
+        ? [...spots].sort(
+            (a, b) =>
+              getDistanceKm(userLocation.lat, userLocation.lng, a.lat, a.lng) -
+              getDistanceKm(userLocation.lat, userLocation.lng, b.lat, b.lng)
+          )
+        : spots;
+
+      const targetSpots = sortedSpots
+        .slice(0, MAX_LIST_SUMMARY_SPOTS)
+        .filter((s) => nowMs - (summaryFetchedAtRef.current[s.id] || 0) >= SUMMARY_TTL_MS);
+
+      if (targetSpots.length === 0) return;
+
+      // 동일 0.01° 기상 격자 내 인접 포인트는 하나의 요청만 공유하여 Open-Meteo 분당 한도 보호
+      const gridDataPromises = new Map<string, Promise<[WeatherData, MarineData]>>();
+      const getGridWeatherMarine = (lat: number, lng: number) => {
+        const gKey = `${(Math.round(lat * 100) / 100).toFixed(2)}_${(Math.round(lng * 100) / 100).toFixed(2)}`;
+        let p = gridDataPromises.get(gKey);
+        if (!p) {
+          p = Promise.all([fetchWeatherData(lat, lng), fetchMarineData(lat, lng)]);
+          gridDataPromises.set(gKey, p);
+        }
+        return p;
+      };
+
       const entries: (readonly [string, SpotRealtimeSummary] | null)[] = [];
       const BATCH_SIZE = 4;
-      for (let i = 0; i < spots.length; i += BATCH_SIZE) {
+      for (let i = 0; i < targetSpots.length; i += BATCH_SIZE) {
         if (!isMounted) break;
-        const chunk = spots.slice(i, i + BATCH_SIZE);
+        const chunk = targetSpots.slice(i, i + BATCH_SIZE);
         const chunkResults = await Promise.all(
           chunk.map(async (spot) => {
             try {
               const tideData = calculateTideDay(spot.lat, spot.lng, now);
               const currentTide = tideData.hourlyCurve.find((c) => c.hour === currentHour);
 
-              const [w, m] = await Promise.all([
-                fetchWeatherData(spot.lat, spot.lng),
-                fetchMarineData(spot.lat, spot.lng),
-              ]);
+              const [w, m] = await getGridWeatherMarine(spot.lat, spot.lng);
 
               const bScore = calculateBiteScore(spot, w, m, tideData, currentUser?.favoriteSpecies);
               const dist = userLocation
                 ? getDistanceKm(userLocation.lat, userLocation.lng, spot.lat, spot.lng)
                 : undefined;
 
+              summaryFetchedAtRef.current[spot.id] = Date.now();
               const summary: SpotRealtimeSummary = {
                 temp: w.temp,
                 weatherText: w.weatherText,
@@ -501,7 +742,9 @@ export function App() {
             nextMap[item[0]] = item[1];
           }
         }
-        setEnvironmentMap(nextMap);
+        if (Object.keys(nextMap).length > 0) {
+          setEnvironmentMap((prev) => ({ ...prev, ...nextMap }));
+        }
       }
     };
 
@@ -509,36 +752,24 @@ export function App() {
     return () => {
       isMounted = false;
     };
-  }, [spots, userLocation, currentUser?.favoriteSpecies]);
+  }, [isSpotListModalOpen, spots, userLocation, currentUser?.favoriteSpecies]);
 
-  // Supabase 실시간 동기화 구독 (PC ⇄ 모바일 실시간 전파)
+  // 탭/앱 복귀 시 15분 쿨다운 기반 조건부 동기화 (postgres_changes WAL 폴링 제거)
   React.useEffect(() => {
-    const client = getSupabase();
-
-    const channel = client
-      .channel('espfish_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fishing_spots' }, async () => {
-        try {
-          const cSpots = await fetchCloudSpots();
-          setSpots(cSpots);
-        } catch (e) {
-          console.error('Realtime spot reload error:', e);
-        }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'catch_logs' }, async () => {
-        try {
-          const cLogs = await fetchCloudLogs();
-          setCatchLogs(cLogs);
-        } catch (e) {
-          console.error('Realtime log reload error:', e);
-        }
-      })
-      .subscribe();
-
-    return () => {
-      client.removeChannel(channel);
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+      if (Date.now() - lastSyncAtRef.current >= SYNC_COOLDOWN_MS) {
+        reloadData();
+      }
     };
-  }, []);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
+  }, [reloadData]);
 
   // 선택된 포인트의 실시간 물때 곡선 및 입질 지수 10초 주기 로컬 갱신 (원격 API 호출 배제, 배터리 절약, KHOA 공식 데이터 보존)
   React.useEffect(() => {
@@ -551,6 +782,7 @@ export function App() {
         const tideData = calculateTideDay(selectedSpot.lat, selectedSpot.lng, now, {
           swtcWeekly: activeSwtcWeeklyRef.current,
         });
+        tideRef.current = tideData;
         setTide(tideData);
 
         if (weather && marine) {
@@ -619,8 +851,12 @@ export function App() {
       if (editingSpot) {
         const updatedSpot: FishingSpot = { ...editingSpot, ...spotData };
         await saveCloudSpot(updatedSpot);
-        const cSpots = await fetchCloudSpots();
-        setSpots(cSpots);
+        setSpots((prev) => {
+          const next = prev.map((s) => (s.id === updatedSpot.id ? updatedSpot : s));
+          saveAllCachedSpots(next);
+          return next;
+        });
+        cacheSpotMetadata(updatedSpot);
         handleSelectSpot(updatedSpot);
         setEditingSpot(null);
       } else {
@@ -632,13 +868,15 @@ export function App() {
           created_at: new Date().toISOString(),
         };
         await saveCloudSpot(newSpot);
-        const cSpots = await fetchCloudSpots();
-        setSpots(cSpots);
+        setSpots((prev) => {
+          const next = [newSpot, ...prev.filter((s) => s.id !== newSpot.id)];
+          saveAllCachedSpots(next);
+          return next;
+        });
+        cacheSpotMetadata(newSpot);
         handleSelectSpot(newSpot);
       }
       setIsSpotModalOpen(false);
-      // 신규 등록 후 즉시 최신 데이터 반영 보장
-      await reloadData();
     } catch (e: any) {
       console.error('Supabase spot save error:', e);
       alert(`Supabase DB 저장에 실패했습니다: ${e?.message || '연결 또는 권한을 확인하세요.'}`);
@@ -649,8 +887,9 @@ export function App() {
   const handleDeleteSpot = async (spotId: string) => {
     try {
       await deleteCloudSpot(spotId);
-      const updated = await fetchCloudSpots();
+      const updated = spots.filter((s) => s.id !== spotId);
       setSpots(updated);
+      saveAllCachedSpots(updated);
 
       if (selectedSpot?.id === spotId) {
         if (updated.length > 0) {
@@ -672,14 +911,72 @@ export function App() {
     setIsSpotModalOpen(true);
   };
 
+  // 공용 낚시점 등록/수정/삭제 핸들러 (paedros@gmail.com 관리자 전용)
+  const handleMapClickForNewShop = (lat: number, lng: number) => {
+    if (!isStrictAdmin) return;
+    setEditingShop(null);
+    setNewShopCoords({ lat, lng });
+    setIsShopModalOpen(true);
+  };
+
+  const handleSaveShop = async (shop: FishingShop, initialMemo?: ShopMemo) => {
+    const saved = await saveCloudShop(shop);
+    setShops((prev) => {
+      const exists = prev.some((s) => s.id === saved.id);
+      const next = exists ? prev.map((s) => (s.id === saved.id ? saved : s)) : [saved, ...prev];
+      saveAllCachedShops(next);
+      return next;
+    });
+    if (initialMemo) {
+      try {
+        await saveShopMemo(initialMemo);
+      } catch (err) {
+        console.warn('초기 낚시점 메모 저장 실패:', err);
+      }
+    }
+    setSelectedSpot(null);
+    setSelectedShop(saved);
+    setIsShopModalOpen(false);
+    setEditingShop(null);
+    setNewShopCoords(null);
+  };
+
+  const handleDeleteShop = async (shopId: string) => {
+    try {
+      await deleteCloudShop(shopId);
+      setShops((prev) => {
+        const next = prev.filter((s) => s.id !== shopId);
+        saveAllCachedShops(next);
+        return next;
+      });
+      if (selectedShop?.id === shopId) {
+        setSelectedShop(null);
+        setIsMobileDrawerOpen(false);
+      }
+    } catch (e: any) {
+      console.error('Supabase shop delete error:', e);
+      alert(`낚시점 삭제에 실패했습니다: ${e?.message || ''}`);
+    }
+  };
+
+  const handleEditShop = (shop: FishingShop) => {
+    if (!isStrictAdmin) return;
+    setEditingShop(shop);
+    setNewShopCoords(null);
+    setIsShopModalOpen(true);
+  };
+
   // 지도에서 캐스팅 방향/스위트스팟 등 직접 업데이트
   const handleDirectUpdateSpot = async (updatedSpot: FishingSpot) => {
     try {
       await saveCloudSpot(updatedSpot);
-      const cSpots = await fetchCloudSpots();
-      setSpots(cSpots);
+      setSpots((prev) => {
+        const next = prev.map((s) => (s.id === updatedSpot.id ? updatedSpot : s));
+        saveAllCachedSpots(next);
+        return next;
+      });
+      cacheSpotMetadata(updatedSpot);
       handleSelectSpot(updatedSpot, false, false);
-      await reloadData();
     } catch (e: any) {
       console.error('Failed to update spot directly:', e);
       alert(`포인트 업데이트에 실패했습니다: ${e?.message || ''}`);
@@ -702,12 +999,64 @@ export function App() {
       if (!target) return;
       const updated: FishingSpot = { ...target, lat: newLat, lng: newLng };
       await saveCloudSpot(updated);
-      const cSpots = await fetchCloudSpots();
-      setSpots(cSpots);
+      setSpots((prev) => {
+        const next = prev.map((s) => (s.id === updated.id ? updated : s));
+        saveAllCachedSpots(next);
+        return next;
+      });
+      cacheSpotMetadata(updated);
       setSelectedSpot(updated);
       setMicroAdjustSpot(null);
     } catch (e: any) {
       alert(`위치 저장 중 오류가 발생했습니다: ${e?.message || ''}`);
+    }
+  };
+
+  // v6 출조 전 후보 포인트 미래 비교 모달 상태
+  const [isCompareModalOpen, setIsCompareModalOpen] = React.useState(false);
+  const [compareSpotIds, setCompareSpotIds] = React.useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('exfish_compare_spot_ids_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.slice(0, 5);
+      }
+    } catch {}
+    return [];
+  });
+
+  const handleOpenCompareWithSpots = (spotIds: string[]) => {
+    setCompareSpotIds((prev) => {
+      const merged = Array.from(new Set([...prev, ...spotIds])).slice(0, 5);
+      try { localStorage.setItem('exfish_compare_spot_ids_v1', JSON.stringify(merged)); } catch {}
+      return merged;
+    });
+    setIsCompareModalOpen(true);
+  };
+
+  // 세션 단위 다채비(히트/꽝 동시) 조과 배치 저장 핸들러
+  const handleSaveSessionCatchLogs = async (logsData: Omit<CatchLog, 'id' | 'created_at'>[]) => {
+    try {
+      const nowIso = new Date().toISOString();
+      const createdLogs: CatchLog[] = logsData.map((logData, idx) => ({
+        ...logData,
+        id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `log-${Date.now()}-${idx}`,
+        user_id: currentUser ? currentUser.id : (logData.user_id || 'user-me'),
+        user_name: currentUser ? (currentUser.customNickname || currentUser.name || currentUser.id) : (logData.user_name || '나의 조과'),
+        created_at: nowIso,
+      }));
+      await Promise.all(createdLogs.map((l) => saveCloudCatchLog(l)));
+      setCatchLogs((prev) => {
+        const next = [...createdLogs, ...prev];
+        saveLogsToStorage(next);
+        return next;
+      });
+      setIsCatchLogModalOpen(false);
+    } catch (e: any) {
+      console.error('Session catch logs save error:', e);
+      alert(`세션 다채비 조과 저장에 실패했습니다: ${e?.message || ''}`);
     }
   };
 
@@ -743,15 +1092,6 @@ export function App() {
         return next;
       });
 
-      // 최신 서버 데이터 재동기화 (백그라운드)
-      try {
-        const cLogs = await fetchCloudLogs();
-        setCatchLogs(cLogs);
-        saveLogsToStorage(cLogs);
-      } catch (syncErr) {
-        console.warn('Supabase fetchCloudLogs post-save background sync warning:', syncErr);
-      }
-
       setIsCatchLogModalOpen(false);
     } catch (e: any) {
       console.error('Supabase catch log save error:', e);
@@ -768,11 +1108,6 @@ export function App() {
         saveLogsToStorage(next);
         return next;
       });
-      try {
-        const cLogs = await fetchCloudLogs();
-        setCatchLogs(cLogs);
-        saveLogsToStorage(cLogs);
-      } catch {}
     } catch (e: any) {
       console.error('Supabase catch log delete error:', e);
       alert(`Supabase DB 조과 삭제에 실패했습니다: ${e?.message || ''}`);
@@ -797,8 +1132,11 @@ export function App() {
 
   // 필터링된 포인트 목록
   const filteredSpots = spots.filter((spot) => {
-    if (viewOnlyMySpots && spot.user_id !== 'user-me' && spot.user_id !== 'user-esper-1') {
-      return false;
+    if (viewOnlyMySpots) {
+      const myId = currentUser?.id;
+      if (myId ? spot.user_id !== myId : (spot.user_id !== 'user-me' && spot.user_id !== 'user-esper-1')) {
+        return false;
+      }
     }
     if (selectedMethodFilter !== 'ALL' && !spot.fishing_methods.includes(selectedMethodFilter)) {
       return false;
@@ -1076,6 +1414,32 @@ export function App() {
               <span>내 포인트</span>
             </button>
 
+            <button
+              onClick={() => setViewOnlyFavorites((v) => !v)}
+              className={`flex items-center justify-center p-1.5 rounded-lg border text-xs transition ${
+                viewOnlyFavorites
+                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                  : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+              }`}
+              title={viewOnlyFavorites ? '전체 포인트 보기' : '내가 찜한 포인트만 보기'}
+              aria-label="찜한 포인트 필터"
+            >
+              <Star size={13} className={viewOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''} />
+            </button>
+
+            <button
+              onClick={() => setIsTacklePopoverOpen((v) => !v)}
+              className={`flex items-center justify-center p-1.5 rounded-lg border text-xs transition ${
+                isTacklePopoverOpen
+                  ? 'bg-cyan-600 border-cyan-500 text-white'
+                  : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+              }`}
+              title="채비 비거리 예측 (루어 무게 & PE 라인 호수 설정)"
+              aria-label="채비 설정"
+            >
+              <Sliders size={13} />
+            </button>
+
             {/* 모바일 화면 전용 로그인 버튼 (아이콘 전용) */}
             <button
               onClick={() => setIsLoginModalOpen(true)}
@@ -1170,13 +1534,17 @@ export function App() {
             selectedSpot={selectedSpot}
             onSelectSpot={(spot) => handleSelectSpot(spot, true, false)}
             onMapClickForNewSpot={handleMapClickForNewSpot}
+            shops={shops}
+            selectedShop={selectedShop}
+            onSelectShop={(shop) => handleSelectShop(shop, true)}
+            onMapClickForNewShop={handleMapClickForNewShop}
             weather={weather}
             marine={marine}
             tide={tide}
             windUnit={windUnit}
             currentUnit={currentUnit}
             recenterTarget={recenterTarget}
-            isMobileDrawerOpen={Boolean(selectedSpot && isMobileDrawerOpen && (typeof window !== 'undefined' && window.innerWidth < 768))}
+            isMobileDrawerOpen={Boolean((selectedSpot || selectedShop) && isMobileDrawerOpen && (typeof window !== 'undefined' && window.innerWidth < 768))}
             microAdjustSpot={microAdjustSpot}
             onCancelMicroAdjust={handleCancelMicroAdjust}
             onConfirmMicroAdjust={handleConfirmMicroAdjust}
@@ -1190,6 +1558,11 @@ export function App() {
             isSunMode={isSunMode}
             mapMode={mapMode}
             onChangeMapMode={handleMapModeChange}
+            mapProvider={mapProvider}
+            viewOnlyFavorites={viewOnlyFavorites}
+            isTacklePopoverOpen={isTacklePopoverOpen}
+            onToggleTacklePopover={setIsTacklePopoverOpen}
+            userCoords={userLocation}
           />
         </div>
 
@@ -1222,6 +1595,22 @@ export function App() {
               onEditSpot={handleEditSpot}
               onDeleteSpot={handleDeleteSpot}
               onClose={() => setSelectedSpot(null)}
+              allSpots={spots}
+              onSelectSpot={(sp) => handleSelectSpot(sp, true, true)}
+              onOpenCompare={handleOpenCompareWithSpots}
+            />
+          </aside>
+        )}
+
+        {!selectedSpot && selectedShop && (
+          <aside className="hidden md:block w-[440px] lg:w-[480px] h-full shrink-0 z-20 border-l border-slate-800 shadow-2xl">
+            <ShopDetailPanel
+              shop={selectedShop}
+              currentUser={currentUser}
+              isAdmin={isStrictAdmin}
+              onClose={() => setSelectedShop(null)}
+              onEditShop={handleEditShop}
+              onDeleteShop={handleDeleteShop}
             />
           </aside>
         )}
@@ -1259,6 +1648,25 @@ export function App() {
                 setIsMobileDrawerOpen(false);
               }}
               onMinimize={() => setIsMobileDrawerOpen(false)}
+              allSpots={spots}
+              onSelectSpot={(sp) => handleSelectSpot(sp, true, true)}
+              onOpenCompare={handleOpenCompareWithSpots}
+            />
+          </div>
+        )}
+
+        {!selectedSpot && selectedShop && isMobileDrawerOpen && (
+          <div className="md:hidden fixed inset-0 z-50 bg-slate-900 flex flex-col animate-fade-in">
+            <ShopDetailPanel
+              shop={selectedShop}
+              currentUser={currentUser}
+              isAdmin={isStrictAdmin}
+              onClose={() => {
+                setSelectedShop(null);
+                setIsMobileDrawerOpen(false);
+              }}
+              onEditShop={handleEditShop}
+              onDeleteShop={handleDeleteShop}
             />
           </div>
         )}
@@ -1277,6 +1685,23 @@ export function App() {
         initialLng={newSpotLng}
         extractExifFromImage={extractExifFromImage}
       />
+
+      {/* 공용 낚시점 등록 / 수정 모달 (paedros@gmail.com 관리자 전용) */}
+      {isStrictAdmin && (
+        <ShopFormModal
+          isOpen={isShopModalOpen}
+          onClose={() => {
+            setIsShopModalOpen(false);
+            setEditingShop(null);
+            setNewShopCoords(null);
+          }}
+          initialCoords={newShopCoords}
+          editingShop={editingShop}
+          currentUserId={currentUser?.id || 'admin'}
+          currentUserName={currentUser?.name || '관리자'}
+          onSaveShop={handleSaveShop}
+        />
+      )}
 
       {/* 새 조과 기록 등록 및 수정 모달 (당시 환경 자동 스냅샷 박제 & 수정) */}
       {selectedSpot && (
@@ -1299,8 +1724,22 @@ export function App() {
           currentUnit={currentUnit}
           extractExifFromImage={extractExifFromImage}
           onSaveLog={handleSaveCatchLog}
+          onSaveSessionLogs={handleSaveSessionCatchLogs}
         />
       )}
+
+      {/* v6 출조 전 후보 포인트 미래 여건 비교 모달 */}
+      <MultiSpotCompareModal
+        isOpen={isCompareModalOpen}
+        onClose={() => setIsCompareModalOpen(false)}
+        allSpots={spots}
+        selectedSpotIds={compareSpotIds}
+        onChangeSpotIds={(ids) => {
+          setCompareSpotIds(ids);
+          try { localStorage.setItem('exfish_compare_spot_ids_v1', JSON.stringify(ids)); } catch {}
+        }}
+        onSelectSpot={(sp) => handleSelectSpot(sp, true, true)}
+      />
 
       {/* 간편 로그인 및 계정/환경 설정 모달 */}
       <LoginModal
@@ -1312,7 +1751,10 @@ export function App() {
           if (user.windUnit) setWindUnit(user.windUnit);
           if (user.currentUnit) setCurrentUnit(user.currentUnit);
         }}
-        onLogout={() => setCurrentUser(null)}
+        onLogout={() => {
+          setCurrentUser(null);
+          import('./utils/cloudDb').then((m) => m.clearPrivateLocalCaches()).catch(() => {});
+        }}
         onUpdateFavorites={(favorites) => {
           if (currentUser) {
             setCurrentUser({ ...currentUser, favoriteSpecies: favorites });
@@ -1322,6 +1764,8 @@ export function App() {
         currentUnit={currentUnit}
         onChangeWindUnit={setWindUnit}
         onChangeCurrentUnit={setCurrentUnit}
+        mapProvider={mapProvider}
+        onChangeMapProvider={handleChangeMapProvider}
       />
 
       {/* 입질 종합 지수 평가 기준 설명 헬프 모달 */}

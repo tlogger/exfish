@@ -13,7 +13,7 @@ import {
   Download,
 } from 'lucide-react';
 import { DEFAULT_POPULAR_SPECIES, SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
-import type { CurrentUnit, WindUnit } from '../types';
+import type { CurrentUnit, MapProvider, WindUnit } from '../types';
 import { startSocialAuth, isUserAdmin, type AuthProvider } from '../services/oauthService';
 import { APP_VERSION } from '../version';
 
@@ -50,6 +50,8 @@ interface LoginModalProps {
   currentUnit: CurrentUnit;
   onChangeWindUnit: (unit: WindUnit) => void;
   onChangeCurrentUnit: (unit: CurrentUnit) => void;
+  mapProvider: MapProvider;
+  onChangeMapProvider: (provider: MapProvider) => void;
 }
 
 const STORAGE_KEY_AUTH_USER = 'exfish_auth_user_v2';
@@ -212,6 +214,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   currentUnit,
   onChangeWindUnit,
   onChangeCurrentUnit,
+  mapProvider,
+  onChangeMapProvider,
 }) => {
   const [nickname, setNickname] = React.useState(() => currentUser?.customNickname || currentUser?.name || getRememberedCredentials().nickname);
   const [error, setError] = React.useState('');
@@ -220,6 +224,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [selectedSpecies, setSelectedSpecies] = React.useState<string[]>(['우럭', '광어']);
   const [localWindUnit, setLocalWindUnit] = React.useState<WindUnit>(windUnit);
   const [localCurrentUnit, setLocalCurrentUnit] = React.useState<CurrentUnit>(currentUnit);
+  const [localMapProvider, setLocalMapProvider] = React.useState<MapProvider>(mapProvider);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -233,15 +238,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         );
         setLocalWindUnit(currentUser.windUnit || windUnit);
         setLocalCurrentUnit(currentUser.currentUnit || currentUnit);
+        setLocalMapProvider(mapProvider);
       } else {
         const remembered = getRememberedCredentials();
         setNickname(remembered.nickname || '');
         setSelectedSpecies(['우럭', '광어']);
         setLocalWindUnit(windUnit);
         setLocalCurrentUnit(currentUnit);
+        setLocalMapProvider(mapProvider);
       }
     }
-  }, [isOpen, currentUser, windUnit, currentUnit]);
+  }, [isOpen, currentUser, windUnit, currentUnit, mapProvider]);
 
   if (!isOpen) return null;
 
@@ -290,6 +297,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     });
     onChangeWindUnit(localWindUnit);
     onChangeCurrentUnit(localCurrentUnit);
+    onChangeMapProvider(localMapProvider);
     if (onUpdateFavorites) onUpdateFavorites(selectedSpecies);
     onLogin(updated);
     onClose();
@@ -455,6 +463,35 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                         }`}
                       >
                         {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 지도 엔진 선택 (VWorld 기본 / Kakao Map) */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+                  <div className="flex justify-between items-center text-slate-300">
+                    <span className="text-[11px] text-slate-400">기본 지도 엔진:</span>
+                    <span className="font-mono text-cyan-300 font-bold">
+                      {localMapProvider === 'vworld' ? 'VWorld (기본)' : 'Kakao Map'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: 'vworld', label: 'VWorld (기본)' },
+                      { id: 'kakao', label: 'Kakao Map' },
+                    ].map((mp) => (
+                      <button
+                        type="button"
+                        key={mp.id}
+                        onClick={() => setLocalMapProvider(mp.id as MapProvider)}
+                        className={`py-1.5 px-2 rounded-lg border text-center text-xs font-medium transition ${
+                          localMapProvider === mp.id
+                            ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 font-bold'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {mp.label}
                       </button>
                     ))}
                   </div>

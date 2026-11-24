@@ -15,7 +15,8 @@ export function estimateTargetWaterTemp(
   sst: number,
   waterLayer: string | undefined,
   depthM: number | undefined,
-  month: number
+  month: number,
+  region?: 'WEST' | 'SOUTH' | 'EAST' | 'JEJU'
 ): { effectiveTemp: number; isBottomCorrected: boolean; depthDiff: number } {
   if (waterLayer !== 'BOTTOM' || !depthM || depthM <= 3.0) {
     return { effectiveTemp: sst, isBottomCorrected: false, depthDiff: 0 };
@@ -25,8 +26,12 @@ export function estimateTargetWaterTemp(
   let diff = 0;
 
   if (month >= 6 && month <= 9) {
-    // 여름철: 수심이 깊을수록 저층 수온이 낮음 (최대 -4.0°C)
-    diff = -Math.min(4.0, effectiveDepth * 0.25);
+    // 여름철: 서해안('WEST')은 강한 조석 연직 혼합으로 저층 냉각이 완화됨 (0.12°C/m, 최대 -2.0°C)
+    if (region === 'WEST') {
+      diff = -Math.min(2.0, effectiveDepth * 0.12);
+    } else {
+      diff = -Math.min(4.0, effectiveDepth * 0.25);
+    }
   } else if (month === 12 || month === 1 || month === 2) {
     // 겨울철: 표층 냉각 대비 저층이 상대적으로 온화 (최대 +1.5°C)
     diff = Math.min(1.5, effectiveDepth * 0.1);
@@ -98,7 +103,8 @@ export function evaluateDayNightFeeding(
   now: Date,
   lat: number,
   lng: number,
-  simulatedHour?: number
+  simulatedHour?: number,
+  depthM?: number
 ): { timeScore: number; activityMatch: string; isStrictlyInactiveTime: boolean; isGoldenFeeding: boolean } {
   const targetDate = new Date(now);
   if (simulatedHour !== undefined && simulatedHour >= 0 && simulatedHour <= 23) {
@@ -175,9 +181,12 @@ export function evaluateDayNightFeeding(
       if (isNight) {
         timeScore = isProfilePeak ? 25 : isProfileActive ? 20 : 16;
         activityMatch = `야간 집중 먹이 사냥 골든타임 (${profile.timeNote})`;
+      } else if (depthM !== undefined && depthM >= 15) {
+        timeScore = 15;
+        activityMatch = `주간 심수심(15m 이상) 바닥권 입질 가능 (${profile.timeNote})`;
       } else {
         timeScore = 2;
-        activityMatch = `주간 은신/매몰 상태 (입질 불가: ${profile.timeNote})`;
+        activityMatch = `주간 은신/매몰 상태 (15m 미만 입질 저조: ${profile.timeNote})`;
         isStrictlyInactiveTime = true;
       }
     } else if (profile.restriction === 'CREPUSCULAR_PEAK') {
@@ -200,9 +209,13 @@ export function evaluateDayNightFeeding(
     if (isNight) {
       timeScore = 24;
       activityMatch = '야간 먹이활동 집중 (최고 활성)';
+    } else if (depthM !== undefined && depthM >= 15) {
+      timeScore = 15;
+      activityMatch = '주간 심수심(15m 이상) 바닥권 입질 가능';
     } else {
-      timeScore = 6;
-      activityMatch = '주간 은신 상태 (입질 뜸함)';
+      timeScore = 3;
+      activityMatch = '주간 은신 상태 (15m 미만 얕은 수심 입질 뜸함)';
+      isStrictlyInactiveTime = true;
     }
   } else if (species.activityPeriod === 'DIURNAL') {
     if (isDay) {
@@ -263,6 +276,48 @@ export function evaluateWaveRigSweep(waveHeight: number): {
 }
 
 /**
+ * 사리/정조에 따른 물 탁도(Turbidity) 변화가 대상어 입질에 미치는 영향 보정
+ * - 사리 + 강한 조류 -> 부유물 증가(탁수): 시각 사냥/두족류 불리, 후각·측선 의존/경계심 완화 어종 유리
+ * - 조금/무시 또는 정조 -> 맑은 물(청수): 시각 사냥/두족류 유리, 경계심 높은 연안 어종 불리
+ */
+export function evaluateTurbidityEffect(
+  species: SpeciesEcology,
+  tide: TideDayInfo,
+  currentVel: number,
+  region: 'WEST' | 'SOUTH' | 'EAST' | 'JEJU'
+): { delta: number; note: string | null } {
+  const isSpringTide = tide.mulNumber >= 6 && tide.mulNumber <= 10;
+  const isNeapTide = tide.mulNumber <= 3 || tide.mulNumber >= 13;
+  const turbidityVelThreshold = region === 'WEST' ? 0.3 : 0.4;
+
+  const isHighTurbidity = isSpringTide && currentVel >= turbidityVelThreshold;
+  const isClearSlack = isNeapTide || currentVel <= 0.12;
+
+  const isSightClearPreferred =
+    species.category === 'CEPHALOPOD' ||
+    /볼락|전갱이|고등어|삼치|광어|방어|부시리|벵에돔/.test(species.name);
+  const isTurbidTolerant =
+    /감성돔|농어|우럭|붕장어|숭어|망둥어|도다리|민어|참돔/.test(species.name);
+
+  if (isHighTurbidity) {
+    if (isSightClearPreferred) {
+      return { delta: -6, note: '사리 탁수 시야 저하(불리)' };
+    }
+    if (isTurbidTolerant) {
+      return { delta: 3, note: '사리 적정 탁도 경계심 완화' };
+    }
+  } else if (isClearSlack) {
+    if (isSightClearPreferred) {
+      return { delta: 2, note: '청수 시인성 양호' };
+    }
+    if (isTurbidTolerant) {
+      return { delta: -4, note: '물 맑음·정조 경계심 증가' };
+    }
+  }
+  return { delta: 0, note: null };
+}
+
+/**
  * 특정 단일 어종의 현재 환경 적합도(0~100점) 정밀 채점기
  */
 export function calculateSingleSpeciesScore(
@@ -273,7 +328,8 @@ export function calculateSingleSpeciesScore(
   tide: TideDayInfo,
   currentHour?: number,
   currentMonth?: number,
-  targetDate?: Date
+  targetDate?: Date,
+  actualDepthM?: number
 ): SpeciesBiteScore {
   const now = targetDate || new Date();
   const month = currentMonth !== undefined ? currentMonth : now.getMonth() + 1;
@@ -283,17 +339,28 @@ export function calculateSingleSpeciesScore(
 
   // 1. 수온 활성도 채점 (30점 만점) - 저서어종 저층수온 보정 + 사다리꼴 코사인 평활화
   let depthM = 5.0;
-  if (spot.spot_type === 'ROCK') depthM = 6.0;
+  if (actualDepthM !== undefined && actualDepthM > 0) depthM = actualDepthM;
+  else if (spot.spot_type === 'ROCK') depthM = 6.0;
   else if (spot.spot_type === 'BREAKWATER') depthM = 7.0;
   else if (spot.spot_type === 'SEAWALL') depthM = 5.0;
   else if (spot.spot_type === 'PIER') depthM = 4.5;
   else if (spot.spot_type === 'BEACH') depthM = 2.5;
 
+  const region: 'WEST' | 'SOUTH' | 'EAST' | 'JEJU' =
+    spot.lat < 33.6
+      ? 'JEJU'
+      : spot.lng > 128.8 && spot.lat > 35.2
+      ? 'EAST'
+      : spot.lng < 126.9 && spot.lat > 34.4
+      ? 'WEST'
+      : 'SOUTH';
+
   const { effectiveTemp, isBottomCorrected, depthDiff } = estimateTargetWaterTemp(
     sst,
     species.waterLayer,
     depthM,
-    month
+    month,
+    region
   );
 
   const tempRes = calculateSmoothTempScore(effectiveTemp, species.tempRange);
@@ -304,9 +371,9 @@ export function calculateSingleSpeciesScore(
   }
 
   // 2. 일중 활동 시간대(주행성/야행성/천문 해창 피딩) 적합도 (25점 만점)
-  const timeRes = evaluateDayNightFeeding(species, now, spot.lat, spot.lng, currentHour);
+  const timeRes = evaluateDayNightFeeding(species, now, spot.lat, spot.lng, currentHour, depthM);
 
-  // 3. 조류 유속 및 물때 적합도 (25점 만점) - 기존 검증된 조석 체계 유지
+  // 3. 조류 유속 및 물때 위상(들물/날물/정조) 적합도 (25점 만점)
   let currentScore = 16;
   if (species.currentPref === 'STRONG') {
     // 참돔, 감성돔, 농어, 방어: 사리 물때와 빠른 유속 선호
@@ -335,6 +402,26 @@ export function calculateSingleSpeciesScore(
     }
   }
 
+  // 시간대별 조위 곡선 위상(들물/날물/정조) 보정 (25점 배점 상한 내 ±3점)
+  const targetH = currentHour !== undefined ? currentHour : now.getHours();
+  const phasePoint =
+    tide.hourlyCurve?.find((c) => ((c.hour % 24) + 24) % 24 === targetH) ||
+    tide.hourly72Curve?.find((c) => ((c.hour % 24) + 24) % 24 === targetH);
+  if (phasePoint) {
+    const absNormSlope = Math.abs(phasePoint.normalizedSlope ?? 0);
+    if (phasePoint.stateText.includes('물돌이')) {
+      if (species.currentPref === 'SLACK_GENTLE') {
+        currentScore = Math.min(25, currentScore + 2);
+      } else if (species.currentPref === 'STRONG') {
+        currentScore = Math.max(0, currentScore - 3);
+      }
+    } else if ((phasePoint.stateText.includes('들물') || phasePoint.stateText.includes('날물')) && absNormSlope >= 0.45) {
+      if (species.currentPref === 'STRONG') {
+        currentScore = Math.min(25, currentScore + 2);
+      }
+    }
+  }
+
   // 4. 지형 & 제철(계절) 적합도 (20점 만점)
   let spotSeasonScore = 12;
   // 지형 매칭
@@ -352,7 +439,8 @@ export function calculateSingleSpeciesScore(
     spotSeasonScore += 4;
   }
 
-  let score = Math.min(100, Math.round(tempRes.score + timeRes.timeScore + currentScore + spotSeasonScore));
+  const turbidityEffect = evaluateTurbidityEffect(species, tide, currentVel, region);
+  let score = Math.max(0, Math.min(100, Math.round(tempRes.score + timeRes.timeScore + currentScore + spotSeasonScore + turbidityEffect.delta)));
 
   // 생태 락 (Strict Inactive): 야간 휴면 주간어종 또는 주간 은신 야간어종
   if (timeRes.isStrictlyInactiveTime) {
@@ -390,7 +478,8 @@ export function calculateBiteScore(
   marine: MarineData,
   tide: TideDayInfo,
   favoriteSpecies?: string[],
-  targetDate?: Date
+  targetDate?: Date,
+  actualDepthM?: number
 ): BiteScoreBreakdown {
   const now = targetDate || new Date();
   const currentHour = now.getHours();
@@ -480,7 +569,7 @@ export function calculateBiteScore(
       Object.values(SPECIES_ENCYCLOPEDIA).find((sp) => sp.name.includes(name) || name.includes(sp.name)) ||
       SPECIES_ENCYCLOPEDIA['우럭'];
 
-    return calculateSingleSpeciesScore(matchedEcology, spot, weather, marine, tide, currentHour, currentMonth, now);
+    return calculateSingleSpeciesScore(matchedEcology, spot, weather, marine, tide, currentHour, currentMonth, now, actualDepthM);
   });
 
   // 점수 높은 순 정렬
@@ -497,14 +586,35 @@ export function calculateBiteScore(
 
   // 파고 채비 쓸림 페널티 적용
   if (waveSweep.penalty > 0) {
-    totalScore = Math.max(15, totalScore - waveSweep.penalty);
+    totalScore = Math.max(10, totalScore - waveSweep.penalty);
   }
 
-  // 강풍 추가 감점
-  if (speed > 7.5 || marine.waveHeight > 1.8) {
-    totalScore = Math.max(20, totalScore - 12);
-  } else if (speed > 5.5) {
-    totalScore = Math.max(35, totalScore - 5);
+  // 바람(상대풍향 + 풍속) 감점: 맞바람/옆바람 시 강풍 페널티 가중
+  let windPenalty = 0;
+  if (windRelation.startsWith('맞바람')) {
+    if (speed >= 7.5) windPenalty = 14;
+    else if (speed >= 5.0) windPenalty = 8;
+    else if (speed >= 3.5) windPenalty = 4;
+  } else if (windRelation.startsWith('옆바람')) {
+    if (speed >= 7.5) windPenalty = 10;
+    else if (speed >= 5.5) windPenalty = 6;
+    else if (speed >= 4.0) windPenalty = 3;
+  } else {
+    if (speed >= 8.5) windPenalty = 6;
+    else if (speed >= 6.5) windPenalty = 3;
+  }
+  if (windPenalty > 0) {
+    totalScore = Math.max(10, totalScore - windPenalty);
+  }
+
+  // 조류 과속 감점: 유속이 지나치게 빨라 채비 운용·바닥 안착이 어려운 경우
+  const curVel = marine.currentVelocity ?? 0;
+  let currentExcessPenalty = 0;
+  if (curVel >= 1.0) currentExcessPenalty = 12;
+  else if (curVel >= 0.8) currentExcessPenalty = 7;
+  else if (curVel >= 0.65) currentExcessPenalty = 3;
+  if (currentExcessPenalty > 0) {
+    totalScore = Math.max(10, totalScore - currentExcessPenalty);
   }
 
   // 브리핑 평결 생성
@@ -538,4 +648,109 @@ export function calculateBiteScore(
     targetSummaryLabel: targetLabel,
     waveSweepWarning: waveSweep.sweepWarning,
   };
+}
+
+export interface GoldenWindow48h {
+  offsetHours: number;
+  timeLabel: string;
+  tideState: string;
+  topSpeciesName: string;
+  score: number;
+  reason: string;
+}
+
+/**
+ * 향후 48시간 내 기상·조류·조석 위상이 교차하는 Top 3 황금 출조 시간대 자동 탐색
+ */
+export function findTopGoldenWindows48h(
+  spot: FishingSpot,
+  weather: WeatherData | null,
+  marine: MarineData | null,
+  tide: TideDayInfo | null,
+  favoriteSpecies?: string[],
+  baseTime: Date = new Date()
+): GoldenWindow48h[] {
+  if (!weather || !marine || !tide) return [];
+
+  const now = new Date(baseTime.getTime());
+  const nowHour = now.getHours();
+  const candidates: GoldenWindow48h[] = [];
+
+  for (let offset = 0; offset <= 47; offset++) {
+    const tDate = new Date(now.getTime() + offset * 3600 * 1000);
+    const tHour = tDate.getHours();
+    const y = tDate.getFullYear();
+    const m = String(tDate.getMonth() + 1).padStart(2, '0');
+    const d = String(tDate.getDate()).padStart(2, '0');
+    const hh = String(tHour).padStart(2, '0');
+    const prefix = `${y}-${m}-${d}T${hh}:00`;
+
+    const wIdx = weather.hourly?.time?.findIndex((t) => t.startsWith(prefix)) ?? -1;
+    const mIdx = marine.hourly?.time?.findIndex((t) => t.startsWith(prefix)) ?? -1;
+
+    const simWeather: WeatherData =
+      offset === 0 || wIdx < 0
+        ? weather
+        : {
+            ...weather,
+            temp: weather.hourly.temp[wIdx] ?? weather.temp,
+            windSpeed: weather.hourly.windSpeed[wIdx] ?? weather.windSpeed,
+            windDirection: weather.hourly.windDirection[wIdx] ?? weather.windDirection,
+            windGust: weather.hourly.windGust?.[wIdx] ?? weather.windGust,
+          };
+
+    const simMarine: MarineData =
+      offset === 0 || mIdx < 0 || !marine.hourly
+        ? marine
+        : {
+            ...marine,
+            seaSurfaceTemp: marine.hourly.seaSurfaceTemp[mIdx] ?? marine.seaSurfaceTemp,
+            waveHeight: marine.hourly.waveHeight[mIdx] ?? marine.waveHeight,
+            currentVelocity: marine.hourly.currentVelocity[mIdx] ?? marine.currentVelocity,
+            currentDirection: marine.hourly.currentDirection[mIdx] ?? marine.currentDirection,
+          };
+
+    const curvePt =
+      tide.hourly72Curve?.find((c) => c.hour === nowHour + offset) ||
+      tide.hourlyCurve?.find((c) => c.hour === tHour);
+    const dayShift = Math.floor((nowHour + offset) / 24);
+    const simMul = (((tide.mulNumber - 1 + dayShift) % 15) + 15) % 15 + 1;
+
+    const simTide: TideDayInfo = {
+      ...tide,
+      mulNumber: simMul,
+      hourlyCurve: curvePt ? [{ ...curvePt, hour: tHour }] : tide.hourlyCurve,
+    };
+
+    const res = calculateBiteScore(spot, simWeather, simMarine, simTide, favoriteSpecies, tDate);
+    let adjustedScore = res.totalScore;
+    if (curvePt?.isFeedingTime) adjustedScore = Math.min(100, adjustedScore + 4);
+
+    const dayLabel = dayShift === 0 ? '오늘' : dayShift === 1 ? '내일' : '모레';
+    const tideState = curvePt?.stateText || '조류 변화';
+    const reason = curvePt?.isFeedingTime
+      ? `${tideState} · ${curvePt.feedingLabel || '피딩골든'}`
+      : `${tideState} · ${res.windRelation.split(' ')[0]}`;
+
+    candidates.push({
+      offsetHours: offset,
+      timeLabel: `${dayLabel} ${hh}:00`,
+      tideState,
+      topSpeciesName: res.topSpecies?.speciesName || '대상어',
+      score: adjustedScore,
+      reason,
+    });
+  }
+
+  // 점수순 정렬하되 서로 3시간 이상 떨어진 독립 피크 시간대 Top 3 선별
+  const sorted = [...candidates].sort((a, b) => b.score - a.score);
+  const picked: GoldenWindow48h[] = [];
+  for (const item of sorted) {
+    if (picked.every((p) => Math.abs(p.offsetHours - item.offsetHours) >= 3)) {
+      picked.push(item);
+    }
+    if (picked.length >= 3) break;
+  }
+
+  return picked;
 }

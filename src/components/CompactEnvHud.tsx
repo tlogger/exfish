@@ -107,7 +107,7 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
 
   return (
     <div className="rounded-xl border border-slate-700/80 bg-slate-900/90 p-2 space-y-1.5 shadow-sm">
-      {/* 2x3 단일 시야 6대 실시간 환경 그리드 */}
+      {/* 1x3 단일 시야 3대 실시간 환경 그리드 (바람, 조류, 파고·너울 - 상단 헤더와 중복 제거) */}
       <div className="grid grid-cols-3 gap-1.5 text-xs">
         <div className="rounded-lg bg-slate-800/80 px-2 py-1.5 border border-slate-700/60">
           <div className="flex items-center justify-between text-[10px] text-slate-400 leading-tight">
@@ -142,34 +142,6 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
 
         <div className="rounded-lg bg-slate-800/80 px-2 py-1.5 border border-slate-700/60">
           <div className="flex items-center gap-1 text-[10px] text-slate-400 leading-tight">
-            <Droplets className="w-3 h-3 text-teal-400" />표층수온
-          </div>
-          <div className="mt-0.5 flex items-baseline justify-between gap-1">
-            <span className="font-bold text-teal-300 text-xs leading-tight">
-              {marine ? `${marine.seaSurfaceTemp.toFixed(1)}°C` : '-'}
-            </span>
-            <span className="text-[10px] text-slate-400 truncate leading-tight">
-              {marine?.isObservedTemp ? 'KHOA' : '모델'}
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-lg bg-slate-800/80 px-2 py-1.5 border border-slate-700/60">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 leading-tight">
-            <Thermometer className="w-3 h-3 text-amber-400" />기온
-          </div>
-          <div className="mt-0.5 flex items-baseline justify-between gap-1">
-            <span className="font-bold text-slate-100 text-xs leading-tight">
-              {weather ? `${weather.temp.toFixed(1)}°C` : '-'}
-            </span>
-            <span className="text-[10px] text-slate-400 truncate leading-tight">
-              {weather ? `체감 ${weather.apparentTemp.toFixed(1)}°` : '-'}
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-lg bg-slate-800/80 px-2 py-1.5 border border-slate-700/60">
-          <div className="flex items-center gap-1 text-[10px] text-slate-400 leading-tight">
             <Waves className="w-3 h-3 text-indigo-400" />파고·너울
           </div>
           <div className="mt-0.5 flex items-baseline justify-between gap-1">
@@ -178,18 +150,6 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
             </span>
             <span className="text-[10px] text-slate-400 truncate leading-tight">
               {marine ? `${marine.wavePeriod}s·E${swell.energyScore}` : '-'}
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-lg bg-slate-800/80 px-2 py-1.5 border border-slate-700/60">
-          <div className="text-[10px] text-slate-400 leading-tight">날씨</div>
-          <div className="mt-0.5 flex items-baseline justify-between gap-1">
-            <span className="font-bold text-slate-100 text-xs truncate leading-tight">
-              {weather?.weatherText || '-'}
-            </span>
-            <span className="text-[10px] text-slate-400 shrink-0 leading-tight">
-              {weather?.pressureHpa ? `${Math.round(weather.pressureHpa)}hPa` : '-'}
             </span>
           </div>
         </div>

@@ -2,6 +2,7 @@ export type SpotType = 'ROCK' | 'SEAWALL' | 'BREAKWATER' | 'BEACH' | 'PIER';
 export type FishingMethod = 'SURF' | 'LURE' | 'FLOAT';
 export type WindUnit = 'ms' | 'knot' | 'kmh';
 export type CurrentUnit = 'knot' | 'ms' | 'cms';
+export type MapProvider = 'vworld' | 'kakao';
 
 export interface SweetSpot {
   id: string;
@@ -36,6 +37,8 @@ export interface FishingSpot {
   casting_directions?: string[]; // 캐스팅 공략 방향 (레거시 하위 호환)
   use_sweet_spot?: boolean; // 스위트 스팟 활성화 여부
   sweet_spots?: SweetSpot[]; // 스위트 스팟 목록 (최대 3개)
+  is_deleted?: boolean;
+  updated_at?: string;
   created_at: string;
 }
 
@@ -55,6 +58,10 @@ export interface CatchLog {
   is_hitless?: boolean; // 꽝 여부 플래그
   catch_method: FishingMethod;
   lure_bait?: string;
+  session_id?: string | null; // 동일 출조 세션 다채비 그룹핑 UUID
+  tackle_snapshot?: Record<string, any> | null; // 당시 채비 스냅샷 JSONB
+  is_public?: boolean; // 공개 여부 (기본 true)
+  is_deleted?: boolean;
   // 당시 환경 자동 스냅샷 (Environment Snapshot)
   catch_mul: string; // 당시 물때 (예: 8물)
   tide_state: string; // 당시 조석 상태 (예: 중들물 60%)
@@ -67,6 +74,7 @@ export interface CatchLog {
   lng?: number; // 조과 히트 GPS 경도
   photo_url?: string; // 조과 인증 사진
   memo?: string;
+  updated_at?: string;
   created_at: string;
 }
 
@@ -82,6 +90,39 @@ export interface SpotMemo {
   created_at: string;
 }
 
+export type ShopMemoTag = 'RESTROOM' | 'STORE' | 'BAIT' | 'PARKING' | 'GENERAL';
+
+export interface FishingShop {
+  id: string;
+  user_id: string;
+  author_name: string;
+  is_public: boolean;
+  name: string;
+  lat: number;
+  lng: number;
+  navi_name?: string;
+  navi_url?: string;
+  kakao_place_id?: string;
+  has_restroom: boolean;
+  has_store: boolean;
+  is_promoted?: boolean;
+  promoted_until?: string;
+  promo_badge_text?: string;
+  is_deleted?: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface ShopMemo {
+  id: string;
+  shop_id: string;
+  user_id: string;
+  user_name: string;
+  content: string;
+  tag?: ShopMemoTag;
+  created_at: string;
+}
+
 export interface WeatherData {
   temp: number;
   apparentTemp: number; // 체감온도 (°C)
@@ -91,6 +132,7 @@ export interface WeatherData {
   windSpeed: number; // m/s
   windDirection: number; // 0-360°
   windGust: number; // m/s
+  pressureHpa?: number; // 해면/지표 기압 (hPa) - 역기압 조위 보정용
   isObserved?: boolean; // 국립해양조사원 실측 여부
   observedStationName?: string; // 관측소 명칭 (예: '영흥도')
   observedDistanceKm?: number; // 관측소 거리 (km)
@@ -103,6 +145,7 @@ export interface WeatherData {
     windGust?: number[];
     pop: number[]; // 강수확률
     weatherCode?: number[];
+    pressureHpa?: number[];
   };
 }
 
@@ -120,9 +163,48 @@ export interface MarineData {
     time: string[];
     seaSurfaceTemp: number[];
     waveHeight: number[];
+    wavePeriod?: number[];
     currentVelocity: number[];
     currentDirection: number[];
   };
+}
+
+export type RelativeWindClass = 'HEADWIND' | 'CROSSWIND' | 'TAILWIND' | 'NO_ARC';
+export type CompareSortPreset = 'WIND_AVOID' | 'SWELL_SAFE' | 'BITE_ACTIVE' | 'BALANCED';
+
+export interface SpotComparisonMetric {
+  spot: FishingSpot;
+  offsetHours: number;
+  targetTimeLabel: string;
+  windSpeedMs: number;
+  windDirectionDeg: number;
+  castCenterDeg: number | null;
+  relativeWindAngleDeg: number | null;
+  relativeWindClass: RelativeWindClass;
+  waveHeightM: number;
+  wavePeriodS: number;
+  swellEnergy: number;
+  currentVelocityMs: number;
+  currentDirectionDeg: number;
+  waterTempC: number;
+  airTempC: number;
+  weatherText: string;
+  biteScore: number;
+  // 내 채비 기준 현장 공략 가능성
+  castDistanceDeltaM: number | null;
+  actualCastDistanceM: number | null;
+  depthM: number | null;
+  canReachBottom: boolean | null;
+  fallTimeSec: number | null;
+  recommendedMinWeightG: number | null;
+  error?: string;
+}
+
+export interface RigContrastInsight {
+  mode: 'AB_CONTRAST' | 'ALL_SKUNK_PHYSICS' | 'NONE';
+  summary: string;
+  hitLabel?: string;
+  skunkLabel?: string;
 }
 
 export interface TidePoint {
@@ -139,6 +221,7 @@ export interface TideCurvePoint {
   dayLabel?: string; // 오늘, 내일, 모레, 어제
   height: number;
   stateText: string;
+  normalizedSlope?: number; // -1 ~ 1 무차원 조류 기울기 (+들물, -날물, 0근처=정조)
   isSunrise?: boolean;
   isSunset?: boolean;
   isHighTide?: boolean;
@@ -187,6 +270,7 @@ export interface TideDayInfo {
     endDisplayTime?: string;
     startTimestamp?: number;
     endTimestamp?: number;
+    dayLabel?: string;
   }[];
 }
 

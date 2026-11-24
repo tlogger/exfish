@@ -325,95 +325,40 @@ export const SpotListModal: React.FC<SpotListModalProps> = ({
                     </div>
                   </div>
 
-                  {/* 하단 라인: 실시간 환경 정보 그리드 (모바일 2줄 반응형 레이아웃)
-                      풍향/풍속, 조류, 수온, 날씨/기온, 물때, 조위 */}
+                  {/* 하단 라인: 실시간 환경 정보 1줄 경박단소 표기 (아이콘 제거, 방향은 회전 화살표만 표기) */}
                   {env ? (
-                    <div className="mt-2.5 pt-2 border-t border-slate-800/80 grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-[11px] text-slate-300">
-                      {/* 1. 풍향·풍속 (방향 화살표 + 간단한 방향 + 풍속) */}
-                      <div className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-1.5 truncate">
-                        <Wind size={12} className="text-cyan-400 shrink-0" />
-                        <div className="flex items-center gap-1 truncate">
-                          <span
-                            className="inline-flex items-center justify-center w-3.5 h-3.5 text-cyan-300 font-bold text-xs shrink-0"
-                            style={{ transform: `rotate(${env.windDir}deg)` }}
-                          >
-                            ↓
-                          </span>
-                          <span className="text-[10px] text-cyan-200 font-sans font-medium shrink-0">
-                            {getWindDirectionKor(env.windDir)}
-                          </span>
-                          <span className="font-bold text-cyan-300 font-mono">
-                            {formatWindSpeed(env.windSpeed, windUnit)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* 2. 조류·해류 (방향 화살표 + 간단한 방향 + 유속) */}
-                      <div className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-1.5 truncate">
-                        <Compass size={12} className="text-emerald-400 shrink-0" />
-                        <div className="flex items-center gap-1 truncate">
-                          <span
-                            className="inline-flex items-center justify-center w-3.5 h-3.5 text-emerald-300 font-bold text-xs shrink-0"
-                            style={{ transform: `rotate(${env.currentDir}deg)` }}
-                          >
-                            ↑
-                          </span>
-                          <span className="text-[10px] text-emerald-200 font-sans font-medium shrink-0">
-                            {getCurrentDirectionKor(env.currentDir)}
-                          </span>
-                          <span className="font-bold text-emerald-300 font-mono">
-                            {formatCurrentVelocity(env.currentVel, currentUnit)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* 3. 표층 수온 */}
-                      <div className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-1.5 truncate">
-                        <Thermometer size={12} className="text-rose-400 shrink-0" />
-                        <div className="truncate">
-                          <span className="text-[10px] text-slate-400 block -mb-0.5">수온</span>
-                          <span className="font-bold text-rose-300 font-mono">
-                            {env.seaTemp.toFixed(1)}°C
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* 4. 날씨 & 기온 */}
-                      <div className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-1.5 truncate">
-                        <Waves size={12} className="text-blue-400 shrink-0" />
-                        <div className="truncate">
-                          <span className="text-[10px] text-slate-400 block -mb-0.5 truncate">
-                            {env.weatherText}
-                          </span>
-                          <span className="font-bold text-blue-200 font-mono">
-                            {env.temp.toFixed(1)}°C
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* 5. 물때 */}
-                      <div className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-1.5 truncate">
-                        <span className="text-xs shrink-0">🌊</span>
-                        <div className="truncate">
-                          <span className="text-[10px] text-slate-400 block -mb-0.5">물때</span>
-                          <span className="font-bold text-cyan-200">
-                            {env.mulText}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* 6. 현재 조위 & 파고 */}
-                      <div className="p-1.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-1.5 truncate">
-                        <span className="text-xs shrink-0">📏</span>
-                        <div className="truncate">
-                          <span className="text-[10px] text-slate-400 block -mb-0.5">
-                            파고 {env.waveHeight.toFixed(1)}m
-                          </span>
-                          <span className="font-bold text-amber-300 font-mono">
-                            {env.tideHeight} cm
-                          </span>
-                        </div>
-                      </div>
+                    <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex items-center flex-wrap gap-x-2.5 gap-y-1 text-[11px] text-slate-300 font-mono">
+                      <span className="inline-flex items-center gap-0.5 text-cyan-300 font-bold">
+                        <span
+                          className="inline-flex items-center justify-center w-3.5 h-3.5 text-xs"
+                          style={{ transform: `rotate(${env.windDir}deg)` }}
+                        >
+                          ↓
+                        </span>
+                        {formatWindSpeed(env.windSpeed, windUnit)}
+                      </span>
+                      <span className="text-slate-600">·</span>
+                      <span className="inline-flex items-center gap-0.5 text-emerald-300 font-bold">
+                        <span
+                          className="inline-flex items-center justify-center w-3.5 h-3.5 text-xs"
+                          style={{ transform: `rotate(${env.currentDir}deg)` }}
+                        >
+                          ↑
+                        </span>
+                        {formatCurrentVelocity(env.currentVel, currentUnit)}
+                      </span>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-rose-300 font-semibold">수온 {env.seaTemp.toFixed(1)}°</span>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-blue-200 font-sans">
+                        <strong className="font-mono">{env.temp.toFixed(1)}°</strong> {env.weatherText}
+                      </span>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-cyan-200 font-sans font-semibold">{env.mulText}</span>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-indigo-200">파고 {env.waveHeight.toFixed(1)}m</span>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-amber-300 font-semibold">{env.tideHeight}cm</span>
                     </div>
                   ) : (
                     <div className="mt-2 text-[11px] text-slate-500 animate-pulse">
