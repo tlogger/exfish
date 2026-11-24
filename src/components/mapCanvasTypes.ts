@@ -23,9 +23,43 @@ export interface MeasureSegment {
 }
 
 export interface MapCanvasBridge {
+  /** Base map container local CSS pixel coordinates (unscaled, inside digitalZoom wrapper) */
+  project: (lat: number, lng: number) => { x: number; y: number } | null;
+  /** Root viewport-relative pixel coordinates (accounting for digitalZoom) */
   latLngToScreen: (lat: number, lng: number) => { x: number; y: number } | null;
+  /** ClientX/Y -> LatLng (accounting for digitalZoom) */
   screenToLatLng: (clientX: number, clientY: number) => { lat: number; lng: number } | null;
+  /** Base map container local pixel radius for a given meter distance at (lat, lng) */
+  metersToPixels: (lat: number, lng: number, meters: number) => number;
+  /** Base map container unscaled CSS dimensions */
+  getContainerSize: () => { width: number; height: number } | null;
+  /** Pan map by screen pixel delta (used during digital zoom drag) */
   panByPixels: (dx: number, dy: number) => void;
+  /** Subscribe to base map viewport changes (pan/zoom/resize) */
+  subscribeViewport: (listener: () => void) => () => void;
+}
+
+export interface BaseMapProps {
+  center: { lat: number; lng: number };
+  level: number;
+  digitalZoom: number;
+  mapMode: MapMode;
+  isDarkMode: boolean;
+  isStrictAdmin: boolean;
+  showHaeroadEnc: boolean;
+  onCenterChange: (center: { lat: number; lng: number }) => void;
+  onLevelChange: (level: number) => void;
+  onMapClick: (lat: number, lng: number) => void;
+  bridgeRef: React.MutableRefObject<MapCanvasBridge | null>;
+  mapContainerRef: React.RefObject<HTMLDivElement | null>;
+  isMarkerClickRef: React.MutableRefObject<boolean>;
+  lastClientPosRef: React.MutableRefObject<{ x: number; y: number }>;
+  dragTrackerRef: React.MutableRefObject<{
+    isDragging: boolean;
+    lastX: number;
+    lastY: number;
+    totalDist: number;
+  }>;
 }
 
 export const CASTING_BEARINGS: Record<string, { deg: number; label: string }> = {

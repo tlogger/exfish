@@ -1,9 +1,10 @@
 import React from 'react';
 import { useKakaoLoader } from 'react-kakao-maps-sdk';
 import { Check, LocateFixed, Plus, Minus, Layers, ShieldAlert, PenTool, Sliders, Ruler } from 'lucide-react';
-import { KakaoMapCanvas } from './KakaoMapCanvas';
-import { VWorldMapCanvas } from './VWorldMapCanvas';
-import type { MapCanvasBridge, MapMode, MeasureSegment, SharedMapCanvasProps } from './mapCanvasTypes';
+import { KakaoBaseMap } from './KakaoBaseMap';
+import { VWorldBaseMap } from './VWorldBaseMap';
+import { UnifiedMapOverlay } from './UnifiedMapOverlay';
+import type { BaseMapProps, MapCanvasBridge, MapMode, MeasureSegment, SharedMapCanvasProps } from './mapCanvasTypes';
 import { computeApproxViewportBounds, normalizeWgs84Center } from '../utils/mapCoordSync';
 import { loadZonesForBounds } from '../utils/zoneCache';
 import { findZoneHitsAtPoint } from '../utils/zoneSpatial';
@@ -960,10 +961,145 @@ export const MapView: React.FC<MapViewProps> = ({
           handlePointerMove,
           handlePointerUp,
         };
-        return mapProvider === 'vworld' ? (
-          <VWorldMapCanvas {...sharedCanvasProps} />
-        ) : (
-          <KakaoMapCanvas {...sharedCanvasProps} />
+        const handleBaseMapClick = (lat: number, lng: number) => {
+          if (isMeasuringDistance) {
+            handleMeasureMapClick(lat, lng);
+            return;
+          }
+          if (isDigitizingZones) {
+            setDigitizerPoints((prev) => (prev.length < 60 ? [...prev, { lat, lng }] : prev));
+            return;
+          }
+          if (sweetSpotConfigSpot && isAddingSweetSpot) {
+            setDraftSweetPos({ lat, lng });
+            return;
+          }
+          if (contextMenuSpot) {
+            setContextMenuSpot(null);
+          }
+          if (castingConfigSpot || sweetSpotConfigSpot) {
+            return;
+          }
+          setPendingNewSpot({ lat, lng });
+        };
+
+        const baseMapProps: BaseMapProps = {
+          center,
+          level,
+          digitalZoom,
+          mapMode,
+          isDarkMode,
+          isStrictAdmin,
+          showHaeroadEnc,
+          onCenterChange: setCenter,
+          onLevelChange: setLevel,
+          onMapClick: handleBaseMapClick,
+          bridgeRef,
+          mapContainerRef,
+          isMarkerClickRef,
+          lastClientPosRef,
+          dragTrackerRef,
+        };
+
+        return (
+          <div
+            className="relative isolate z-0 w-full h-full transition-transform duration-200 origin-center select-none"
+            style={{
+              transform: digitalZoom > 1.0 ? `scale(${digitalZoom})` : 'none',
+              transformOrigin: 'center center',
+              touchAction: digitalZoom > 1.0 ? 'none' : 'auto',
+              cursor: isMeasuringDistance
+                ? 'crosshair'
+                : digitalZoom > 1.0
+                ? dragTrackerRef.current.isDragging
+                  ? 'grabbing'
+                  : 'grab'
+                : 'default',
+            }}
+            onDragStart={(e) => e.preventDefault()}
+            onPointerDown={(e) => {
+              if (e.button !== 0 && e.pointerType === 'mouse') return;
+              if (digitalZoom > 1.0) {
+                try {
+                  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                } catch {}
+              }
+              handlePointerDown(e.clientX, e.clientY);
+            }}
+            onPointerMove={(e) => {
+              handlePointerMove(e.clientX, e.clientY);
+            }}
+            onPointerUp={(e) => {
+              try {
+                if ((e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) {
+                  (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                }
+              } catch {}
+              handlePointerUp();
+            }}
+            onPointerCancel={(e) => {
+              try {
+                if ((e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) {
+                  (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                }
+              } catch {}
+              handlePointerUp();
+            }}
+            onTouchStart={(e) => {
+              activeTouchCountRef.current = e.touches.length;
+              if (e.touches.length > 1) {
+                lastMultiTouchAtRef.current = Date.now();
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = null;
+                }
+              }
+              if (e.touches.length === 1) {
+                handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+              }
+            }}
+            onTouchMove={(e) => {
+              activeTouchCountRef.current = e.touches.length;
+              if (e.touches.length > 1) {
+                lastMultiTouchAtRef.current = Date.now();
+                if (longPressTimerRef.current) {
+                  clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = null;
+                }
+              }
+              if (e.touches.length === 1) {
+                handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+              }
+            }}
+            onTouchEnd={(e) => {
+              activeTouchCountRef.current = e.touches.length;
+              if (e.touches.length > 0) {
+                lastMultiTouchAtRef.current = Date.now();
+              }
+              handlePointerUp();
+            }}
+            onTouchCancel={() => {
+              activeTouchCountRef.current = 0;
+              lastMultiTouchAtRef.current = Date.now();
+              handlePointerUp();
+            }}
+            onWheel={(e) => {
+              if (level === 1) {
+                if (e.deltaY < 0 && digitalZoom < 3.0) {
+                  handleZoomIn();
+                } else if (e.deltaY > 0 && digitalZoom > 1.0) {
+                  handleZoomOut();
+                }
+              }
+            }}
+          >
+            {mapProvider === 'vworld' ? (
+              <VWorldBaseMap {...baseMapProps} />
+            ) : (
+              <KakaoBaseMap {...baseMapProps} />
+            )}
+            <UnifiedMapOverlay mapProvider={mapProvider} {...sharedCanvasProps} />
+          </div>
         );
       })()}
 
