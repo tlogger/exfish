@@ -13,7 +13,8 @@ import {
   Download,
 } from 'lucide-react';
 import { DEFAULT_POPULAR_SPECIES, SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
-import type { CurrentUnit, MapProvider, WindUnit } from '../types';
+import type { CurrentUnit, MapProvider, MapSecondaryLang, WindUnit } from '../types';
+import { hasGoogleMapsApiKey } from '../utils/googleMapsLoader';
 import { startSocialAuth, isUserAdmin, type AuthProvider } from '../services/oauthService';
 import { APP_VERSION } from '../version';
 
@@ -52,6 +53,8 @@ interface LoginModalProps {
   onChangeCurrentUnit: (unit: CurrentUnit) => void;
   mapProvider: MapProvider;
   onChangeMapProvider: (provider: MapProvider) => void;
+  mapSecondaryLang: MapSecondaryLang;
+  onChangeMapSecondaryLang: (lang: MapSecondaryLang) => void;
 }
 
 const STORAGE_KEY_AUTH_USER = 'exfish_auth_user_v2';
@@ -216,6 +219,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onChangeCurrentUnit,
   mapProvider,
   onChangeMapProvider,
+  mapSecondaryLang,
+  onChangeMapSecondaryLang,
 }) => {
   const [nickname, setNickname] = React.useState(() => currentUser?.customNickname || currentUser?.name || getRememberedCredentials().nickname);
   const [error, setError] = React.useState('');
@@ -225,6 +230,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [localWindUnit, setLocalWindUnit] = React.useState<WindUnit>(windUnit);
   const [localCurrentUnit, setLocalCurrentUnit] = React.useState<CurrentUnit>(currentUnit);
   const [localMapProvider, setLocalMapProvider] = React.useState<MapProvider>(mapProvider);
+  const [localSecondaryLang, setLocalSecondaryLang] = React.useState<MapSecondaryLang>(mapSecondaryLang);
+  const hasGoogleKey = hasGoogleMapsApiKey();
 
   React.useEffect(() => {
     if (isOpen) {
@@ -239,6 +246,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         setLocalWindUnit(currentUser.windUnit || windUnit);
         setLocalCurrentUnit(currentUser.currentUnit || currentUnit);
         setLocalMapProvider(mapProvider);
+        setLocalSecondaryLang(mapSecondaryLang);
       } else {
         const remembered = getRememberedCredentials();
         setNickname(remembered.nickname || '');
@@ -246,9 +254,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         setLocalWindUnit(windUnit);
         setLocalCurrentUnit(currentUnit);
         setLocalMapProvider(mapProvider);
+        setLocalSecondaryLang(mapSecondaryLang);
       }
     }
-  }, [isOpen, currentUser, windUnit, currentUnit, mapProvider]);
+  }, [isOpen, currentUser, windUnit, currentUnit, mapProvider, mapSecondaryLang]);
 
   if (!isOpen) return null;
 
@@ -298,6 +307,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     onChangeWindUnit(localWindUnit);
     onChangeCurrentUnit(localCurrentUnit);
     onChangeMapProvider(localMapProvider);
+    onChangeMapSecondaryLang(localSecondaryLang);
     if (onUpdateFavorites) onUpdateFavorites(selectedSpecies);
     onLogin(updated);
     onClose();
@@ -468,18 +478,29 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </div>
                 </div>
 
-                {/* 지도 엔진 선택 (VWorld 기본 / Kakao Map) */}
+                {/* 지도 엔진 선택 (VWorld / Kakao / Google / OSM) */}
                 <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
                   <div className="flex justify-between items-center text-slate-300">
                     <span className="text-[11px] text-slate-400">기본 지도 엔진:</span>
                     <span className="font-mono text-cyan-300 font-bold">
-                      {localMapProvider === 'vworld' ? 'VWorld (기본)' : 'Kakao Map'}
+                      {localMapProvider === 'vworld'
+                        ? 'VWorld (국내 기본)'
+                        : localMapProvider === 'kakao'
+                        ? 'Kakao Map'
+                        : localMapProvider === 'google'
+                        ? 'Google Maps'
+                        : 'OSM 해양도'}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {[
-                      { id: 'vworld', label: 'VWorld (기본)' },
-                      { id: 'kakao', label: 'Kakao Map' },
+                      { id: 'vworld', label: 'VWorld (국내 기본)' },
+                      { id: 'kakao', label: 'Kakao Map (국내)' },
+                      {
+                        id: 'google',
+                        label: hasGoogleKey ? 'Google Maps (글로벌)' : 'Google Maps (키 필요)',
+                      },
+                      { id: 'osm', label: 'OSM 해양도 (글로벌)' },
                     ].map((mp) => (
                       <button
                         type="button"
@@ -495,6 +516,36 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                       </button>
                     ))}
                   </div>
+
+                  {(localMapProvider === 'google' || localMapProvider === 'osm') && (
+                    <div className="pt-1.5 space-y-1">
+                      <div className="flex justify-between items-center text-[11px] text-slate-400">
+                        <span>이중 언어 보조 표기 (POI):</span>
+                        <span className="text-cyan-300 font-mono">
+                          {localSecondaryLang === 'ko' ? '현지어 + 한국어' : '현지어 + 영어'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {[
+                          { id: 'ko', label: '현지어 + 한국어' },
+                          { id: 'en', label: '현지어 + 영어' },
+                        ].map((langOpt) => (
+                          <button
+                            type="button"
+                            key={langOpt.id}
+                            onClick={() => setLocalSecondaryLang(langOpt.id as MapSecondaryLang)}
+                            className={`py-1 px-2 rounded-lg border text-center text-[11px] font-medium transition ${
+                              localSecondaryLang === langOpt.id
+                                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 font-bold'
+                                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {langOpt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

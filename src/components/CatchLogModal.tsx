@@ -1,11 +1,12 @@
 import React from 'react';
 import { ArrowUp, Clock, Compass, RefreshCw, ShieldAlert } from 'lucide-react';
 import type { CatchLog, CurrentUnit, FishingMethod, TideDayInfo, WeatherData, WindUnit } from '../types';
-import { syncCatchEnvironment } from '../utils/catchSync';
+import { syncCatchEnvironment, getMinAllowedCatchDateStr, isWithinAllowedCatchWindow } from '../utils/catchSync';
 import { formatCurrentVelocity, formatWindSpeed } from '../utils/weatherApi';
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { SPECIES_ENCYCLOPEDIA } from '../utils/speciesDatabase';
 import { compressImageFile } from '../utils/exifExtractor';
+import { SessionRigRows, type SessionRigRow } from './SessionRigRows';
 
 interface CatchLogModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ interface CatchLogModalProps {
   currentUnit?: CurrentUnit;
   extractExifFromImage: (file: File) => Promise<{ lat?: number; lng?: number; dateStr?: string; timeStr?: string }>;
   onSaveLog: (logData: Omit<CatchLog, 'id' | 'created_at'>) => void;
+  onSaveSessionLogs?: (logs: Omit<CatchLog, 'id' | 'created_at'>[]) => void;
 }
 
 // 한국 기상청 표준 8방위 풍향 프리셋 (불어오는 방향 기준 '~풍' + 실제 바람 진행 화살표)
@@ -74,7 +76,11 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
   currentUnit = 'ms',
   extractExifFromImage,
   onSaveLog,
+  onSaveSessionLogs,
 }) => {
+  const [sessionRigRows, setSessionRigRows] = React.useState<SessionRigRow[]>([]);
+  const [restoredWaveHeight, setRestoredWaveHeight] = React.useState<number>(0.6);
+  const [restoredWavePeriod, setRestoredWavePeriod] = React.useState<number>(5.0);
   const [fishSpecies, setFishSpecies] = React.useState('우럭');
   const [fishCount, setFishCount] = React.useState(1);
   const [fishCountInput, setFishCountInput] = React.useState('1');
@@ -192,17 +198,34 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
 
   const isHitless = fishCount === 0;
 
-  // 마릿수가 0(꽝)일 때 7대 환경 벡터 기반 실시간 사후 복기 리포트 연산
+  // 마릿수가 0(꽝)일 때 정밀 환경·물리 벡터 기반 실시간 사후 복기 리포트 연산
   const postMortemReport = React.useMemo(() => {
     if (!isHitless) return null;
+    const effectiveWeather: WeatherData = currentWeather
+      ? {
+          ...currentWeather,
+          windSpeed: Number(windSpeed) || currentWeather.windSpeed,
+          windDirection: Number.isFinite(windDirection) ? windDirection : currentWeather.windDirection,
+        }
+      : {
+          temp: 18,
+          apparentTemp: 18,
+          humidity: 60,
+          weatherCode: 0,
+          weatherText: '맑음',
+          windSpeed: Number(windSpeed) || 3.5,
+          windDirection: Number.isFinite(windDirection) ? windDirection : 180,
+          windGust: (Number(windSpeed) || 3.5) * 1.3,
+          hourly: { time: [], temp: [], windSpeed: [], windDirection: [], pop: [] },
+        };
     return generatePostMortemReport({
       targetSpecies: fishSpecies.trim() || '우럭',
       catchTime: catchTime || '16:00',
-      weather: currentWeather,
+      weather: effectiveWeather,
       marine: {
         seaSurfaceTemp: Number(waterTemp) || 16.5,
-        waveHeight: currentWeather ? 0.8 : 0.6,
-        wavePeriod: 6.0,
+        waveHeight: restoredWaveHeight,
+        wavePeriod: restoredWavePeriod,
         currentVelocity: Number(simCurrentVel) || 0.35,
         waveDirection: 180,
         currentDirection: 135,
@@ -210,13 +233,39 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       },
       tide: currentTide,
       biteScore: null,
+      lat: spotLat,
+      lng: spotLng,
+      catchMethod,
+      lureBait,
+      mulTextOverride: catchMul,
     });
-  }, [isHitless, fishSpecies, catchTime, waterTemp, simCurrentVel, currentWeather, currentTide]);
+  }, [
+    isHitless,
+    fishSpecies,
+    catchTime,
+    waterTemp,
+    restoredWaveHeight,
+    restoredWavePeriod,
+    simCurrentVel,
+    windSpeed,
+    windDirection,
+    currentWeather,
+    currentTide,
+    spotLat,
+    spotLng,
+    catchMethod,
+    lureBait,
+    catchMul,
+  ]);
 
   if (!isOpen) return null;
 
-  // 일자/시각/위치 기반 환경 동기화 함수
+  // 일자/시각/위치 기반 환경 동기화 함수 (최근 90일 이내 실제 과거 환경 복원)
   const handleAutoSyncEnvironment = async (dStr: string, tStr: string, latVal: number, lngVal: number) => {
+    if (!isWithinAllowedCatchWindow(dStr)) {
+      setExifNotice(`⚠️ 최근 90일 이내(${getMinAllowedCatchDateStr()} 이후) 출조 기록만 환경 자동 복원을 지원합니다.`);
+      return;
+    }
     setIsSyncing(true);
     try {
       const syncRes = await syncCatchEnvironment(dStr, tStr, latVal, lngVal);
@@ -230,7 +279,11 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       if (syncRes.current_velocity != null) {
         setSimCurrentVel(syncRes.current_velocity);
       }
-      setExifNotice((prev) => `${prev} 🔄 당시 환경(물때 ${syncRes.catch_mul}, ${syncRes.tide_state}, 수온 ${syncRes.water_temp}°C, 조류 ${formatCurrentVelocity(syncRes.current_velocity || 0, currentUnit)}) 동기화 완료!`);
+      if (syncRes.wave_height != null) setRestoredWaveHeight(syncRes.wave_height);
+      if (syncRes.wave_period != null) setRestoredWavePeriod(syncRes.wave_period);
+      setExifNotice((prev) => `${prev} 🔄 당시 환경(물때 ${syncRes.catch_mul}, ${syncRes.tide_state}, 수온 ${syncRes.water_temp}°C, 파고 ${syncRes.wave_height ?? restoredWaveHeight}m, 조류 ${formatCurrentVelocity(syncRes.current_velocity || 0, currentUnit)}) 복원 완료!`);
+    } catch (err: any) {
+      setExifNotice(`⚠️ ${err?.message || '환경 복원 실패'}`);
     } finally {
       setIsSyncing(false);
     }
@@ -313,7 +366,7 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
     const parsedSize = fishSizeInput.trim() ? parseFloat(fishSizeInput) : undefined;
     const finalSize = hitlessFlag || parsedSize == null || isNaN(parsedSize) ? undefined : parsedSize;
 
-    onSaveLog({
+    const basePayload: Omit<CatchLog, 'id' | 'created_at'> = {
       spot_id: spotId,
       user_id: 'user-me',
       user_name: '나의 조행기록',
@@ -338,7 +391,30 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
       lng: catchLng,
       photo_url: photoUrl.trim() ? photoUrl.trim() : undefined,
       memo,
-    });
+    };
+
+    if (!editingLog && sessionRigRows.length > 0 && onSaveSessionLogs) {
+      const sessionId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `sess-${Date.now()}`;
+      const batch: Omit<CatchLog, 'id' | 'created_at'>[] = [
+        { ...basePayload, session_id: sessionId },
+        ...sessionRigRows.map((row) => ({
+          ...basePayload,
+          session_id: sessionId,
+          lure_bait: row.lureBait || basePayload.lure_bait,
+          tackle_snapshot: (row.rigSnapshot as any) ?? null,
+          fish_count: row.isHit ? Math.max(1, row.fishCount) : 0,
+          is_hitless: !row.isHit,
+          fish_size_cm: row.isHit ? row.fishSizeCm : undefined,
+          photo_url: undefined,
+        })),
+      ];
+      onSaveSessionLogs(batch);
+      setSessionRigRows([]);
+    } else {
+      onSaveLog(basePayload);
+    }
     onClose();
   };
 
@@ -537,9 +613,12 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               <div className="space-y-1.5 pt-1">
                 {postMortemReport.topFactors.map((factor, idx) => (
                   <div key={factor.id} className="text-[11px] space-y-0.5">
-                    <div className="flex justify-between items-center text-slate-300">
-                      <span>{idx + 1}. {factor.name}</span>
-                      <span className="font-mono font-bold text-rose-400">{factor.contributionPercent}%</span>
+                    <div className="flex justify-between items-center gap-2 text-slate-300">
+                      <span className="truncate">{idx + 1}. {factor.name}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[9.5px] text-slate-400 font-mono">{factor.metricLabel}</span>
+                        <span className="font-mono font-bold text-rose-400">{factor.contributionPercent}%</span>
+                      </div>
                     </div>
                     <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
                       <div
@@ -857,6 +936,21 @@ export const CatchLogModal: React.FC<CatchLogModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* 같은 환경 다채비(히트/꽝) 동시 비교 기록 (신규 기록 시) */}
+          {!editingLog && (
+            <SessionRigRows
+              rows={sessionRigRows}
+              onChange={setSessionRigRows}
+              envPreview={{
+                water_temp: Number(waterTemp) || 16.5,
+                wind_speed: Number(windSpeed) || 3.0,
+                current_velocity: Number(simCurrentVel) || 0.3,
+                catch_mul: catchMul,
+                tide_state: tideState,
+              }}
+            />
+          )}
 
           {/* 입질 패턴 & 메모 (최소 5줄 이상) */}
           <div>

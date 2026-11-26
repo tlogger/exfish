@@ -2,11 +2,92 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 import type { CatchLog, FishingSpot, FishingShop, SpotMemo, ShopMemo } from '../types';
 import { INITIAL_CATCH_LOGS, INITIAL_SPOTS } from './storage';
+import { getApiBaseUrl, getDataMode, isLocalDataMode } from './apiBase';
+import {
+  localDeleteLog,
+  localDeleteSpot,
+  localGetLogs,
+  localGetShops,
+  localGetSpots,
+  localUpsertLog,
+  localUpsertSpot,
+} from './localDataAdapter';
 
 const STORAGE_KEY_URL = 'espfish_supabase_url';
 const STORAGE_KEY_ANON = 'espfish_supabase_anon_key';
 const STORAGE_KEY_MEMOS = 'espfish_spot_memos';
 const STORAGE_KEY_SHOP_MEMOS = 'espfish_shop_memos';
+const STORAGE_KEY_ETAG_PREFIX = 'exfish_cdn_etag_v1_';
+const STORAGE_KEY_SNAPSHOT_PREFIX = 'exfish_cdn_snapshot_v1_';
+const STORAGE_KEY_PENDING_OVERRIDES = 'exfish_pending_overrides_v1';
+const PENDING_OVERRIDE_TTL_MS = 6 * 60 * 1000; // 6분 고정 TTL (CDN s-maxage=300초 상회)
+
+interface PendingOverrideEntry<T = any> {
+  op: 'upsert' | 'delete';
+  data?: T;
+  expiresAt: number;
+}
+
+type PendingOverridesStore = Record<string, Record<string, PendingOverrideEntry>>;
+
+function loadPendingOverrides(): PendingOverridesStore {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_PENDING_OVERRIDES);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as PendingOverridesStore;
+    const now = Date.now();
+    let pruned = false;
+    for (const table of Object.keys(parsed)) {
+      for (const id of Object.keys(parsed[table] || {})) {
+        if (!parsed[table][id] || parsed[table][id].expiresAt <= now) {
+          delete parsed[table][id];
+          pruned = true;
+        }
+      }
+    }
+    if (pruned) localStorage.setItem(STORAGE_KEY_PENDING_OVERRIDES, JSON.stringify(parsed));
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function recordPendingOverride<T>(table: string, id: string, op: 'upsert' | 'delete', data?: T): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const store = loadPendingOverrides();
+    if (!store[table]) store[table] = {};
+    store[table][id] = { op, data, expiresAt: Date.now() + PENDING_OVERRIDE_TTL_MS };
+    localStorage.setItem(STORAGE_KEY_PENDING_OVERRIDES, JSON.stringify(store));
+  } catch {}
+}
+
+function applyPendingOverrides<T extends { id: string }>(table: string, rows: T[]): T[] {
+  const store = loadPendingOverrides();
+  const tableOverrides = store[table];
+  if (!tableOverrides || Object.keys(tableOverrides).length === 0) return rows;
+
+  const map = new Map<string, T>();
+  for (const r of rows) map.set(r.id, r);
+  for (const [id, entry] of Object.entries(tableOverrides)) {
+    if (entry.op === 'delete') {
+      map.delete(id);
+    } else if (entry.op === 'upsert' && entry.data) {
+      map.set(id, entry.data as T);
+    }
+  }
+  return Array.from(map.values());
+}
+
+/** 로그아웃 또는 계정 전환 시 비공개 캐시 및 pendingOverrides 즉시 폐기 */
+export function clearPrivateLocalCaches(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(STORAGE_KEY_PENDING_OVERRIDES);
+    localStorage.removeItem('exfish_user_session_token');
+  } catch {}
+}
 
 // 사용자가 생성한 Supabase Project URL 및 Publishable Key 기본값 (tlogger's Project)
 export const DEFAULT_SUPABASE_URL = 'https://johtqemdlprtbpohdkgu.supabase.co';
@@ -124,6 +205,11 @@ function toDbLogRecord(log: CatchLog): Record<string, unknown> {
     wind_direction: log.wind_direction ?? null,
     photo_url: log.photo_url ?? null,
     memo: memoText,
+    session_id: log.session_id ?? null,
+    tackle_snapshot: log.tackle_snapshot ?? null,
+    is_public: log.is_public ?? true,
+    is_deleted: log.is_deleted ?? false,
+    updated_at: log.updated_at || new Date().toISOString(),
     created_at: log.created_at || new Date().toISOString(),
   };
 
@@ -322,6 +408,11 @@ function fromDbLogRecord(record: any): CatchLog {
     fish_count: record.fish_count ?? 0,
     current_velocity: currentVel,
     current_direction: currentDir,
+    session_id: record.session_id ?? null,
+    tackle_snapshot: record.tackle_snapshot ?? null,
+    is_public: record.is_public ?? true,
+    is_deleted: record.is_deleted ?? false,
+    updated_at: record.updated_at ?? record.created_at,
   };
 }
 
@@ -352,62 +443,186 @@ function extractMaxTimestamp(records: any[]): string | null {
   return maxIso;
 }
 
-async function fetchMasterViaEdgeProxy(table: 'fishing_spots' | 'fishing_shops'): Promise<Record<string, any>[] | null> {
+type MasterCdnTable = 'fishing_spots' | 'fishing_shops' | 'catch_logs' | 'spot_memos' | 'shop_memos';
+
+async function fetchMasterViaEdgeProxy(
+  table: MasterCdnTable,
+  extraQuery = ''
+): Promise<Record<string, any>[] | null> {
   if (typeof fetch === 'undefined') return null;
-  const baseUrl = Capacitor.isNativePlatform() ? 'https://exfish.vercel.app' : '';
+  const baseUrl = getApiBaseUrl();
+  const cacheId = `${table}${extraQuery ? `_${extraQuery}` : ''}`;
+  const etagKey = `${STORAGE_KEY_ETAG_PREFIX}${cacheId}`;
+  const snapKey = `${STORAGE_KEY_SNAPSHOT_PREFIX}${cacheId}`;
+
+  const headers: Record<string, string> = {};
+  let cachedRows: Record<string, any>[] | null = null;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const savedEtag = localStorage.getItem(etagKey);
+      const savedSnap = localStorage.getItem(snapKey);
+      if (savedSnap) {
+        const parsed = JSON.parse(savedSnap);
+        if (Array.isArray(parsed)) cachedRows = parsed;
+      }
+      if (savedEtag && cachedRows) {
+        headers['If-None-Match'] = savedEtag;
+      }
+    } catch {}
+  }
+
   try {
-    const res = await fetch(`${baseUrl}/api/exfish-master?table=${table}`, {
+    const querySuffix = extraQuery ? `&${extraQuery}` : '';
+    const res = await fetch(`${baseUrl}/api/exfish-master?table=${table}${querySuffix}`, {
       method: 'GET',
-      signal: AbortSignal.timeout(5000),
+      headers,
+      signal: AbortSignal.timeout(6000),
+    });
+    if (res.status === 304 && cachedRows) {
+      return cachedRows;
+    }
+    if (!res.ok) return cachedRows;
+    const json = await res.json();
+    if (!Array.isArray(json)) return cachedRows;
+
+    const nextEtag = res.headers?.get?.('ETag') || res.headers?.get?.('etag');
+    if (typeof localStorage !== 'undefined') {
+      try {
+        if (nextEtag) localStorage.setItem(etagKey, nextEtag);
+        // 대용량 테이블 스냅샷은 5MB 쿼터 보호 하에 캐시
+        const serialized = JSON.stringify(json);
+        if (serialized.length < 1_800_000) {
+          localStorage.setItem(snapKey, serialized);
+        }
+      } catch {}
+    }
+    return json;
+  } catch {
+    return cachedRows;
+  }
+}
+
+async function fetchMyPrivateData(): Promise<{
+  spots: FishingSpot[];
+  catch_logs: CatchLog[];
+  spot_memos: SpotMemo[];
+} | null> {
+  if (typeof fetch === 'undefined' || typeof localStorage === 'undefined' || isLocalDataMode()) {
+    return null;
+  }
+  const sessionToken = localStorage.getItem('exfish_user_session_token');
+  if (!sessionToken) return null;
+
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/my-private-data`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${sessionToken}` },
+      signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return null;
-    const json = await res.json();
-    return Array.isArray(json) ? json : null;
+    const data = await res.json();
+    return {
+      spots: Array.isArray(data?.spots) ? data.spots.map(fromDbSpotRecord) : [],
+      catch_logs: Array.isArray(data?.catch_logs) ? data.catch_logs.map(fromDbLogRecord) : [],
+      spot_memos: Array.isArray(data?.spot_memos) ? data.spot_memos : [],
+    };
   } catch {
     return null;
   }
 }
 
-/** 압축된 Base64 Data URL 이미지를 Supabase Storage(exfish-photos)에 업로드하고 Public URL 반환 (실패 시 원본 dataUrl 폴백) */
+/** 압축된 이미지를 /api/upload-photo(Vercel Blob)에 업로드하고 불변 CDN URL 반환 (Base64 DB 저장 전면 금지) */
 export async function uploadPhotoToStorage(
   dataUrl: string,
   folder: 'catch_logs' | 'fishing_spots',
-  idHint?: string
+  _idHint?: string
 ): Promise<string> {
   if (!dataUrl || !dataUrl.startsWith('data:image/')) return dataUrl;
-  try {
-    const match = /^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/.exec(dataUrl);
-    if (!match) return dataUrl;
-    const mime = match[1];
-    const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
-    const binary = atob(match[2]);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    const blob = new Blob([bytes], { type: mime });
-    const safeHint = (idHint || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '');
-    const objectPath = `${folder}/${safeHint}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-
-    const client = getSupabase();
-    const { error } = await client.storage.from('exfish-photos').upload(objectPath, blob, {
-      contentType: mime,
-      upsert: true,
-    });
-    if (error) {
-      console.warn('[Storage] 사진 업로드 실패, Base64 폴백 사용:', error.message);
-      return dataUrl;
-    }
-    const { data } = client.storage.from('exfish-photos').getPublicUrl(objectPath);
-    return data?.publicUrl || dataUrl;
-  } catch (err) {
-    console.warn('[Storage] 사진 업로드 예외, Base64 폴백 사용:', err);
-    return dataUrl;
+  if (isLocalDataMode()) {
+    // 로컬 개발 모드에서는 외부 네트워크 요청 0건 유지
+    return '';
   }
+
+  const match = /^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/.exec(dataUrl);
+  if (!match) {
+    throw new Error('올바르지 않은 이미지 형식입니다.');
+  }
+  const mime = match[1].toLowerCase();
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  if (bytes.byteLength > 300 * 1024) {
+    throw new Error('사진 용량이 300KB를 초과합니다. 해상도를 줄여 다시 시도해 주세요.');
+  }
+
+  const sessionToken = typeof localStorage !== 'undefined'
+    ? localStorage.getItem('exfish_user_session_token')
+    : null;
+  if (!sessionToken) {
+    throw new Error('사진 업로드를 위해 다시 로그인해 주세요.');
+  }
+
+  const blobFolder = folder === 'catch_logs' ? 'catches' : 'spots';
+  const res = await fetch(`${getApiBaseUrl()}/api/upload-photo`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': mime,
+      Authorization: `Bearer ${sessionToken}`,
+      'X-Photo-Folder': blobFolder,
+    },
+    body: bytes,
+    signal: AbortSignal.timeout(12000),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody?.error || `사진 업로드 실패 (${res.status})`);
+  }
+  const json = await res.json();
+  if (!json?.url) {
+    throw new Error('사진 업로드 응답에 URL이 없습니다.');
+  }
+  return json.url;
 }
 
-/** Supabase로부터 포인트 증분/전체 조회 (updated_at 컬럼 존재 시 변경분만 다운로드, 미적용 시 자동 전체 폴백) */
+/** 포인트 조회 (VITE_DATA_MODE=local -> 로컬, cdn -> 단일 스냅샷 Edge CDN + ETag + 비공개 병합 + L1 pendingOverrides) */
 export async function fetchCloudSpotsDelta(sinceIso?: string | null): Promise<DeltaSyncResult<FishingSpot>> {
+  if (isLocalDataMode()) {
+    return {
+      rows: localGetSpots(),
+      deletedIds: [],
+      maxUpdatedAt: new Date().toISOString(),
+      isFullSync: true,
+    };
+  }
+
+  // 기본 CDN 모드: 재방문자도 sinceIso로 Supabase를 직접 치지 않고 Edge CDN + ETag(304)를 사용
+  if (getDataMode() === 'cdn') {
+    const [edgeRows, privateData] = await Promise.all([
+      fetchMasterViaEdgeProxy('fishing_spots'),
+      fetchMyPrivateData(),
+    ]);
+    if (edgeRows) {
+      const publicSpots = edgeRows
+        .filter((r: any) => r.is_deleted !== true && r.is_public !== false)
+        .map(fromDbSpotRecord);
+      const mergedMap = new Map<string, FishingSpot>();
+      for (const s of publicSpots) mergedMap.set(s.id, s);
+      if (privateData?.spots) {
+        for (const ps of privateData.spots) mergedMap.set(ps.id, ps);
+      }
+      const finalRows = applyPendingOverrides('fishing_spots', Array.from(mergedMap.values()));
+      return {
+        rows: finalRows,
+        deletedIds: [],
+        maxUpdatedAt: extractMaxTimestamp(edgeRows) || sinceIso || null,
+        isFullSync: true,
+      };
+    }
+  }
+
   const client = getSupabase();
 
   if (sinceIso) {
@@ -429,7 +644,7 @@ export async function fetchCloudSpotsDelta(sinceIso?: string | null): Promise<De
         }
       }
       return {
-        rows: activeRows,
+        rows: applyPendingOverrides('fishing_spots', activeRows),
         deletedIds,
         maxUpdatedAt: extractMaxTimestamp(records) || sinceIso,
         isFullSync: false,
@@ -441,12 +656,12 @@ export async function fetchCloudSpotsDelta(sinceIso?: string | null): Promise<De
     }
   }
 
-  // 초기 전체 동기화: Vercel Edge CDN 프록시 우선 조회로 인앱 브라우저/신규 방문 시 Supabase Egress 절감
+  // 폴백: Edge CDN 재시도
   const edgeRows = await fetchMasterViaEdgeProxy('fishing_spots');
   if (edgeRows && edgeRows.length > 0) {
     const activeRecords = edgeRows.filter((r: any) => r.is_deleted !== true);
     return {
-      rows: activeRecords.map(fromDbSpotRecord),
+      rows: applyPendingOverrides('fishing_spots', activeRecords.map(fromDbSpotRecord)),
       deletedIds: [],
       maxUpdatedAt: extractMaxTimestamp(edgeRows),
       isFullSync: true,
@@ -483,8 +698,41 @@ export async function fetchCloudSpotsDelta(sinceIso?: string | null): Promise<De
   };
 }
 
-/** Supabase로부터 조과 증분/전체 조회 (updated_at 컬럼 존재 시 변경분만 다운로드, 최신 200건 상한) */
+/** 조과 조회 (VITE_DATA_MODE=local -> 로컬, cdn -> Edge CDN 단일 스냅샷 + ETag + 비공개 병합 + L1 pendingOverrides) */
 export async function fetchCloudLogsDelta(sinceIso?: string | null): Promise<DeltaSyncResult<CatchLog>> {
+  if (isLocalDataMode()) {
+    return {
+      rows: localGetLogs(),
+      deletedIds: [],
+      maxUpdatedAt: new Date().toISOString(),
+      isFullSync: true,
+    };
+  }
+
+  if (getDataMode() === 'cdn') {
+    const [edgeRows, privateData] = await Promise.all([
+      fetchMasterViaEdgeProxy('catch_logs'),
+      fetchMyPrivateData(),
+    ]);
+    if (edgeRows) {
+      const publicLogs = edgeRows
+        .filter((r: any) => r.is_deleted !== true && r.is_public !== false)
+        .map(fromDbLogRecord);
+      const mergedMap = new Map<string, CatchLog>();
+      for (const l of publicLogs) mergedMap.set(l.id, l);
+      if (privateData?.catch_logs) {
+        for (const pl of privateData.catch_logs) mergedMap.set(pl.id, pl);
+      }
+      const finalRows = applyPendingOverrides('catch_logs', Array.from(mergedMap.values()));
+      return {
+        rows: finalRows,
+        deletedIds: [],
+        maxUpdatedAt: extractMaxTimestamp(edgeRows) || sinceIso || null,
+        isFullSync: true,
+      };
+    }
+  }
+
   const client = getSupabase();
 
   if (sinceIso) {
@@ -561,26 +809,36 @@ export async function fetchCloudLogs(): Promise<CatchLog[]> {
   return res.rows;
 }
 
-/** 포인트 Supabase 직접 저장 (신규 등록 및 업데이트) */
+/** 포인트 저장 (local 모드: 로컬 어댑터 / cdn·supabase: DB 저장 + L1 pendingOverrides 등록) */
 export async function saveCloudSpot(spot: FishingSpot): Promise<boolean> {
+  if (isLocalDataMode()) {
+    return localUpsertSpot(spot);
+  }
   const client = getSupabase();
   const { error } = await client.from('fishing_spots').upsert(toDbSpotRecord(spot));
   if (error) {
     console.error('Failed to save spot to Supabase:', error);
     throw error;
   }
+  recordPendingOverride('fishing_spots', spot.id, 'upsert', spot);
   return true;
 }
 
-/** 포인트 Supabase 삭제 (Soft Delete 우선, is_deleted 미적용 시 Hard Delete 폴백) */
+/** 포인트 삭제 (Soft Delete 우선, L1 pendingOverrides delete tombstone 등록) */
 export async function deleteCloudSpot(spotId: string): Promise<boolean> {
+  if (isLocalDataMode()) {
+    return localDeleteSpot(spotId);
+  }
   const client = getSupabase();
   const { error: softErr } = await client
     .from('fishing_spots')
     .update({ is_deleted: true })
     .eq('id', spotId);
 
-  if (!softErr) return true;
+  if (!softErr) {
+    recordPendingOverride('fishing_spots', spotId, 'delete');
+    return true;
+  }
   if (!isMissingColumnError(softErr)) {
     console.error('Failed to soft-delete spot from Supabase:', softErr);
     throw softErr;
@@ -591,29 +849,40 @@ export async function deleteCloudSpot(spotId: string): Promise<boolean> {
     console.error('Failed to delete spot from Supabase:', error);
     throw error;
   }
+  recordPendingOverride('fishing_spots', spotId, 'delete');
   return true;
 }
 
-/** 조과 기록 Supabase 직접 저장 (신규 등록 및 업데이트) */
+/** 조과 기록 저장 (local 모드: 로컬 어댑터 / cdn·supabase: DB 저장 + L1 pendingOverrides 등록) */
 export async function saveCloudCatchLog(log: CatchLog): Promise<boolean> {
+  if (isLocalDataMode()) {
+    return localUpsertLog(log);
+  }
   const client = getSupabase();
   const { error } = await client.from('catch_logs').upsert(toDbLogRecord(log));
   if (error) {
     console.error('Failed to save catch log to Supabase:', error);
     throw error;
   }
+  recordPendingOverride('catch_logs', log.id, 'upsert', log);
   return true;
 }
 
-/** 조과 기록 Supabase 삭제 (Soft Delete 우선, is_deleted 미적용 시 Hard Delete 폴백) */
+/** 조과 기록 삭제 (Soft Delete 우선, L1 pendingOverrides delete tombstone 등록) */
 export async function deleteCloudCatchLog(logId: string): Promise<boolean> {
+  if (isLocalDataMode()) {
+    return localDeleteLog(logId);
+  }
   const client = getSupabase();
   const { error: softErr } = await client
     .from('catch_logs')
     .update({ is_deleted: true })
     .eq('id', logId);
 
-  if (!softErr) return true;
+  if (!softErr) {
+    recordPendingOverride('catch_logs', logId, 'delete');
+    return true;
+  }
   if (!isMissingColumnError(softErr)) {
     console.error('Failed to soft-delete catch log from Supabase:', softErr);
     throw softErr;
@@ -725,6 +994,21 @@ export async function fetchCloudMemos(spotId: string): Promise<SpotMemo[]> {
   }
 
   const request = (async (): Promise<SpotMemo[]> => {
+    if (isLocalDataMode()) {
+      const local = getLocalMemos().filter((m) => m.spot_id === spotId);
+      memoCache.set(spotId, { expiresAt: Date.now() + MEMO_CACHE_TTL_MS, data: local });
+      return local;
+    }
+
+    if (getDataMode() === 'cdn') {
+      const edgeRows = await fetchMasterViaEdgeProxy('spot_memos', `spot_id=${encodeURIComponent(spotId)}`);
+      if (edgeRows) {
+        const memos = edgeRows as SpotMemo[];
+        memoCache.set(spotId, { expiresAt: Date.now() + MEMO_CACHE_TTL_MS, data: memos });
+        return memos;
+      }
+    }
+
     try {
       const client = getSupabase();
       const { data, error } = await client
@@ -856,6 +1140,28 @@ function fromDbShopRecord(raw: any): FishingShop {
 }
 
 export async function fetchCloudShopsDelta(sinceIso?: string | null): Promise<DeltaSyncResult<FishingShop>> {
+  if (isLocalDataMode()) {
+    return {
+      rows: localGetShops(),
+      deletedIds: [],
+      maxUpdatedAt: new Date().toISOString(),
+      isFullSync: true,
+    };
+  }
+
+  if (getDataMode() === 'cdn') {
+    const edgeShopRows = await fetchMasterViaEdgeProxy('fishing_shops');
+    if (edgeShopRows) {
+      const activeRecords = edgeShopRows.filter((r: any) => r.is_deleted !== true);
+      return {
+        rows: activeRecords.map(fromDbShopRecord),
+        deletedIds: [],
+        maxUpdatedAt: extractMaxTimestamp(edgeShopRows) || sinceIso || null,
+        isFullSync: true,
+      };
+    }
+  }
+
   const client = getSupabase();
 
   if (sinceIso) {
@@ -923,7 +1229,7 @@ export async function fetchCloudShopsDelta(sinceIso?: string | null): Promise<De
 }
 
 function getAdminShopsApiUrl(): string {
-  return Capacitor.isNativePlatform() ? 'https://exfish.vercel.app/api/admin/shops' : '/api/admin/shops';
+  return `${getApiBaseUrl()}/api/admin/shops`;
 }
 
 export async function saveCloudShop(shop: FishingShop): Promise<FishingShop> {

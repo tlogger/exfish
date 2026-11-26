@@ -48,7 +48,7 @@ export const KHOA_TIDAL_STATIONS: KhoaStation[] = [
   { code: 'DT_0061', name: '삼천포', region: 'SOUTH', lat: 34.9242, lng: 128.0697 },
   { code: 'DT_0016', name: '여수', region: 'SOUTH', lat: 34.7472, lng: 127.7656 },
   { code: 'DT_0092', name: '여호항', region: 'SOUTH', lat: 34.6619, lng: 127.4692 },
-  { code: 'DT_0013', name: '완도', region: 'SOUTH', lat: 34.316, lng: 126.757 },
+  { code: 'DT_0027', name: '완도', region: 'SOUTH', lat: 34.316, lng: 126.757 },
   { code: 'DT_0028', name: '진도', region: 'SOUTH', lat: 34.3778, lng: 126.3086 },
   { code: 'DT_0014', name: '통영', region: 'SOUTH', lat: 34.8278, lng: 128.4347 },
 
@@ -65,7 +65,7 @@ export const KHOA_TIDAL_STATIONS: KhoaStation[] = [
   // 4. 제주도 조위관측소
   { code: 'DT_0023', name: '모슬포', region: 'JEJU', lat: 33.2144, lng: 126.2511 },
   { code: 'DT_0010', name: '서귀포', region: 'JEJU', lat: 33.24, lng: 126.5617 },
-  { code: 'DT_0023', name: '성산포', region: 'JEJU', lat: 33.385, lng: 126.928 },
+  { code: 'DT_0022', name: '성산포', region: 'JEJU', lat: 33.385, lng: 126.928 },
   { code: 'DT_0004', name: '제주', region: 'JEJU', lat: 33.5275, lng: 126.543 },
   { code: 'DT_0021', name: '추자도', region: 'JEJU', lat: 33.9619, lng: 126.3003 },
 ];
@@ -138,9 +138,9 @@ export function calculateDecayedResidualCm(
  */
 export function computeHybridTideHeight(
   harmonicTideCm: number,
-  initialResidualCm: number = 3.5,
+  initialResidualCm: number = 0,
   hoursFromObs: number = 0,
-  pressureHpa: number = 1013
+  pressureHpa: number = 1013.25
 ): {
   hybridHeightCm: number;
   residualCm: number;

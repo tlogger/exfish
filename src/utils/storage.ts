@@ -11,10 +11,7 @@ export const INITIAL_SPOTS: FishingSpot[] = [
     lat: 37.2541,
     lng: 126.4982,
     directions: '영흥대교 건넌 후 진두선착장 공영주차장에 주차(무료). 선착장 우측 해안길을 따라 도보 5분 진입. 만조 시 갯바위 퇴로가 막힐 수 있으니 장화 필수.',
-    photo_urls: [
-      'https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80'
-    ],
+    photo_urls: [],
     fishing_methods: ['LURE', 'SURF'],
     target_species: ['우럭', '광어', '농어'],
     best_tides: ['7물 (사리)', '8물', '9물'],
@@ -33,9 +30,7 @@ export const INITIAL_SPOTS: FishingSpot[] = [
     lat: 36.7915,
     lng: 126.1384,
     directions: '만리포 해수욕장 북단 끝 주차 후 해안 산책로 데크를 지나 갯바위로 진입. 간조 시 닭섬 방향으로 워킹 가능.',
-    photo_urls: [
-      'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=800&q=80'
-    ],
+    photo_urls: [],
     fishing_methods: ['LURE', 'SURF'],
     target_species: ['광어', '우럭', '갑오징어'],
     best_tides: ['4물~6물', '초들물'],
@@ -54,9 +49,7 @@ export const INITIAL_SPOTS: FishingSpot[] = [
     lat: 34.7892,
     lng: 128.4312,
     directions: '척포항 입구 방파제 초입에 주차 후 외항 테트라포드 능선 따라 150m 도보. 테트라포드가 크고 미끄러우니 펠트 갯바위화 필수 착용.',
-    photo_urls: [
-      'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80'
-    ],
+    photo_urls: [],
     fishing_methods: ['FLOAT', 'LURE'],
     target_species: ['감성돔', '벵에돔', '무늬오징어'],
     best_tides: ['8물', '9물', '10물'],
@@ -75,9 +68,7 @@ export const INITIAL_SPOTS: FishingSpot[] = [
     lat: 35.2215,
     lng: 129.2312,
     directions: '대변항 수산시장 뒤편 주차장 이용. 도보 3분 진입. 발판이 매우 편해 생활낚시 및 가족 낚시도 가능.',
-    photo_urls: [
-      'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=800&q=80'
-    ],
+    photo_urls: [],
     fishing_methods: ['SURF', 'FLOAT', 'LURE'],
     target_species: ['고등어', '전갱이', '볼락', '풀치(갈치)'],
     best_tides: ['조금', '1~3물', '중들물'],
@@ -96,9 +87,7 @@ export const INITIAL_SPOTS: FishingSpot[] = [
     lat: 37.9023,
     lng: 128.8285,
     directions: '소돌해변 아들바위공원 주차장(무료). 해상 데크로드 끝에서 갯바위로 연결.',
-    photo_urls: [
-      'https://images.unsplash.com/photo-1498654896293-37aacf113fd9?auto=format&fit=crop&w=800&q=80'
-    ],
+    photo_urls: [],
     fishing_methods: ['LURE', 'SURF'],
     target_species: ['우럭', '노래미', '삼치', '농어'],
     best_tides: ['조금~3물', '동해는 물때 영향 적고 너울 파고가 핵심'],
@@ -127,7 +116,6 @@ export const INITIAL_CATCH_LOGS: CatchLog[] = [
     water_temp: 18.2,
     wind_speed: 2.4,
     wind_direction: 320,
-    photo_url: 'https://images.unsplash.com/photo-1534043464124-3be32fe00099?auto=format&fit=crop&w=600&q=80',
     memo: '해질녘 만조 1시간 전, 수중여 뒷편 와류 구역에서 강하게 받아먹음. 손맛 묵직!',
     created_at: '2026-10-18T18:00:00Z',
   },

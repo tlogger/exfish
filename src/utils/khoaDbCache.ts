@@ -36,9 +36,10 @@ export async function getOrFetchKhoaData<T>(
   subKey: string | undefined,
   ttlMs: number,
   fetchFn: () => Promise<T | null>,
-  options?: { useSupabaseL2?: boolean }
+  _options?: { useSupabaseL2?: boolean }
 ): Promise<T | null> {
-  const useSupabaseL2 = options?.useSupabaseL2 === true;
+  // L2 캐시는 Vercel Edge CDN(/api/khoa-proxy)이 전담하므로 Supabase khoa_global_cache는 사용하지 않습니다.
+  const useSupabaseL2 = false;
   const now = Date.now();
 
   // 1. L1 인메모리 캐시 검사

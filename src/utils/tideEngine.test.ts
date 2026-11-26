@@ -233,4 +233,39 @@ describe('tideEngine astronomical and tidal calculations', () => {
     expect(bieungTide.lowTides[1].time).toBe('22:54');
     expect(Math.abs(bieungTide.lowTides[1].height - 132)).toBeLessThanOrEqual(1);
   });
+
+  it('uses dimensionless normalized slope in SWTC interpolation so East Coast microtidal stations show rising and falling tides', () => {
+    const testDate = new Date('2026-11-11T12:00:00+09:00');
+    const mockEastSwtc: any = {
+      obsPostId: 'DT_0012',
+      stDate: '2026-11-11',
+      days: [
+        {
+          searchDate: '2026-11-11',
+          dateMoon: '10.03',
+          mool7: '아홉매',
+          mool8: '열물',
+          moolNormal: '목사리',
+          events: [
+            { type: 'LOW', typeLabel: '간조', time: '03:00', height: 12, diff: 20, minutesFromMidnight: 180 },
+            { type: 'HIGH', typeLabel: '만조', time: '09:00', height: 32, diff: 20, minutesFromMidnight: 540 },
+            { type: 'LOW', typeLabel: '간조', time: '15:00', height: 10, diff: 22, minutesFromMidnight: 900 },
+            { type: 'HIGH', typeLabel: '만조', time: '21:00', height: 30, diff: 20, minutesFromMidnight: 1260 },
+          ],
+        },
+      ],
+      allExtremums: [
+        { dayIdx: 0, date: '2026-11-11', type: 'LOW', typeLabel: '간조', time: '03:00', height: 12, totalMinutesFromStart: 180 },
+        { dayIdx: 0, date: '2026-11-11', type: 'HIGH', typeLabel: '만조', time: '09:00', height: 32, totalMinutesFromStart: 540 },
+        { dayIdx: 0, date: '2026-11-11', type: 'LOW', typeLabel: '간조', time: '15:00', height: 10, totalMinutesFromStart: 900 },
+        { dayIdx: 0, date: '2026-11-11', type: 'HIGH', typeLabel: '만조', time: '21:00', height: 30, totalMinutesFromStart: 1260 },
+      ],
+    };
+
+    const sokchoTide = calculateTideDay(38.207, 128.594, testDate, { swtcWeekly: mockEastSwtc });
+    const states = new Set(sokchoTide.hourlyCurve.map((c) => c.stateText));
+    expect(states.has('들물')).toBe(true);
+    expect(states.has('날물')).toBe(true);
+    expect(sokchoTide.hourlyCurve.some((c) => typeof c.normalizedSlope === 'number')).toBe(true);
+  });
 });

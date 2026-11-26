@@ -1,6 +1,7 @@
-// Vercel Serverless 통합 타일 프록시 (/api/haeroad-tile, /api/vworld-tile -> rewrite)
+// Vercel Serverless 통합 타일 & 지명 검색 프록시 (/api/haeroad-tile, /api/vworld-tile, /api/osm-search -> rewrite)
 // 1) 해로드 지센 전자해도(ENC) XYZ 래스터 타일 (z: 8~16)
 // 2) VWorld(국토정보플랫폼) EPSG:3857 타일 (z: 6~19, VWORLD_API_KEY 우선 사용 -> xdworld 폴백)
+// 3) OSM 글로벌 지명/항구 검색 프록시 (Photon 1차 + Nominatim 폴백, 5분 Edge 캐시)
 // 한반도 해역/육지 bbox 화이트리스트 및 30일 Edge CDN 캐싱을 적용합니다.
 
 const TRANSPARENT_1X1_PNG = Buffer.from(
@@ -57,6 +58,147 @@ async function fetchTileCandidate(url: string, headers?: Record<string, string>)
   return { buf, contentType: ct || 'image/png' };
 }
 
+interface NormalizedOsmPlace {
+  place_id: string;
+  display_name: string;
+  lat: number;
+  lng: number;
+  type: string;
+  address_name?: string;
+  place_name?: string;
+  source: 'osm';
+}
+
+function formatPhotonFeature(feature: any, idx: number): NormalizedOsmPlace | null {
+  const coords = feature?.geometry?.coordinates;
+  const props = feature?.properties || {};
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+  const lng = Number(coords[0]);
+  const lat = Number(coords[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const name = String(props.name || props.city || props.county || props.state || props.country || '').trim();
+  const subParts = [props.city, props.state, props.country]
+    .map((v) => String(v || '').trim())
+    .filter((v, i, arr) => Boolean(v) && v !== name && arr.indexOf(v) === i);
+
+  const subLabel = subParts.join(', ');
+  const displayName = subLabel && name ? `${name} (${subLabel})` : name || subLabel || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  const type = String(props.osm_value || props.osm_key || props.type || '장소');
+
+  return {
+    place_id: `osm-photon-${props.osm_id || idx}-${lat.toFixed(5)}-${lng.toFixed(5)}`,
+    display_name: displayName,
+    lat,
+    lng,
+    type,
+    address_name: subLabel || undefined,
+    place_name: name || displayName,
+    source: 'osm',
+  };
+}
+
+function formatNominatimItem(item: any, idx: number, secondaryLang: string): NormalizedOsmPlace | null {
+  const lat = Number(item?.lat);
+  const lng = Number(item?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const nd = item?.namedetails || {};
+  const localName = String(nd.name || item?.name || '').trim();
+  const subLangName =
+    secondaryLang === 'ko'
+      ? String(nd['name:ko'] || nd['name:en'] || '').trim()
+      : String(nd['name:en'] || '').trim();
+
+  let title = localName;
+  if (localName && subLangName && localName !== subLangName) {
+    title = `${localName} / ${subLangName}`;
+  } else if (!title) {
+    title = subLangName || String(item?.display_name || '').split(',')[0] || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  }
+
+  const fullDisplay = item?.display_name
+    ? `${title} (${String(item.display_name).split(',').slice(1, 4).join(',').trim()})`
+    : title;
+
+  return {
+    place_id: `osm-nom-${item?.place_id || idx}`,
+    display_name: fullDisplay.replace(/\(\)$/, '').trim(),
+    lat,
+    lng,
+    type: String(item?.type || item?.category || '장소'),
+    address_name: item?.display_name,
+    place_name: title,
+    source: 'osm',
+  };
+}
+
+async function handleOsmSearch(req: any, res: any) {
+  const q = String(req.query?.q || '').trim();
+  if (q.length < 2) {
+    return res.status(200).json({ results: [] });
+  }
+
+  const secondaryLang = String(req.query?.lang || 'ko') === 'en' ? 'en' : 'ko';
+  const lat = Number(req.query?.lat);
+  const lon = Number(req.query?.lon);
+  const hasBias = Number.isFinite(lat) && Number.isFinite(lon);
+
+  let results: NormalizedOsmPlace[] = [];
+
+  try {
+    const photonParams = new URLSearchParams({ q, limit: '10' });
+    if (hasBias) {
+      photonParams.set('lat', String(lat));
+      photonParams.set('lon', String(lon));
+    }
+    const photonRes = await fetch(`https://photon.komoot.io/api/?${photonParams.toString()}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (photonRes.ok) {
+      const data = await photonRes.json();
+      const features: any[] = Array.isArray(data?.features) ? data.features : [];
+      results = features
+        .map((f, idx) => formatPhotonFeature(f, idx))
+        .filter((x): x is NormalizedOsmPlace => x !== null);
+    }
+  } catch (err) {
+    console.warn('Photon search error:', err);
+  }
+
+  if (results.length === 0) {
+    try {
+      const nomParams = new URLSearchParams({
+        q,
+        format: 'jsonv2',
+        addressdetails: '1',
+        namedetails: '1',
+        limit: '10',
+      });
+      const nomRes = await fetch(`https://nominatim.openstreetmap.org/search?${nomParams.toString()}`, {
+        headers: {
+          'User-Agent': 'ExFish/1.0 (https://exfish.vercel.app)',
+          'Accept-Language': secondaryLang === 'ko' ? 'ko,en' : 'en,ko',
+        },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (nomRes.ok) {
+        const data = await nomRes.json();
+        const items: any[] = Array.isArray(data) ? data : [];
+        results = items
+          .map((item, idx) => formatNominatimItem(item, idx, secondaryLang))
+          .filter((x): x is NormalizedOsmPlace => x !== null);
+      }
+    } catch (err) {
+      console.warn('Nominatim fallback search error:', err);
+    }
+  }
+
+  res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
+  res.setHeader('CDN-Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+  return res.status(200).json({ results });
+}
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -67,6 +209,10 @@ export default async function handler(req: any, res: any) {
   }
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  if (req.query?.__provider === 'osm-search') {
+    return handleOsmSearch(req, res);
   }
 
   const isVWorld = req.query?.__provider === 'vworld' || Boolean(req.query?.layer);

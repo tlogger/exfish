@@ -7,6 +7,8 @@ import type {
   CurrentUnit,
   WindUnit,
   TideDayInfo,
+  MapProvider,
+  MapSecondaryLang,
 } from '../types';
 import type { ProhibitedZoneFeature } from '../types/prohibitedZone';
 import type { AuthUser } from './LoginModal';
@@ -47,6 +49,10 @@ export interface BaseMapProps {
   isDarkMode: boolean;
   isStrictAdmin: boolean;
   showHaeroadEnc: boolean;
+  secondaryLang?: MapSecondaryLang;
+  showOpenSeaMap?: boolean;
+  showBathymetry?: boolean;
+  onFallbackProvider?: (provider: MapProvider) => void;
   onCenterChange: (center: { lat: number; lng: number }) => void;
   onLevelChange: (level: number) => void;
   onMapClick: (lat: number, lng: number) => void;

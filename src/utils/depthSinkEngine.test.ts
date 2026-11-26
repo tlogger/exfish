@@ -3,6 +3,7 @@ import {
   calculateRealWaterDepth,
   calculateSinkTimeToBottom,
   COMMON_SINKER_SPECS,
+  resolveUnifiedWaterDepth,
 } from './depthSinkEngine';
 
 describe('depthSinkEngine depth datum calibration and sink times', () => {
@@ -33,5 +34,55 @@ describe('depthSinkEngine depth datum calibration and sink times', () => {
     expect(result.sinkSeconds).toBeGreaterThan(5);
     expect(result.sinkSeconds).toBeLessThan(15);
     expect(result.driftOffsetM).toBeGreaterThan(0);
+  });
+
+  it('resolves unified water depth with distance slope, barometer surge, and BEACH surf-zone floor', () => {
+    // 1. 저기압(995 hPa) 예측 조위일 때 약 +18cm 역기압 상승 반영
+    const resNormal = resolveUnifiedWaterDepth({
+      spotLat: 36.4,
+      spotLng: 126.48,
+      spotType: 'ROCK',
+      khoaDpwt: 8.5,
+      datumZ0: 3.9,
+      tideHeightCm: 400,
+      pressureHpa: 1013.25,
+      isPredictedTide: true,
+    });
+    const resLowPress = resolveUnifiedWaterDepth({
+      spotLat: 36.4,
+      spotLng: 126.48,
+      spotType: 'ROCK',
+      khoaDpwt: 8.5,
+      datumZ0: 3.9,
+      tideHeightCm: 400,
+      pressureHpa: 995,
+      isPredictedTide: true,
+    });
+    expect(resLowPress.meteoSurgeCm).toBeGreaterThan(15);
+    expect(resLowPress.realDepthM).toBeGreaterThan(resNormal.realDepthM);
+
+    // 2. 백사장 원투(40m 투척) 시 일반 간조에서 0.8m 최소 서프 수심 보호
+    const beachCast = resolveUnifiedWaterDepth({
+      spotLat: 36.6,
+      spotLng: 126.2,
+      targetLat: 36.6 + 40 / 111000,
+      targetLng: 126.2,
+      spotType: 'BEACH',
+      khoaDpwt: null,
+      datumZ0: 3.8,
+      tideHeightCm: 150,
+    });
+    expect(beachCast.isExposed).toBe(false);
+    expect(beachCast.realDepthM).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('accounts for cast vs current relative angle deltaTheta in calculateSinkTimeToBottom', () => {
+    const cross = calculateSinkTimeToBottom(10, 0.8, 0.6, 0, 90);
+    const oncoming = calculateSinkTimeToBottom(10, 0.8, 0.6, 0, 180);
+    expect(cross.deltaThetaDeg).toBe(90);
+    expect(oncoming.deltaThetaDeg).toBe(180);
+    // 횡조류/뒷조류는 맞조류보다 유효 부력 항력이 커져 침강 지연
+    expect(cross.sinkSeconds).toBeGreaterThan(oncoming.sinkSeconds);
+    expect(cross.recommendedMinWeightG).toBeGreaterThan(2);
   });
 });

@@ -640,6 +640,7 @@ export interface CastingDriftResult {
   flightTimeSec: number;
   headwindMps: number;
   crosswindMps: number;
+  lineBellyM?: number; // 원줄 풍압 배부름(Line Belly) 거리 (m)
 }
 
 export function calculateAerodynamicCastingDrift(
@@ -649,7 +650,8 @@ export function calculateAerodynamicCastingDrift(
   windDirectionDeg: number,
   weightGrams: number = 25,
   peLineSize: number = 1.0,
-  wormLengthInches: number = 2.0
+  wormLengthInches: number = 2.0,
+  baitConfig?: BaitConfig
 ): CastingDriftResult {
   const safeWeight = Math.max(0.5, Math.min(160, weightGrams));
   const safePE = Math.max(0.4, Math.min(3.0, peLineSize));
@@ -687,10 +689,29 @@ export function calculateAerodynamicCastingDrift(
   const mKg = safeWeight / 1000;
   const aCross = fCross / mKg;
 
+  // 미끼/바디 형상별 횡풍 공기저항 보정 계수 (구멍찌 > 루어/에기 > 던질찌 > 메탈지그)
+  let rigAeroFactor = 1.0;
+  if (baitConfig) {
+    if (baitConfig.type === 'CASTING_BALL') {
+      rigAeroFactor =
+        baitConfig.castingBallSubMode === 'VARIANT_FLOAT'
+          ? BODY_AIR_DRAG_CD.VARIANT_FLOAT / 0.42
+          : BODY_AIR_DRAG_CD.REAL_BALL / 0.42;
+    } else if (baitConfig.type === 'METAL') {
+      rigAeroFactor = BODY_AIR_DRAG_CD.METAL_JIG / 0.42;
+    } else if (baitConfig.type === 'LURE') {
+      rigAeroFactor =
+        baitConfig.lureSubMode === 'JUKKUMI'
+          ? 1.15
+          : (LURE_AIR_DRAG_CD[baitConfig.shape] ?? 0.42) / 0.42;
+    }
+  }
+
   const tensionDamping = 0.38;
+  const lineDriftM = absCross * flightTimeSec * 0.06 * Math.sqrt(safePE);
   let driftM =
-    0.5 * aCross * flightTimeSec * flightTimeSec * tensionDamping +
-    absCross * flightTimeSec * 0.06 * Math.sqrt(safePE);
+    0.5 * aCross * flightTimeSec * flightTimeSec * tensionDamping * rigAeroFactor +
+    lineDriftM;
   driftM = Math.min(effectiveDist * 0.35, driftM);
   const signedDrift = crosswindMps >= 0 ? driftM : -driftM;
 
@@ -720,21 +741,38 @@ export function calculateAerodynamicCastingDrift(
     flightTimeSec,
     headwindMps: Math.round(headwindMps * 10) / 10,
     crosswindMps: Math.round(crosswindMps * 10) / 10,
+    lineBellyM: Math.round(Math.min(driftM, lineDriftM) * 10) / 10,
   };
+}
+
+export interface SinkingPhysicsOptions {
+  castBearingDeg?: number;
+  currentDirectionDeg?: number;
+  peLineSize?: number;
+  honorFloatLayer?: boolean;
+}
+
+export interface SinkingPhysicsResult {
+  sinkSpeedMps: number;
+  effSinkSpeedMps: number;
+  fallTimeSec: number;
+  driftDistanceM: number;
+  totalWeightGrams: number;
+  deltaThetaDeg?: number;
+  effectiveDriftBearingDeg?: number;
+  canReachBottom?: boolean;
+  recommendedMinWeightG?: number;
+  snagRisk?: 'LOW' | 'MEDIUM' | 'HIGH';
+  targetLayer?: 'SURFACE' | 'MID' | 'BOTTOM';
 }
 
 export function calculateSinkingPhysics(
   weightGrams: number,
   depthMeters: number,
   currentVelocityMps: number = 0.3,
-  baitConfig: BaitConfig = getBaitSpecs('LIVE', 2, 'GRUB')
-): {
-  sinkSpeedMps: number;
-  effSinkSpeedMps: number;
-  fallTimeSec: number;
-  driftDistanceM: number;
-  totalWeightGrams: number;
-} {
+  baitConfig: BaitConfig = getBaitSpecs('LIVE', 2, 'GRUB'),
+  options?: SinkingPhysicsOptions
+): SinkingPhysicsResult {
   let sinkingWeightG: number;
   let hydroDragFactor: number;
 
@@ -774,13 +812,52 @@ export function calculateSinkingPhysics(
   const safeDepth = Math.max(1.0, Math.min(60, depthMeters));
   const safeCurrent = Math.max(0.0, Math.min(3.0, currentVelocityMps));
 
+  const targetLayer: 'SURFACE' | 'MID' | 'BOTTOM' =
+    baitConfig.type === 'CASTING_BALL' && baitConfig.castingBallSubMode === 'VARIANT_FLOAT'
+      ? 'SURFACE'
+      : baitConfig.shape === 'MINNOW'
+      ? 'MID'
+      : 'BOTTOM';
+
+  const effectiveSinkDepth =
+    options?.honorFloatLayer && targetLayer === 'SURFACE'
+      ? Math.min(safeDepth, 3.0)
+      : safeDepth;
+
   const rawSinkSpeed = 0.26 * Math.sqrt(sinkingWeightG) * hydroDragFactor;
   const sinkSpeedMps = Math.round(Math.max(0.08, Math.min(4.0, rawSinkSpeed)) * 100) / 100;
 
-  const currentRatio = safeCurrent / (0.8 * sinkSpeedMps);
+  let deltaThetaDeg: number | undefined;
+  let directionalMultiplier = 1.0;
+  if (options?.castBearingDeg != null && options?.currentDirectionDeg != null) {
+    let diff = Math.abs(options.currentDirectionDeg - options.castBearingDeg) % 360;
+    if (diff > 180) diff = 360 - diff;
+    deltaThetaDeg = Math.round(diff);
+    const rad = (diff * Math.PI) / 180;
+    const peScale = Math.sqrt(Math.max(0.4, options.peLineSize ?? 1.0));
+    directionalMultiplier = 1 + 0.16 * Math.sin(rad) * peScale + 0.12 * Math.cos(rad);
+  }
+
+  const effCurrentForSink = safeCurrent * directionalMultiplier;
+  const currentRatio = effCurrentForSink / (0.8 * sinkSpeedMps);
   const effSinkSpeedMps = Math.round(Math.max(0.06, sinkSpeedMps / Math.sqrt(1 + currentRatio * currentRatio)) * 100) / 100;
-  const fallTimeSec = Math.max(0.5, Math.round((safeDepth / Math.max(0.06, effSinkSpeedMps)) * 10) / 10);
+  const fallTimeSec = Math.max(0.5, Math.round((effectiveSinkDepth / Math.max(0.06, effSinkSpeedMps)) * 10) / 10);
   const driftDistanceM = Math.round(safeCurrent * fallTimeSec * 10) / 10;
+
+  const recommendedMinWeightG = Math.max(
+    1.5,
+    Math.ceil((safeDepth * 0.4 + effCurrentForSink * 8.0) * 2) / 2
+  );
+  const canReachBottom = targetLayer === 'SURFACE' ? true : sinkingWeightG >= recommendedMinWeightG * 0.45 && fallTimeSec <= 85;
+
+  let snagRisk: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+  if (deltaThetaDeg != null && deltaThetaDeg > 120 && safeCurrent >= 0.35) {
+    snagRisk = 'HIGH';
+  } else if (!canReachBottom) {
+    snagRisk = 'HIGH';
+  } else if (deltaThetaDeg != null && deltaThetaDeg >= 60 && safeCurrent >= 0.4) {
+    snagRisk = 'MEDIUM';
+  }
 
   return {
     sinkSpeedMps,
@@ -788,6 +865,115 @@ export function calculateSinkingPhysics(
     fallTimeSec,
     driftDistanceM,
     totalWeightGrams: Math.round(sinkingWeightG * 100) / 100,
+    deltaThetaDeg,
+    effectiveDriftBearingDeg: options?.currentDirectionDeg,
+    canReachBottom,
+    recommendedMinWeightG,
+    snagRisk,
+    targetLayer,
+  };
+}
+
+export interface LeadCastPrescription {
+  leadBearingDeg: number;
+  leadAngleOffsetDeg: number; // 양수=우측 선행조준, 음수=좌측 선행조준
+  leadDistanceM: number;
+  expectedTotalDriftM: number;
+  recommendedMinWeightG: number;
+  canReachBottom: boolean;
+  tacticalAdvice: string;
+}
+
+/**
+ * 공중 풍압 편류 + 수중 조류 흘림을 동시 보정한 선행 조준점(Lead-Cast Aim Point) 역산 솔버
+ */
+export function solveLeadCastAimPoint(
+  targetBearingDeg: number,
+  targetDistanceM: number,
+  windSpeedMps: number,
+  windDirectionDeg: number,
+  currentVelocityMps: number,
+  currentDirectionDeg: number,
+  waterDepthM: number,
+  tackleConfig: TackleRigConfig
+): LeadCastPrescription {
+  const rigWeight = tackleConfig.totalWeightGrams ?? tackleConfig.weightGrams;
+  const wormLen = tackleConfig.baitConfig?.lengthInches ?? 2.0;
+
+  const air = calculateAerodynamicCastingDrift(
+    targetBearingDeg,
+    targetDistanceM,
+    windSpeedMps,
+    windDirectionDeg,
+    rigWeight,
+    tackleConfig.peLineSize,
+    wormLen,
+    tackleConfig.baitConfig
+  );
+
+  const sink = calculateSinkingPhysics(
+    tackleConfig.weightGrams,
+    waterDepthM,
+    currentVelocityMps,
+    tackleConfig.baitConfig,
+    {
+      castBearingDeg: targetBearingDeg,
+      currentDirectionDeg,
+      peLineSize: tackleConfig.peLineSize,
+      honorFloatLayer: true,
+    }
+  );
+
+  // 목표 지점 벡터 (동쪽=x, 북쪽=y)
+  const radT = (targetBearingDeg * Math.PI) / 180;
+  const tx = targetDistanceM * Math.sin(radT);
+  const ty = targetDistanceM * Math.cos(radT);
+
+  // 바람 착수점 - 목표점 변위
+  const radA = (air.actualBearingDeg * Math.PI) / 180;
+  const ax = air.actualDistanceM * Math.sin(radA);
+  const ay = air.actualDistanceM * Math.cos(radA);
+
+  // 수중 침강 흘림 변위
+  const radC = (currentDirectionDeg * Math.PI) / 180;
+  const cx = sink.driftDistanceM * Math.sin(radC);
+  const cy = sink.driftDistanceM * Math.cos(radC);
+
+  const driftX = (ax - tx) + cx;
+  const driftY = (ay - ty) + cy;
+  const expectedTotalDriftM = Math.round(Math.hypot(driftX, driftY) * 10) / 10;
+
+  // 과보정 억제를 위해 감쇠 계수(0.75)로 역방향 조준점 계산
+  const aimX = tx - 0.75 * driftX;
+  const aimY = ty - 0.75 * driftY;
+  const leadDistanceM = Math.max(5, Math.min(130, Math.round(Math.hypot(aimX, aimY))));
+  const leadBearingDeg = Math.round(((Math.atan2(aimX, aimY) * 180) / Math.PI + 360) % 360);
+
+  let leadAngleOffsetDeg = (leadBearingDeg - targetBearingDeg) % 360;
+  if (leadAngleOffsetDeg > 180) leadAngleOffsetDeg -= 360;
+  if (leadAngleOffsetDeg < -180) leadAngleOffsetDeg += 360;
+
+  const recW = sink.recommendedMinWeightG ?? rigWeight;
+  const canReachBottom = sink.canReachBottom ?? true;
+
+  let tacticalAdvice = '';
+  if (!canReachBottom && sink.targetLayer !== 'SURFACE') {
+    tacticalAdvice = `조류·수심 대비 가벼움 -> ${recW}g 이상 증량 권장`;
+  } else if (Math.abs(leadAngleOffsetDeg) >= 4) {
+    const side = leadAngleOffsetDeg > 0 ? '우측' : '좌측';
+    tacticalAdvice = `조류 상류(${side} ${Math.abs(leadAngleOffsetDeg)}°·${leadDistanceM}m) 선행 캐스팅`;
+  } else {
+    tacticalAdvice = `목표 방위 정조준(${leadDistanceM}m) 유효`;
+  }
+
+  return {
+    leadBearingDeg,
+    leadAngleOffsetDeg,
+    leadDistanceM,
+    expectedTotalDriftM,
+    recommendedMinWeightG: recW,
+    canReachBottom,
+    tacticalAdvice,
   };
 }
 
@@ -831,6 +1017,91 @@ const DEFAULT_TACKLE_STATE: InternalTackleState = {
 
 // localStorage 5MB 쿼터 초과 시에도 UI 상태가 즉시 반영되도록 보장하는 인메모리 권위 상태
 let memoryTackleState: InternalTackleState | null = null;
+let activeTackleUserId: string | null = null;
+
+const GLOBAL_TACKLE_COOKIE = 'exfish_tackle_v1';
+const USER_TACKLE_COOKIE_PREFIX = 'exfish_tackle_u_';
+const ACTIVE_TACKLE_USER_KEY = 'exfish_tackle_active_user';
+
+function sanitizeCookieUserKey(userId: string): string {
+  // FNV-1a 32-bit 해시 + 영숫자 접두사로 RFC 6265 쿠키명 안전성 및 길이(<=20자) 보장
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < userId.length; i++) {
+    hash ^= userId.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  const cleanPrefix = userId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 8) || 'u';
+  return `${cleanPrefix}_${(hash >>> 0).toString(36)}`;
+}
+
+function getUserTackleCookieName(userId: string): string {
+  return `${USER_TACKLE_COOKIE_PREFIX}${sanitizeCookieUserKey(userId)}`;
+}
+
+const TACKLE_LS_COMPAT_PREFIX = 'exfish_tackle_ls_';
+const memoryTackleBucket = new Map<string, string>();
+
+function expireLegacyCookie(name: string): void {
+  try {
+    if (typeof document === 'undefined') return;
+    document.cookie = `${encodeURIComponent(name)}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0; path=/; SameSite=Lax`;
+  } catch {}
+}
+
+function setTackleCookie(name: string, value: string, _days: number = 365): void {
+  // v6: HTTP 쿠키 저장 전면 폐기 (헤더 오버헤드·CDN 간섭·WebView 유실 방지) -> localStorage(+메모리) 저장 + 구 쿠키 만료 삭제
+  try {
+    memoryTackleBucket.set(name, value);
+    const ls = getSafeLocalStorage();
+    if (ls) {
+      ls.setItem(`${TACKLE_LS_COMPAT_PREFIX}${name}`, value);
+    }
+    expireLegacyCookie(name);
+  } catch {}
+}
+
+function getTackleCookie(name: string): string | null {
+  try {
+    const ls = getSafeLocalStorage();
+    if (ls) {
+      const fromLs = ls.getItem(`${TACKLE_LS_COMPAT_PREFIX}${name}`);
+      if (fromLs) return fromLs;
+    }
+    if (memoryTackleBucket.has(name)) {
+      return memoryTackleBucket.get(name) || null;
+    }
+    // 최초 1회 구 HTTP 쿠키 마이그레이션 후 만료 삭제
+    if (typeof document === 'undefined') return null;
+    const encodedName = encodeURIComponent(name).replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1');
+    const matches = document.cookie.match(new RegExp(`(?:^|; )${encodedName}=([^;]*)`));
+    if (matches) {
+      const val = decodeURIComponent(matches[1]);
+      if (ls) {
+        try { ls.setItem(`${TACKLE_LS_COMPAT_PREFIX}${name}`, val); } catch {}
+      }
+      expireLegacyCookie(name);
+      return val;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function serializeTackleCookie(state: InternalTackleState): string {
+  return JSON.stringify(state);
+}
+
+function parseTackleCookie(raw: string | null): InternalTackleState | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      return normalizeTackleState({ ...DEFAULT_TACKLE_STATE, ...parsed });
+    }
+  } catch {}
+  return null;
+}
 
 function getSafeLocalStorage(): Storage | null {
   try {
@@ -916,6 +1187,21 @@ function readInitialTackleStateFromStorage(): InternalTackleState {
   } catch {
     // ignore storage read error
   }
+  const hasAnyStorageKey = Boolean(
+    storage.getItem(KEY_RIG_WEIGHT) ||
+      storage.getItem(KEY_BAIT_TYPE) ||
+      storage.getItem(KEY_ROD_POWER)
+  );
+  if (!hasAnyStorageKey) {
+    const savedActiveUser = storage.getItem(ACTIVE_TACKLE_USER_KEY);
+    const userCookieState = savedActiveUser
+      ? parseTackleCookie(getTackleCookie(getUserTackleCookieName(savedActiveUser)))
+      : null;
+    if (userCookieState) return userCookieState;
+
+    const globalCookieState = parseTackleCookie(getTackleCookie(GLOBAL_TACKLE_COOKIE));
+    if (globalCookieState) return globalCookieState;
+  }
   return normalizeTackleState(s);
 }
 
@@ -971,6 +1257,12 @@ function evictNonEssentialCachesFromStorage(): void {
 }
 
 function persistTackleStateToStorage(state: InternalTackleState): void {
+  const cookiePayload = serializeTackleCookie(state);
+  setTackleCookie(GLOBAL_TACKLE_COOKIE, cookiePayload, 365);
+  if (activeTackleUserId) {
+    setTackleCookie(getUserTackleCookieName(activeTackleUserId), cookiePayload, 365);
+  }
+
   const storage = getSafeLocalStorage();
   if (!storage) return;
   const entries: [string, string][] = [
@@ -1058,7 +1350,84 @@ function buildTackleRigConfig(state: InternalTackleState): TackleRigConfig {
 }
 
 export function resetTackleConfigState(): void {
+  activeTackleUserId = null;
   memoryTackleState = normalizeTackleState({ ...DEFAULT_TACKLE_STATE });
+}
+
+/**
+ * 로그인/계정 전환/로그아웃 시 사용자별 채비 쿠키와 localStorage/메모리를 동기화합니다.
+ * 로그인 시에는 다른 계정의 잔류 localStorage보다 사용자 전용 쿠키를 우선 복원합니다.
+ */
+export function syncTackleWithUserCookie(userId: string | null): TackleRigConfig {
+  const storage = getSafeLocalStorage();
+  const prevActiveUser = activeTackleUserId ?? storage?.getItem(ACTIVE_TACKLE_USER_KEY) ?? null;
+
+  if (userId) {
+    activeTackleUserId = userId;
+    if (storage) {
+      try {
+        storage.setItem(ACTIVE_TACKLE_USER_KEY, userId);
+      } catch {}
+    }
+
+    const userCookieState = parseTackleCookie(getTackleCookie(getUserTackleCookieName(userId)));
+    if (userCookieState) {
+      memoryTackleState = userCookieState;
+      persistTackleStateToStorage(userCookieState);
+    } else if (prevActiveUser && prevActiveUser !== userId) {
+      // 다른 계정에서 전환되었는데 새 계정의 쿠키가 없으면 공통 쿠키 또는 기본값 사용
+      const fallback = parseTackleCookie(getTackleCookie(GLOBAL_TACKLE_COOKIE)) ?? normalizeTackleState({ ...DEFAULT_TACKLE_STATE });
+      memoryTackleState = fallback;
+      persistTackleStateToStorage(fallback);
+    } else {
+      // 게스트 -> 최초 로그인: 현재 채비 상태를 사용자 쿠키로 승격 저장
+      const current = ensureMemoryTackleState();
+      persistTackleStateToStorage(current);
+    }
+  } else {
+    activeTackleUserId = null;
+    if (storage) {
+      try {
+        storage.removeItem(ACTIVE_TACKLE_USER_KEY);
+      } catch {}
+    }
+    const globalCookieState = parseTackleCookie(getTackleCookie(GLOBAL_TACKLE_COOKIE));
+    if (globalCookieState) {
+      memoryTackleState = globalCookieState;
+      persistTackleStateToStorage(globalCookieState);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('exfish_tackle_updated'));
+  }
+  return buildTackleRigConfig(ensureMemoryTackleState());
+}
+
+/** 캐스팅 레이더 및 상세 패널에 표시할 현재 선택 채비 요약 라벨 */
+export function getTackleShortLabel(config: TackleRigConfig): string {
+  const bc = config.baitConfig;
+  if (bc.type === 'LURE') {
+    if (bc.lureSubMode === 'JUKKUMI') {
+      const sinker = bc.sinkerWeightGrams ?? 0;
+      return sinker > 0 ? `에기 ${bc.egiWeightGrams ?? 15}g+봉돌${sinker}g` : `에기 ${bc.egiWeightGrams ?? 15}g`;
+    }
+    if (bc.lureSubMode === 'JIG') {
+      return `지그헤드 ${config.weightGrams}g`;
+    }
+    return `루어 ${config.weightGrams}g`;
+  }
+  if (bc.type === 'METAL') {
+    return `메탈 ${config.weightGrams}g`;
+  }
+  if (bc.type === 'CASTING_BALL') {
+    if (bc.castingBallSubMode === 'VARIANT_FLOAT') {
+      return `구멍찌 ${bc.castingBallHo ?? 1}호`;
+    }
+    return `던질찌 ${config.weightGrams}g`;
+  }
+  const ho = Math.round((config.weightGrams / 3.75) * 10) / 10;
+  return ho >= 1 ? `원투 ${ho}호(${config.weightGrams}g)` : `생미끼 ${config.weightGrams}g`;
 }
 
 export function getSavedTackleConfig(): TackleRigConfig {

@@ -2,7 +2,8 @@ export type SpotType = 'ROCK' | 'SEAWALL' | 'BREAKWATER' | 'BEACH' | 'PIER';
 export type FishingMethod = 'SURF' | 'LURE' | 'FLOAT';
 export type WindUnit = 'ms' | 'knot' | 'kmh';
 export type CurrentUnit = 'knot' | 'ms' | 'cms';
-export type MapProvider = 'vworld' | 'kakao';
+export type MapProvider = 'vworld' | 'kakao' | 'google' | 'osm';
+export type MapSecondaryLang = 'ko' | 'en';
 
 export interface SweetSpot {
   id: string;

@@ -342,9 +342,9 @@ export function calculateTideDay(
       };
     }
 
-    if (!prevExt || !nextExt) return { height: 100, slope: 0 };
+    if (!prevExt || !nextExt) return { height: 100, slope: 0, normalizedSlope: 0 };
     const dt = nextExt.totalMinutesFromStart - prevExt.totalMinutesFromStart;
-    if (dt <= 0) return { height: prevExt.height, slope: 0 };
+    if (dt <= 0) return { height: prevExt.height, slope: 0, normalizedSlope: 0 };
 
     const ratio = (totalMinutes - prevExt.totalMinutesFromStart) / dt;
     const phase = ratio * Math.PI;
@@ -353,7 +353,8 @@ export function calculateTideDay(
       ((prevExt.height - nextExt.height) / 2) * Math.cos(phase)
     );
     const slope = -((prevExt.height - nextExt.height) / 2) * Math.sin(phase);
-    return { height, slope };
+    const normalizedSlope = -Math.sign(prevExt.height - nextExt.height) * Math.sin(phase);
+    return { height, slope, normalizedSlope };
   };
 
   // KHOA 공식 발표치(관측소) 위상 보정계수 산출 (폴백용)
@@ -384,12 +385,14 @@ export function calculateTideDay(
 
     let height = 0;
     let stateText = '물돌이(정조)';
+    let normSlope = 0;
 
     if (useSwtc) {
-      const { height: sHgt, slope: sSlope } = interpolateSwtc(totalHour * 60);
+      const { height: sHgt, normalizedSlope } = interpolateSwtc(totalHour * 60);
       height = sHgt;
-      if (Math.abs(sSlope) < 30) stateText = '물돌이(정조)';
-      else if (sSlope > 30) stateText = '들물';
+      normSlope = normalizedSlope ?? 0;
+      if (Math.abs(normSlope) < 0.22) stateText = '물돌이(정조)';
+      else if (normSlope > 0) stateText = '들물';
       else stateText = '날물';
     } else {
       const dayStart = new Date(startOfDay.getTime() + dayDiff * 24 * 3600 * 1000);
@@ -419,6 +422,7 @@ export function calculateTideDay(
       }
 
       const slope = -Math.sin(phase);
+      normSlope = slope;
       if (slope > 0.3) stateText = '들물';
       else if (slope < -0.3) stateText = '날물';
     }
@@ -438,6 +442,7 @@ export function calculateTideDay(
       dayLabel,
       height,
       stateText,
+      normalizedSlope: Math.round(normSlope * 100) / 100,
       isCurrent,
       isSunrise,
       isSunset,

@@ -1,15 +1,18 @@
 import React from 'react';
 import { useKakaoLoader } from 'react-kakao-maps-sdk';
-import { Check, LocateFixed, Plus, Minus, Layers, ShieldAlert, PenTool, Sliders, Ruler } from 'lucide-react';
+import { Check, LocateFixed, Plus, Minus, Layers, ShieldAlert, PenTool, Sliders, Ruler, Anchor, Waves } from 'lucide-react';
 import { KakaoBaseMap } from './KakaoBaseMap';
 import { VWorldBaseMap } from './VWorldBaseMap';
 import { UnifiedMapOverlay } from './UnifiedMapOverlay';
 import type { BaseMapProps, MapCanvasBridge, MapMode, MeasureSegment, SharedMapCanvasProps } from './mapCanvasTypes';
-import { computeApproxViewportBounds, normalizeWgs84Center } from '../utils/mapCoordSync';
+import { clampLevelForProvider, computeApproxViewportBounds, normalizeWgs84Center } from '../utils/mapCoordSync';
 import { loadZonesForBounds } from '../utils/zoneCache';
 import { findZoneHitsAtPoint } from '../utils/zoneSpatial';
 import type { ProhibitedZoneFeature } from '../types/prohibitedZone';
-import type { FishingSpot, FishingShop, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo, SweetSpot, MapProvider } from '../types';
+import type { FishingSpot, FishingShop, WeatherData, MarineData, WindUnit, CurrentUnit, TideDayInfo, SweetSpot, MapProvider, MapSecondaryLang } from '../types';
+
+const OsmBaseMap = React.lazy(() => import('./OsmBaseMap'));
+const GoogleBaseMap = React.lazy(() => import('./GoogleBaseMap'));
 import type { AuthUser } from './LoginModal';
 import { isUserAdmin, isStrictPaedrosAdmin } from '../services/oauthService';
 import {
@@ -150,6 +153,8 @@ interface MapViewProps {
   mapMode?: MapMode;
   onChangeMapMode?: (mode: MapMode) => void;
   mapProvider?: MapProvider;
+  onChangeMapProvider?: (provider: MapProvider) => void;
+  mapSecondaryLang?: MapSecondaryLang;
   viewOnlyFavorites?: boolean;
   isTacklePopoverOpen?: boolean;
   onToggleTacklePopover?: (open: boolean) => void;
@@ -186,6 +191,8 @@ export const MapView: React.FC<MapViewProps> = ({
   mapMode: externalMapMode,
   onChangeMapMode,
   mapProvider = 'vworld',
+  onChangeMapProvider,
+  mapSecondaryLang = 'ko',
   viewOnlyFavorites: externalViewOnlyFavorites,
   isTacklePopoverOpen: externalIsTacklePopoverOpen,
   onToggleTacklePopover,
@@ -194,6 +201,37 @@ export const MapView: React.FC<MapViewProps> = ({
   const isAdmin = isUserAdmin(currentUser);
   const isStrictAdmin = isStrictPaedrosAdmin(currentUser);
   const [showHaeroadEnc, setShowHaeroadEnc] = React.useState(false);
+  const [showOpenSeaMap, setShowOpenSeaMap] = React.useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('exfish_show_openseamap');
+      if (saved === 'false') return false;
+    }
+    return true;
+  });
+  const [showBathymetry, setShowBathymetry] = React.useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('exfish_show_bathymetry') === 'true';
+    }
+    return false;
+  });
+  const toggleOpenSeaMap = React.useCallback(() => {
+    setShowOpenSeaMap((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('exfish_show_openseamap', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+  const toggleBathymetry = React.useCallback(() => {
+    setShowBathymetry((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('exfish_show_bathymetry', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
   const [prohibitedZones, setProhibitedZones] = React.useState<ProhibitedZoneFeature[]>([]);
   const [zoneReloadTick, setZoneReloadTick] = React.useState(0);
   const [isDigitizingZones, setIsDigitizingZones] = React.useState(false);
@@ -548,9 +586,15 @@ export const MapView: React.FC<MapViewProps> = ({
         return 1.0;
       });
     } else {
-      setLevel((prev) => Math.min(14, prev + 1));
+      const maxLevel = mapProvider === 'google' || mapProvider === 'osm' ? 18 : 14;
+      setLevel((prev) => Math.min(maxLevel, prev + 1));
     }
   };
+
+  // 지도 프로바이더 변경 시 줌 레벨을 해당 엔진의 허용 범위로 클램프
+  React.useEffect(() => {
+    setLevel((prev) => clampLevelForProvider(prev, mapProvider));
+  }, [mapProvider]);
 
   // 볼륨 키 줌 안내 토스트 상태 (Phase 2 하드웨어 연동)
   const [volumeToast, setVolumeToast] = React.useState<string | null>(null);
@@ -991,6 +1035,10 @@ export const MapView: React.FC<MapViewProps> = ({
           isDarkMode,
           isStrictAdmin,
           showHaeroadEnc,
+          secondaryLang: mapSecondaryLang,
+          showOpenSeaMap,
+          showBathymetry,
+          onFallbackProvider: onChangeMapProvider,
           onCenterChange: setCenter,
           onLevelChange: setLevel,
           onMapClick: handleBaseMapClick,
@@ -1095,8 +1143,22 @@ export const MapView: React.FC<MapViewProps> = ({
           >
             {mapProvider === 'vworld' ? (
               <VWorldBaseMap {...baseMapProps} />
-            ) : (
+            ) : mapProvider === 'kakao' ? (
               <KakaoBaseMap {...baseMapProps} />
+            ) : (
+              <React.Suspense
+                fallback={
+                  <div className="flex h-full w-full items-center justify-center bg-slate-950 text-xs font-medium text-cyan-300">
+                    지도 엔진 로딩 중...
+                  </div>
+                }
+              >
+                {mapProvider === 'osm' ? (
+                  <OsmBaseMap {...baseMapProps} />
+                ) : (
+                  <GoogleBaseMap {...baseMapProps} />
+                )}
+              </React.Suspense>
             )}
             <UnifiedMapOverlay mapProvider={mapProvider} {...sharedCanvasProps} />
           </div>
@@ -1331,6 +1393,36 @@ export const MapView: React.FC<MapViewProps> = ({
             >
               <PenTool size={15} />
             </button>
+
+            {/* 글로벌 지도 해양표지(OpenSeaMap) & 해저지형(GEBCO) 토글 */}
+            {(mapProvider === 'osm' || mapProvider === 'google') && (
+              <>
+                <button
+                  onClick={toggleOpenSeaMap}
+                  className={`p-1.5 rounded-xl flex items-center justify-center transition active:scale-95 ${
+                    showOpenSeaMap
+                      ? 'bg-sky-600 text-white shadow-md shadow-sky-500/30'
+                      : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="OpenSeaMap 해양표지 (등대·항로·암초)"
+                >
+                  <Anchor size={15} />
+                </button>
+                {mapProvider === 'osm' && (
+                  <button
+                    onClick={toggleBathymetry}
+                    className={`p-1.5 rounded-xl flex items-center justify-center transition active:scale-95 ${
+                      showBathymetry
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30'
+                        : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                    title="GEBCO 글로벌 해저지형 음영"
+                  >
+                    <Waves size={15} />
+                  </button>
+                )}
+              </>
+            )}
 
             {/* paedros@gmail.com 개인 실험용 해로드 ENC 오버레이 토글 */}
             {isStrictAdmin && (

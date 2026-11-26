@@ -2359,6 +2359,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       const rawLogDate = log.catch_date ? new Date(`${log.catch_date}T${log.catch_time || '12:00'}:00`) : new Date();
                       const validLogDate = isNaN(rawLogDate.getTime()) ? new Date() : rawLogDate;
                       const historicalTide = calculateTideDay(spot.lat, spot.lng, validLogDate);
+                      let spotCastBearing: number | undefined;
+                      if (spot.casting_start_deg != null && spot.casting_end_deg != null) {
+                        const span = (spot.casting_end_deg - spot.casting_start_deg + 360) % 360;
+                        spotCastBearing = (spot.casting_start_deg + span / 2) % 360;
+                      }
                       const pm = generatePostMortemReport({
                         targetSpecies: log.fish_species || '우럭',
                         catchTime: log.catch_time || '16:00',
@@ -2379,19 +2384,34 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           wavePeriod: 6.0,
                           currentVelocity: log.current_velocity ?? 0.35,
                           waveDirection: 180,
-                          currentDirection: 135,
+                          currentDirection: log.current_direction ?? 135,
                           hourly: { time: [], seaSurfaceTemp: [], waveHeight: [], currentVelocity: [], currentDirection: [] },
                         },
                         tide: historicalTide,
                         biteScore: null,
+                        castingBearingDeg: spotCastBearing,
+                        lat: spot.lat,
+                        lng: spot.lng,
+                        spotType: spot.spot_type,
+                        catchMethod: log.catch_method,
+                        lureBait: log.lure_bait,
+                        tackleSnapshot: log.tackle_snapshot,
+                        mulTextOverride: log.catch_mul,
                       });
                       return (
                         <div className="mt-1.5 p-2.5 rounded-xl bg-rose-950/40 border border-rose-800/40 text-[11px] space-y-1.5 animate-in fade-in duration-150">
                           <div className="flex items-center justify-between text-rose-300 font-bold border-b border-rose-900/50 pb-1">
                             <span>💔 실패 원인 분석: {pm.topFactors[0]?.name} ({pm.topFactors[0]?.contributionPercent}%)</span>
-                            <span className="text-[10px] text-slate-400 font-mono">7대 환경벡터</span>
+                            <span className="text-[10px] text-slate-400 font-mono">정밀 환경·물리벡터</span>
                           </div>
-                          <div className="text-[10.5px] text-slate-300 leading-snug">{pm.topFactors[0]?.description}</div>
+                          <div className="text-[10.5px] text-slate-300 leading-snug">
+                            {pm.topFactors[0]?.description}
+                            {pm.topFactors[1] && (
+                              <span className="block text-[10px] text-slate-400 mt-0.5">
+                                2순위: {pm.topFactors[1].name} ({pm.topFactors[1].contributionPercent}% · {pm.topFactors[1].metricLabel})
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-amber-300 bg-slate-900/90 p-2 rounded-lg border border-slate-800 mt-0.5">
                             {pm.tacticalAdvice}
                           </div>

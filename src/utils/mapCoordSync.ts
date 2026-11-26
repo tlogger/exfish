@@ -1,5 +1,7 @@
+import type { MapProvider } from '../types';
+
 /**
- * Kakao Map (EPSG:5181, level 1~14) <-> VWorld / Leaflet (EPSG:3857, zoom 6~19)
+ * Kakao Map (EPSG:5181, level 1~14) <-> VWorld / Leaflet / Google / OSM (EPSG:3857, zoom 2~19)
  * 지도 엔진 전환 시 WGS84 중심 좌표 및 축척(줌 레벨) 동기화 유틸리티
  */
 
@@ -11,6 +13,33 @@ export function kakaoLevelToLeafletZoom(level: number): number {
 export function leafletZoomToKakaoLevel(zoom: number): number {
   if (!Number.isFinite(zoom)) return 6;
   return Math.max(1, Math.min(14, Math.round(20 - zoom)));
+}
+
+export function levelToGlobalZoom(level: number): number {
+  if (!Number.isFinite(level)) return 14;
+  return Math.max(2, Math.min(19, Math.round(20 - level)));
+}
+
+export function globalZoomToLevel(zoom: number): number {
+  if (!Number.isFinite(zoom)) return 6;
+  return Math.max(1, Math.min(18, Math.round(20 - zoom)));
+}
+
+export function clampLevelForProvider(level: number, provider: MapProvider): number {
+  if (!Number.isFinite(level)) return 6;
+  const maxLevel = provider === 'google' || provider === 'osm' ? 18 : 14;
+  return Math.max(1, Math.min(maxLevel, Math.round(level)));
+}
+
+export function isKoreaBounds(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= 31.5 &&
+    lat <= 39.8 &&
+    lng >= 123.0 &&
+    lng <= 132.5
+  );
 }
 
 export function normalizeWgs84Center(center: { lat: number; lng: number }): { lat: number; lng: number } {

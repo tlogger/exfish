@@ -455,7 +455,7 @@ export async function extractExifFromImage(file: File): Promise<ExifExtractionRe
  * 사진 파일을 HTML5 Canvas를 활용하여 지정된 최대 해상도(기본 1200px)와 압축 품질(기본 0.75)의 Base64 Data URL로 인코딩합니다.
  * 이를 통해 blob: URL 세션 소실 문제를 완벽히 해결하고, DB 및 로컬 스토리지에 안정적으로 영구 보전합니다.
  */
-export async function compressImageFile(file: File, maxDim = 1200, quality = 0.75): Promise<string> {
+export async function compressImageFile(file: File, maxDim = 1280, quality = 0.78): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -486,7 +486,16 @@ export async function compressImageFile(file: File, maxDim = 1200, quality = 0.7
           return;
         }
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        // WebP 우선 압축(300KB 이하 목표), 미지원 브라우저 시 JPEG 폴백
+        let encoded = canvas.toDataURL('image/webp', quality);
+        if (!encoded.startsWith('data:image/webp')) {
+          encoded = canvas.toDataURL('image/jpeg', quality);
+        }
+        if (encoded.length > 400_000) {
+          const reduced = canvas.toDataURL(encoded.startsWith('data:image/webp') ? 'image/webp' : 'image/jpeg', 0.58);
+          if (reduced.length < encoded.length) encoded = reduced;
+        }
+        resolve(encoded);
       };
       img.onerror = () => {
         resolve(resultStr);

@@ -1,10 +1,10 @@
-# 🎣 ExFish 모바일/웹 플랫폼 세부 설계 사양서 (v5.0 프로덕션 확정판)
+# 🎣 ExFish 모바일/웹 플랫폼 세부 설계 사양서 (v5.2 / v1.03.00 프로덕션 확정판)
 > **슬로건**: *"ex-gf, ex-wife, and ex-fish. 떠나버린 물고기를 기리며..."*  
-> **버전**: Version 5.0 (Field Ergonomics & Selective Safety Edition)  
-> **최종 개정일**: 2026년 10월 23일  
+> **버전**: Version 5.2 (`1.03.00-20261115` + Prohibited Zones & Egress Optimization)  
+> **최종 개정일**: 2026년 11월 19일  
 > **공개 저장소**: [https://github.com/tlogger/exfish](https://github.com/tlogger/exfish)  
 > **라이브 서비스**: [https://exfish.vercel.app/](https://exfish.vercel.app/)  
-> **문서 상태**: 모바일 Android 하이브리드 앱 및 웹 프로덕션 배포용 엔지니어링 표준 사양 (Audited & Approved by @reviewer)
+> **문서 상태**: 모바일 Android 하이브리드 앱 및 웹 프로덕션 배포용 엔지니어링 표준 사양 (소스 코드·작업 로그 대조 동기화 완료)
 
 ---
 
@@ -71,16 +71,18 @@ flowchart LR
 
 ### 1.2 핵심 기술 스택
 - **프론트엔드 코어**: React 19 + TypeScript + Tailwind CSS v4 + Vite v8
-- **모바일 네이티브 런타임**: Capacitor 7 Android 하이브리드 앱 아키텍처
-- **지도 엔진**: 카카오 맵 JS SDK (`react-kakao-maps-sdk`) — 50cm급 고해상도 위성 실사 항공사진, 커스텀 벡터 오버레이
+- **모바일 네이티브 런타임**: Capacitor 8 (`@capacitor/android ^8.5.3`) Android 하이브리드 앱 아키텍처
+- **지도 엔진**: 카카오 맵 JS SDK (`react-kakao-maps-sdk`) — 50cm급 고해상도 위성 실사 항공사진, 커스텀 벡터/타일 오버레이
 - **사운드 합성 엔진**: Web Audio API 기반 무의존 순수 듀얼톤($880\text{Hz} \rightarrow 440\text{Hz}$) 경보 합성기
-- **백그라운드 안전장치**: Screen Wake Lock API (`navigator.wakeLock`) + Web Notifications API
+- **백그라운드 안전장치**: Screen Wake Lock (`@capacitor-community/keep-awake` / `navigator.wakeLock`) + Local/Web Notifications API
 - **차트 및 데이터 시각화**: Recharts 기반 반응형 SVG 면적/곡선 차트
 - **해양 데이터 파이프라인**:
   - 국립해양조사원(KHOA) 바다누리 53개 조위관측소 실시간 API 및 4대 조화분조
   - Open-Meteo Marine & Weather API (표층수온, 유의파고, 파주기, 풍향/풍속, 기압)
-  - KHOA 국가해양격자 4대 권역 벡터 수심 등심선(5m/10m/20m/50m) GeoJSON
-- **스토리지 및 인증**: Supabase (PostgreSQL 15 + PostGIS + RLS) + IndexedDB (초경량 JSON 오프라인 캐시) + Email & 닉네임 기반 무암호 간편 인증 (`localStorage` 30일 세션 관리)
+  - KHOA 국가해양격자 4대 권역 벡터 수심 등심선 및 150m 격자수심 IDW 보간
+  - 해로드(HaeRoad) ENC 전자해도 타일 프록시 및 VWorld/KHOA 낚시금지구역 폴리곤 정적 그리드
+- **서버리스/CDN 프록시 (Vercel)**: `api/khoa-proxy.ts`, `api/swtc-proxy.ts`, `api/openmeteo-proxy.ts`, `api/exfish-master.ts`, `api/haeroad-tile.ts`, `api/zones-delta.ts`, `api/zones.ts`, `api/auth-session.ts`, `api/admin/shops.ts`, `api/admin/zones.ts`
+- **스토리지 및 인증**: Supabase (PostgreSQL + PostGIS + RLS + `exfish-photos` Storage 버킷) + IndexedDB (`zoneCache` 등) + `localStorage` 경량 JSON 캐시 + Google/Kakao/Naver 직접 OAuth & HMAC-SHA256 세션 토큰(`api/auth-session.ts`)
 
 ---
 
@@ -274,23 +276,27 @@ $$\eta_{\text{power}}(W) = \begin{cases}
 
 ---
 
-## 6. 수중 침강(폴링) 및 조류 흘림 물리 엔진
+## 6. 수중 침강(폴링) 및 조류 흘림 물리 엔진 (`tackleCalibration.ts`)
 
-### 6.1 루어 유체역학 형상 계수 ($C_{\text{lure}}$) 도입 수중 종단 속도 ($v_{\text{sink}}$)
-$$v_{\text{sink}} \approx C_{\text{lure}} \times 0.28 \times \sqrt{W\text{ (g)}} \quad (\text{m/s}) \quad [0.15\text{ m/s} \le v_{\text{sink}} \le 2.80\text{ m/s} \text{ 클램핑}]$$
+### 6.1 채비 4종 분류 및 수중 종단 속도 ($v_{\text{sink}}$)
+`BaitType`은 **생미끼(`LIVE`)**, **일반 루어(`LURE`: 지그헤드·온스·주꾸미/에기)**, **캐스팅볼(`CASTING_BALL`: 던질찌 `REAL_BALL` / 변형구멍찌 `VARIANT_FLOAT`)**, **메탈(`METAL`: 메탈지그/스푼)** 4종으로 분할 계산됩니다:
 
-| 루어 카테고리 (Lure Type) | 형상 계수 ($C_{\text{lure}}$) | 침강 특성 및 유체역학적 근거 | 대표 사용 장르 |
-| :--- | :---: | :--- | :--- |
-| **텅스텐 마이크로 지그** | **1.25** | 초고밀도(납 대비 1.7배), 최소 투영 단면적으로 물 저항 최소화 | 아징, 락피시 초원투 |
-| **납 메탈지그 / 캐스팅 스푼** | **1.00** | 유선형 메탈 슬림 바디 (기준 표준 계수) | 쇼어지깅, 삼치·방어 |
-| **바이브레이션 / 블레이드 루어** | **0.85** | 루어 전면 플랫 헤드 및 회전 블레이드의 수압 저항 | 농어, 광어 바이브 |
-| **지그헤드 + 3~4인치 웜** | **0.65** | 웜 꼬리(패들/그럽) 수류 저항으로 인한 감속 폴링 | 우럭, 볼락 지그헤드 |
-| **슬로우 피치 지그 / 플랫 메탈** | **0.50** | 비대칭 바디의 슬라이드 및 플러터링 폴링 액션 | 바닥층 락피시, 넙치 |
-| **오징어 에기 3.5호 (Egi)** | **0.25** | 침강률 표준 $3.0 \sim 3.5\text{s/m}$, 깃털 날개/싱커 밸런스 저항 | 무늬오징어, 한치 |
+$$v_{\text{sink}} = 0.26 \times \sqrt{W_{\text{sink}}} \times K_{\text{hydro}} \quad (\text{m/s}) \quad [0.08\text{ m/s} \le v_{\text{sink}} \le 4.0\text{ m/s} \text{ 클램핑}]$$
 
-### 6.2 조류에 의한 원줄 양력 감쇄 및 바닥 안착 시간
-$$v_{\text{eff}} = \frac{v_{\text{sink}}}{\sqrt{1 + \left(\frac{V_{\text{current}}}{0.6 \cdot v_{\text{sink}}}\right)^2}}$$
-$$T_{\text{bottom}} = \frac{H}{v_{\text{eff}}} \quad (\text{초}), \quad D_{\text{drift,tide}} = V_{\text{current}} \times T_{\text{bottom}} \quad (\text{m})$$
+- **일반 루어 (`JIG` / `OZ`)**: 소프트웜은 해수 비중($\approx 1.03$)과 유사하므로 싱커/지그헤드 무게만 침강 동력($W_{\text{sink}}$)으로 작용하며, 웜 형상(`GRUB`, `SHAD`, `STRAIGHT`, `MINNOW`) 및 길이는 유체역학 저항($K_{\text{hydro}} = (2.24 / (C_{d,\text{hydro}} \cdot A_{\text{worm}}))^{0.24}$)으로만 작용.
+- **주꾸미/에기 (`JUKKUMI`)**: 에기 부력 상쇄 후 유효 수중 침강 중량($0.25 W_{\text{egi}} + W_{\text{sinker}}$) 기반 계산.
+- **캐스팅볼 (`CASTING_BALL`)**: 착수 후 수중 침강은 선단 지그헤드 무게와 트레일러 웜 저항만으로 계산. `VARIANT_FLOAT`(변형구멍찌)는 표층 타깃(`SURFACE`)으로 분류.
+- **메탈 (`METAL`)**: 최소 수중 형상 저항(`BODY_HYDRO_DRAG_CD.METAL_JIG = 0.35`) 및 표면적/질량비 보정 적용.
+
+### 6.2 조류 각도차 보정, 원줄 양력 감쇄 및 밑걸림 위험도 (`snagRisk`)
+캐스팅 방위각과 조류 방향의 각도차($\Delta\theta$)를 반영하여 원줄 횡방향 항력 가중치를 산출합니다:
+
+$$\text{directionalMultiplier} = 1 + 0.16 \sin(\Delta\theta)\sqrt{\text{PE}} + 0.12 \cos(\Delta\theta)$$
+$$v_{\text{eff}} = \frac{v_{\text{sink}}}{\sqrt{1 + \left(\frac{V_{\text{current}} \cdot \text{directionalMultiplier}}{0.8 \cdot v_{\text{sink}}}\right)^2}} \quad [\ge 0.06\text{ m/s}]$$
+$$T_{\text{bottom}} = \frac{H_{\text{eff}}}{v_{\text{eff}}} \quad (\text{초}), \quad D_{\text{drift,tide}} = V_{\text{current}} \times T_{\text{bottom}} \quad (\text{m})$$
+
+- **목표 수심층 (`targetLayer`)**: `SURFACE` (변형구멍찌, `honorFloatLayer` 적용 시 최대 $3.0\text{m}$), `MID` (미노우), `BOTTOM` (기타).
+- **밑걸림 위험도 (`snagRisk`: `LOW` / `MEDIUM` / `HIGH`)**: $\Delta\theta > 120^\circ$ & $V_{\text{current}} \ge 0.35\text{m/s}$ 또는 바닥 안착 불가(`!canReachBottom`) 시 `HIGH`, $\Delta\theta \ge 60^\circ$ & $V_{\text{current}} \ge 0.4\text{m/s}$ 시 `MEDIUM` 판정.
 
 ---
 
@@ -365,22 +371,32 @@ flowchart TD
   - 등록된 포인트 메타데이터, 42시간 조석표, 최근 기상 관측 벡터, 꽝 복기 로그 스키마를 로컬 캐시(localStorage / 향후 IndexedDB 로드맵)에 안전 저장.
   - 서해/남해안 갯바위 등 LTE/5G 음영 지역에 진입하더라도 기 다운로드된 포인트 제원과 조석 피딩 타임라인을 100% 정상 열람 가능.
 
-### 9.3 Capacitor Android 하이브리드 아키텍처
-- `capacitor.config.ts`:
+### 9.3 Capacitor 8 Android 하이브리드 아키텍처
+- `capacitor.config.ts` (`@capacitor/cli ^8.5.3`):
   - `appId`: `com.tlogger.exfish`
   - `appName`: `ExFish`
-  - `allowMixedContent: true` (해양 기상 공공 API 호환성 보장)
-  - `webContentsDebuggingEnabled: true`
+  - `webDir`: `dist`
+  - `server`: `androidScheme: 'https'`, `hostname: 'localhost'`, `cleartext: false`
+  - `android`: `allowMixedContent: true`, `captureInput: false`, `webContentsDebuggingEnabled: true`
+- **권한 최소화**: Android Photo Picker 기반 무권한 사진 첨부 및 EXIF GPS 3단계 추출(`exifExtractor.ts`) 적용.
 
 ---
 
 ## 10. 시스템 컴포넌트 아키텍처 매핑 및 데이터 모델
 
-### 10.1 TypeScript 핵심 인터페이스 (`src/types/index.ts`)
+### 10.1 TypeScript 핵심 인터페이스 (`src/types/index.ts`, `src/types/prohibitedZone.ts`)
 
 ```typescript
 export type SpotType = 'ROCK' | 'SEAWALL' | 'BREAKWATER' | 'BEACH' | 'PIER';
 export type FishingMethod = 'SURF' | 'LURE' | 'FLOAT';
+
+export interface SweetSpot {
+  id: string;
+  direction: number; // 0 ~ 359° (북쪽 0° 기준 시계방향)
+  distance: number;  // 1 ~ 150m
+  radius: number;    // 1 ~ 20m
+  memo?: string;
+}
 
 export interface FishingSpot {
   id: string;
@@ -393,6 +409,7 @@ export interface FishingSpot {
   lng: number;
   navi_name?: string;
   navi_url?: string;
+  related_url?: string;
   directions: string;
   photo_urls: string[];
   fishing_methods: FishingMethod[];
@@ -403,6 +420,9 @@ export interface FishingSpot {
   description?: string;
   casting_start_deg?: number; // 0~359° (북쪽 0° 기준 시계방향)
   casting_end_deg?: number;   // 0~359°
+  casting_directions?: string[];
+  use_sweet_spot?: boolean;
+  sweet_spots?: SweetSpot[];
   created_at: string;
 }
 
@@ -413,10 +433,13 @@ export interface CatchLog {
   user_name: string;
   catch_date: string; // YYYY-MM-DD
   catch_time: string; // HH:mm
+  start_time?: string;
+  end_time?: string;
+  duration_minutes?: number;
   fish_species: string;
+  fish_size_cm?: number;
   fish_count: number; // 0 = 꽝 (No-Fish)
   is_hitless?: boolean;
-  fish_size_cm?: number;
   catch_method: FishingMethod;
   lure_bait?: string;
   catch_mul: string;
@@ -425,48 +448,107 @@ export interface CatchLog {
   wind_speed: number;
   wind_direction?: number;
   current_velocity?: number;
-  wave_height?: number;
-  environment_snapshot?: Record<string, any>;
-  post_mortem_data?: Record<string, any>; // SHAP 꽝 복기 기여도
+  current_direction?: number;
+  lat?: number;
+  lng?: number;
+  photo_url?: string;
+  memo?: string;
   created_at: string;
 }
+
+export interface FishingShop {
+  id: string;
+  user_id: string;
+  author_name: string;
+  is_public: boolean;
+  name: string;
+  lat: number;
+  lng: number;
+  navi_name?: string;
+  navi_url?: string;
+  kakao_place_id?: string;
+  has_restroom: boolean;
+  has_store: boolean;
+  is_promoted?: boolean;
+  promoted_until?: string;
+  promo_badge_text?: string;
+  is_deleted?: boolean;
+  created_at: string;
+  updated_at?: string;
+}
 ```
+- 이외에도 현장 메모(`SpotMemo`, `ShopMemo`) 및 낚시금지구역(`ProhibitedZoneFeature`, `ZoneManifest`, `ZonesDeltaResponse`, `ZoneHitResult`, `PendingZoneMutation`) 인터페이스가 `src/types/`에 정의되어 있습니다.
 
 ### 10.2 프론트엔드 컴포넌트 계층도
 
 ```mermaid
 graph TD
     App["App.tsx (글로벌 상태 & 2계층 검색 엔진)"] --> Splash["SplashScreen.tsx (1.5초 감성 인트로)"]
-    App --> Header["Header (ExFish 로고, 2계층 검색바, 프로필)"]
-    App --> MapView["MapView.tsx (카카오맵 엔진 & 가상 조준경 HUD)"]
+    App --> MapView["MapView.tsx (카카오맵 엔진 & HUD)"]
     App --> SpotDetail["SpotDetailPanel.tsx (상세 보기 & 안전 엔진)"]
-    App --> SpotForm["SpotFormModal.tsx (포인트 등록 & 레이더뷰)"]
-    App --> CatchModal["CatchLogModal.tsx (조과 & 꽝 사후 복기 등록)"]
+    App --> ShopDetail["ShopDetailPanel.tsx (낚시점 POI 상세/메모)"]
+    App --> Modals["모달 그룹"]
 
-    MapView --> CrosshairHUD["가상 십자선 & 1m D-Pad 미세조정"]
-    MapView --> OrangeArcHUD["공기역학 채비 편류 오렌지 라인"]
-    MapView --> BathymetryOverlay["KHOA 수심 등심선 오버레이"]
+    Modals --> SpotForm["SpotFormModal.tsx (포인트 등록 & 레이더뷰)"]
+    Modals --> CatchModal["CatchLogModal.tsx (조과 & 꽝 사후 복기)"]
+    Modals --> ShopForm["ShopFormModal.tsx (낚시점 등록 - 관리자)"]
+    Modals --> SpotList["SpotListModal.tsx (필터/정렬 목록)"]
+    Modals --> SpeciesQuick["SpeciesQuickModal.tsx (어종 도감)"]
+    Modals --> Checklist["ChecklistModal.tsx (장르별 체크리스트)"]
+    Modals --> CloudSync["CloudSyncModal.tsx / LoginModal.tsx"]
+    Modals --> BiteHelp["BiteScoreHelpModal.tsx"]
 
-    SpotDetail --> SuperimposeHero["사진 일체형 히어로 (노이즈 제거)"]
-    SpotDetail --> HazardAlertBanner["조건부 안전 경보 (3대 위험 지형 전용)"]
-    SpotDetail --> GoldenTimeTimer["들물 고립 타이머 & Web Audio 비프음"]
-    SpotDetail --> Calibrator4Way["4대 실전 무게 프리셋 캘리브레이터"]
-    SpotDetail --> RoadviewDeepLink["카카오 로드뷰 360° 현장 미리보기"]
+    MapView --> Markers["MaterialSpotMarker.tsx (포인트 마커)"]
+    MapView --> Prohibited["ProhibitedZoneOverlay.tsx (금지구역 폴리곤)"]
+    MapView --> Digitizer["ZoneDigitizer.tsx (다각형 사용자 작도)"]
+    MapView --> HaeRoad["HaeRoadEncOverlay.tsx (전자해도 타일)"]
+    MapView --> CrosshairHUD["가상 십자선 & 1m D-Pad / 편류 오렌지 라인"]
 
-    SpotForm --> RadarViewSVG["원형 레이더뷰 SVG (내부 각도 통합)"]
-    SpotForm --> CardinalPresets["원터치 빠른 프리셋 (동서남북 & 60/90/120)"]
+    SpotDetail --> HazardAlertBanner["조건부 안전 경보 & 들물 고립 타이머"]
+    SpotDetail --> Calibrator4Way["채비 캘리브레이터 & 카카오 로드뷰"]
 ```
 
 ---
 
-## 11. 버전 변경 이력 (Changelog)
+## 11. KHOA·Open-Meteo 연동, 증분 동기화 및 Egress 절감 아키텍처 (v1.03.00+)
 
-- **v1.0 ~ v3.8**: Leaflet 프로토타입에서 카카오맵 JS SDK 전면 전환, 20대 어종 생태 DB 구축, 조석 곡선 및 가상 조준경 HUD 구현.
-- **v4.0 ~ v4.2**: 비대칭 스플릿 로그-가우시안 로드 탄성 효율 모델, 루어 유체역학 형상 계수($C_{\text{lure}}$), KHOA 실측 잔차 시공간 하이브리드 감쇄 모델, 지그헤드+2인치 웜 바람 편류 오렌지 아크 적용.
-- **v5.0 (현재 개정판 - Field Ergonomics & Selective Safety Edition)**:
-  - **지형 분류 체계 및 조건부 안전 경보 엔진 확립**: 방파제/선착장의 경보 피로를 해소하고, 석축/갯바위/해변 3대 위험 지형에만 고립 타이머 및 연안안전위험예보 선택적 가동.
-  - **원형 레이더뷰 UX 혁신**: 직관적인 '🎯 캐스팅 방향' 명칭, 레이더 내부 각도 직접 표기, 원터치 빠른 프리셋(동/서/남/북 및 60°/90°/120°), '✓ 사용' 스위치 확정.
-  - **상세 보기 패널 노이즈 제거**: 관측소 거리, 중복 파도 문구 등 개발용 사족을 전면 제거하고 사진 일체형 Superimpose 히어로로 시인성 극대화.
-  - **4대 실전 무게 프리셋 캘리브레이터**: 지그헤드(g), 온스 루어(oz), 주꾸미 봉돌(호), 원투 봉돌(호) 실전 규격 탑재.
-  - **2계층 지능형 검색 & 모바일 IME 최적화**: 1순위 등록 포인트 및 대상 어종 매칭, 2순위 카카오 POI 분리 및 한글 자모 씹힘 방지.
-  - **모바일 앱 & 오프라인 정책**: 1.5초 감성 스플래시 스크린, 벡터 SVG 런처 아이콘, 카카오 ToS 준수 초경량 JSON IndexedDB 오프라인 캐시 확립.
+### 11.1 KHOA 마스터 조위 엔진 & 수심 IDW 보간
+- **KHOA SWTC 7일 주간 데이터 & Cosine Hermite Spline**: 공식 극점(만조/간조)을 관통하는 스플라인 보간으로 시차 0분·조고 오차 0cm 달성.
+- **한국천문연구원(KASI) 합삭 역법 & 종속항 개정수**: KHOA SWTC 공식 물때 우선 채택 및 KASI 합삭 테이블로 1일 밀림 방지; 해역별 물때 체계(서해 7물제 vs 남해·동해 8물제) 및 종속항 시차·조고비 보정.
+- **150m 격자수심 IDW + 실시간 조위 합성**: 5~30m 동적 등심선 오버레이 및 착수점 수심 기반 선택 채비 바닥 안착 시간 계산.
+
+### 11.2 Vercel Edge CDN 프록시, Open-Meteo 서킷 브레이커 & Supabase Egress 최적화
+- **CDN 프록시**: `api/khoa-proxy.ts`, `api/swtc-proxy.ts`, `api/openmeteo-proxy.ts`, `api/exfish-master.ts`를 통해 CORS 우회, KHOA/Open-Meteo 부팅 일괄 호출 폭격 차단(Negative 캐싱, 15분 쿨다운) 및 Supabase L2 Egress 우회(Vercel Edge CDN 우선).
+- **Open-Meteo 안정화**: 타임아웃·서킷 브레이커·동시성 큐 적용 (`weatherApi.ts`).
+- **Supabase 증분 동기화 & 스토리지 분리**: `updated_at` 기반 Delta Sync 및 `is_deleted` Soft Delete, `spot_memos` TTL 캐싱 적용. 이미지 데이터는 DB Base64 저장을 차단(`storage.ts`)하고 Supabase Storage(`exfish-photos` 버킷)로 분리(`uploadPhotoToStorage`)하여 Egress를 최소화.
+
+---
+
+## 12. 공용 낚시점 POI 및 해로드(HaeRoad) ENC 오버레이
+
+- **독립 레이어 구조**: 기존 낚시 포인트 파이프라인(KHOA, Open-Meteo, `biteScore`)과 완전히 격리된 `fishing_shops` (프로모션 필드 `is_promoted`, `promo_badge_text` 예약) 및 `shop_memos` 테이블 운영.
+- **해로드 ENC 전자해도 오버레이 (`HaeRoadEncOverlay.tsx`)**: `/api/haeroad-tile` 프록시(`api/haeroad-tile.ts`, 한반도 BBOX·줌 8~16 제한) 기반 XYZ 래스터 타일 오버레이, 카카오맵(`EPSG:5181`) ↔ 해로드(`EPSG:3857`) 아핀 행렬 보정 좌표 동기화 및 디지털 줌(1.8x, 3.0x) 대응.
+- **권한 및 UI**: 최고 관리자(`paedros@gmail.com`) 로그인 시에만 ENC 토글 및 낚시점 등록(`ShopFormModal`, `api/admin/shops.ts`) 노출, 일반 사용자는 조회(`ShopDetailPanel`) 및 카카오맵 내비 연동 가능.
+
+---
+
+## 13. 연안 낚시금지구역 폴리곤 오버레이 & 사용자 작도 시스템 (2026-11-18)
+
+### 13.1 하이브리드 정적 청크 + 동적 델타 아키텍처
+- **오프라인 ETL 정적 청크 (`scripts/zones-etl/`, `public/zones/`)**: KHOA `TL_RESARE_ENS`, VWorld `LT_C_UM901`(습지보호지역)·`LT_C_UM221`(야생생물보호구역)·`LT_C_UQ126`(중요시설물보호지구), 지자체/해경 고시(시화방조제, 새만금방조제, 석문방조제, 장고항) 데이터를 `EPSG:4326` $0.25^\circ$ 그리드 셀(`166`개 셀, 총 `905`개 피처, `manifest.json` `version: 20261118-01`)로 분할 빌드하여 CDN `immutable` 캐시로 서빙.
+- **동적 델타 API (`api/zones-delta.ts`)**: Supabase의 사용자 제보 구역(`activeZones`) 및 관리자 삭제 목록(`suppressedZoneIds`)을 `s-maxage=60` CDN 캐시로 결합 전달.
+- **SPA 라우팅 격리 (`vercel.json`)**: `/((?!api/|zones/).*)` Negative Lookahead로 API 및 정적 JSON 청크가 SPA 폴백(`index.html`)에 가로채이지 않도록 격리.
+
+### 13.2 3-Tier 신뢰 계층 & 공간 엔진
+- **3-Tier 분류 (`ZoneTier`)**:
+  1. `confirmed_polygon`: 공공/고시 확정 낚시통제·보호구역 폴리곤.
+  2. `community_reported`: 사용자 직접 작도 제보 구역 (`RestrictionScope`: `all_year` / `seasonal` / `night_only`).
+  3. `caution_point`: 반경(`radius_m`) 기반 주의 포인트.
+- **클라이언트 공간 엔진 (`zoneSpatial.ts`, `zoneCache.ts`)**: 뷰포트 셀 ID 계산, Point-in-Polygon(홀 포함) 및 반경 충돌 판정, IndexedDB 캐시 및 낙관적 로컬 변이 큐(`pending_local_mutations`) 관리.
+- **무결성 검증 및 사후 관리**: `api/zones.ts`의 다각형 자기교차(`hasSelfIntersection`)·면적 상하한 검증 및 `zone_flags` 누적 신고 자동 격리, `api/admin/zones.ts`의 최고 관리자(`paedros@gmail.com`) Soft Delete & `suppressed_zones` 영구 숨김 처리, `api/auth-session.ts`의 HMAC-SHA256 세션 토큰 검증.
+
+---
+
+## 14. 버전 변경 이력
+- 상세 변경 이력은 [CHANGELOG.md](./CHANGELOG.md)를 참조하십시오.
+- 어종별 생태·수온·금어기 상세 DB는 `exfish_species_db_v2.md` (NIFS 기반 30개 어종)를 참조하십시오.

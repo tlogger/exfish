@@ -1,7 +1,7 @@
 import { MarineData, WeatherData } from '../types';
 import { findNearestKhoaStation } from './tideService';
-import { getCachedKhoaWind, getCachedKhoaWaterTemp } from './khoaCache';
-import { fetchKhoaRoms } from './khoaApi';
+import { getCachedKhoaRoms, getCachedKhoaWind, getCachedKhoaWaterTemp } from './khoaCache';
+import { isNativePlatform } from './nativeBridge';
 
 /** WMO Weather Code를 사람이 읽기 쉬운 한국어 텍스트 및 이모지로 변환 */
 export function getWeatherText(code: number): string {
@@ -95,13 +95,111 @@ const memoryMarineCache = new Map<string, CachedItem<MarineData>>();
 const inFlightMarineRequests = new Map<string, Promise<MarineData>>();
 
 const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000; // 15분 캐시
+const OPEN_METEO_TIMEOUT_MS = 6000;
+const OPEN_METEO_FAILURE_CACHE_MS = 2 * 60 * 1000; // 실패 시 2분 메모리 네거티브 캐시
+const OPEN_METEO_CIRCUIT_THRESHOLD = 3; // 연속 3회 실패 시 서킷 오픈
+const OPEN_METEO_CIRCUIT_OPEN_MS = 3 * 60 * 1000; // 서킷 오픈 유지 3분
+const MAX_CONCURRENT_OPEN_METEO = 4;
+
+type OpenMeteoEndpoint = 'forecast' | 'marine';
+
+const circuitState: Record<OpenMeteoEndpoint, { failures: number; openUntil: number }> = {
+  forecast: { failures: 0, openUntil: 0 },
+  marine: { failures: 0, openUntil: 0 },
+};
+
+let activeOpenMeteoRequests = 0;
+const openMeteoQueue: Array<() => void> = [];
+
+async function runWithOpenMeteoLimit<T>(task: () => Promise<T>): Promise<T> {
+  if (activeOpenMeteoRequests >= MAX_CONCURRENT_OPEN_METEO) {
+    await new Promise<void>((resolve) => openMeteoQueue.push(resolve));
+  }
+  activeOpenMeteoRequests++;
+  try {
+    return await task();
+  } finally {
+    activeOpenMeteoRequests--;
+    const next = openMeteoQueue.shift();
+    if (next) next();
+  }
+}
+
+/** 웹은 /api-openmeteo, 네이티브 APK는 Vercel CDN 프록시 절대 URL, 테스트/SSR은 직접 엔드포인트 사용 */
+export function getOpenMeteoEndpointUrl(endpoint: OpenMeteoEndpoint): string {
+  if (isNativePlatform()) {
+    return `https://exfish.vercel.app/api-openmeteo/${endpoint}`;
+  }
+  if (
+    typeof window !== 'undefined' &&
+    window.location &&
+    window.location.protocol &&
+    window.location.protocol.startsWith('http')
+  ) {
+    return `/api-openmeteo/${endpoint}`;
+  }
+  return endpoint === 'marine'
+    ? 'https://marine-api.open-meteo.com/v1/marine'
+    : 'https://api.open-meteo.com/v1/forecast';
+}
+
+function snapOpenMeteoCoord(value: number): string {
+  return (Math.round(value * 50) / 50).toFixed(2); // 0.02°(~2.2km) 격자 스냅으로 CDN 캐시 적중률 향상
+}
+
+function createTimeoutSignal(ms: number): AbortSignal | undefined {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  return undefined;
+}
+
+async function fetchOpenMeteoWithGuard(endpoint: OpenMeteoEndpoint, url: string): Promise<Response> {
+  const st = circuitState[endpoint];
+  if (st.openUntil > Date.now()) {
+    throw new Error(`Open-Meteo ${endpoint} circuit open`);
+  }
+
+  return runWithOpenMeteoLimit(async () => {
+    try {
+      const signal = createTimeoutSignal(OPEN_METEO_TIMEOUT_MS);
+      const res = await fetch(url, signal ? { signal } : undefined);
+      if (res.ok) {
+        st.failures = 0;
+        st.openUntil = 0;
+      } else if (res.status === 429 || res.status >= 500) {
+        st.failures++;
+        if (st.failures >= OPEN_METEO_CIRCUIT_THRESHOLD) {
+          st.openUntil = Date.now() + OPEN_METEO_CIRCUIT_OPEN_MS;
+        }
+      }
+      return res;
+    } catch (err) {
+      st.failures++;
+      if (st.failures >= OPEN_METEO_CIRCUIT_THRESHOLD) {
+        st.openUntil = Date.now() + OPEN_METEO_CIRCUIT_OPEN_MS;
+      }
+      throw err;
+    }
+  });
+}
+
+/** 테스트 격리를 위한 Open-Meteo 캐시 및 서킷 브레이커 초기화 */
+export function resetOpenMeteoClientState(): void {
+  memoryWeatherCache.clear();
+  memoryMarineCache.clear();
+  inFlightWeatherRequests.clear();
+  inFlightMarineRequests.clear();
+  circuitState.forecast = { failures: 0, openUntil: 0 };
+  circuitState.marine = { failures: 0, openUntil: 0 };
+}
 
 /** Open-Meteo Weather Forecast API (Windy.com과 100% 동일한 ECMWF IFS HRES 9km 고해상도 모델 `ecmwf_ifs`) 호출 (15분 캐시 적용) */
 export async function fetchWeatherData(lat: number, lng: number): Promise<WeatherData> {
   // 해안선/방조제 좌표가 내륙 격자로 밀리지 않도록 0.01°(약 1km) 정밀도 유지
   const gridLat = Math.round(lat * 100) / 100;
   const gridLng = Math.round(lng * 100) / 100;
-  const cacheKey = `exfish_weather_v3_${gridLat.toFixed(2)}_${gridLng.toFixed(2)}`;
+  const cacheKey = `exfish_weather_v4_${gridLat.toFixed(2)}_${gridLng.toFixed(2)}`;
 
   // 1. 메모리 캐시 검사
   const mem = memoryWeatherCache.get(cacheKey);
@@ -131,14 +229,17 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
   const reqPromise = (async () => {
     // Windy.com 기본 모델과 100% 동일한 ECMWF IFS HRES 9km (`models=ecmwf_ifs`) 지정
     // (기존 `ecmwf_ifs025`는 0.25°=28km 저해상도 격자였으며, KHOA 내항 관측소 덮어쓰기로 인해 현장/Windy와 괴리 발생)
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&models=ecmwf_ifs&wind_speed_unit=ms&forecast_days=4&timezone=Asia%2FSeoul`;
+    const baseUrl = getOpenMeteoEndpointUrl('forecast');
+    const qLat = snapOpenMeteoCoord(lat);
+    const qLng = snapOpenMeteoCoord(lng);
+    const url = `${baseUrl}?latitude=${qLat}&longitude=${qLng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&models=ecmwf_ifs&wind_speed_unit=ms&forecast_days=4&timezone=Asia%2FSeoul`;
 
     try {
-      let res = await fetch(url);
+      let res = await fetchOpenMeteoWithGuard('forecast', url);
       // 만약 ecmwf_ifs 일시 오류 시 ecmwf_ifs025 모델로 1회 안전 폴백
       if (!res.ok) {
-        const fallbackUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&models=ecmwf_ifs025&wind_speed_unit=ms&forecast_days=4&timezone=Asia%2FSeoul`;
-        res = await fetch(fallbackUrl);
+        const fallbackUrl = `${baseUrl}?latitude=${qLat}&longitude=${qLng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&hourly=temperature_2m,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure&models=ecmwf_ifs025&wind_speed_unit=ms&forecast_days=4&timezone=Asia%2FSeoul`;
+        res = await fetchOpenMeteoWithGuard('forecast', fallbackUrl);
       }
 
       if (!res.ok) throw new Error(`Weather fetch failed: ${res.statusText}`);
@@ -170,6 +271,7 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
         windSpeed: finalWindSpeed,
         windDirection: finalWindDir,
         windGust: finalWindGust,
+        pressureHpa: typeof current.surface_pressure === 'number' ? Math.round(current.surface_pressure * 10) / 10 : 1013.25,
         isObserved: false,
         hourly: {
           time: data.hourly?.time?.slice(0, 96) || [],
@@ -179,6 +281,7 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
           windGust: hourlyWindGust,
           pop: data.hourly?.precipitation_probability?.slice(0, 96) || [],
           weatherCode: data.hourly?.weather_code?.slice(0, 96) || [],
+          pressureHpa: Array.isArray(data.hourly?.surface_pressure) ? data.hourly.surface_pressure.slice(0, 96) : undefined,
         },
       };
 
@@ -219,6 +322,10 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
         },
       };
 
+      memoryWeatherCache.set(cacheKey, {
+        data: fallback,
+        expireAt: Date.now() + OPEN_METEO_FAILURE_CACHE_MS,
+      });
       return fallback;
     } finally {
       inFlightWeatherRequests.delete(cacheKey);
@@ -233,7 +340,7 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
 export async function fetchMarineData(lat: number, lng: number): Promise<MarineData> {
   const gridLat = Math.round(lat * 100) / 100;
   const gridLng = Math.round(lng * 100) / 100;
-  const cacheKey = `exfish_marine_v3_${gridLat.toFixed(2)}_${gridLng.toFixed(2)}`;
+  const cacheKey = `exfish_marine_v4_${gridLat.toFixed(2)}_${gridLng.toFixed(2)}`;
 
   // 1. 메모리 캐시 검사
   const mem = memoryMarineCache.get(cacheKey);
@@ -261,15 +368,18 @@ export async function fetchMarineData(lat: number, lng: number): Promise<MarineD
   }
 
   const reqPromise = (async () => {
-    const url = `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&current=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&hourly=wave_height,sea_surface_temperature,ocean_current_velocity,ocean_current_direction&forecast_days=4&timezone=Asia%2FSeoul`;
+    const baseUrl = getOpenMeteoEndpointUrl('marine');
+    const qLat = snapOpenMeteoCoord(lat);
+    const qLng = snapOpenMeteoCoord(lng);
+    const url = `${baseUrl}?latitude=${qLat}&longitude=${qLng}&current=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&hourly=wave_height,wave_period,sea_surface_temperature,ocean_current_velocity,ocean_current_direction&forecast_days=4&timezone=Asia%2FSeoul`;
 
     const nearest = findNearestKhoaStation(lat, lng);
     const khoaTempPromise = getCachedKhoaWaterTemp(nearest.station.code).catch(() => null);
-    const romsPromise = fetchKhoaRoms(lat, lng).catch(() => null);
+    const romsPromise = getCachedKhoaRoms(lat, lng).catch(() => null);
 
     try {
       const [res, khoaTemp, roms] = await Promise.all([
-        fetch(url),
+        fetchOpenMeteoWithGuard('marine', url),
         khoaTempPromise,
         romsPromise,
       ]);
@@ -325,6 +435,7 @@ export async function fetchMarineData(lat: number, lng: number): Promise<MarineD
           time: hourly?.time?.slice(0, 96) || [],
           seaSurfaceTemp: hourly?.sea_surface_temperature?.slice(0, 96) || [],
           waveHeight: hourly?.wave_height?.slice(0, 96) || [],
+          wavePeriod: hourly?.wave_period?.slice(0, 96) || [],
           currentVelocity: hourlyCurrentVel,
           currentDirection: hourly?.ocean_current_direction?.slice(0, 96) || [],
         },
@@ -344,7 +455,7 @@ export async function fetchMarineData(lat: number, lng: number): Promise<MarineD
       console.warn('Marine API fallback used:', err);
       const khoaTemp = await khoaTempPromise.catch(() => null);
 
-      return {
+      const fallbackMarine: MarineData = {
         seaSurfaceTemp: khoaTemp && typeof khoaTemp.wtem === 'number' ? Math.round(khoaTemp.wtem * 10) / 10 : 17.4,
         waveHeight: 0.5,
         waveDirection: 210,
@@ -361,6 +472,11 @@ export async function fetchMarineData(lat: number, lng: number): Promise<MarineD
           currentDirection: Array.from({ length: 24 }, () => 140),
         },
       };
+      memoryMarineCache.set(cacheKey, {
+        data: fallbackMarine,
+        expireAt: Date.now() + OPEN_METEO_FAILURE_CACHE_MS,
+      });
+      return fallbackMarine;
     } finally {
       inFlightMarineRequests.delete(cacheKey);
     }
@@ -439,4 +555,68 @@ export function calculateSwellRisk(waveHeight: number, wavePeriod: number): Swel
     energyScore: Math.round(energy * 10) / 10,
     description: '너울 에너지가 낮아 도보 포인트 및 갯바위 진입에 양호한 상태입니다.',
   };
+}
+
+export interface HistoricalHourEnv {
+  temp?: number;
+  windSpeed?: number;
+  windDirection?: number;
+  waterTemp?: number;
+  waveHeight?: number;
+  wavePeriod?: number;
+  currentVelocity?: number;
+  currentDirection?: number;
+}
+
+/**
+ * 최근 90일 이내 특정 날짜(YYYY-MM-DD)의 시간별 기상·해양 과거 데이터 조회
+ * (/api-openmeteo/forecast, /api-openmeteo/marine -> Edge CDN 24h 캐시)
+ */
+export async function fetchHistoricalWeatherAndMarine(
+  lat: number,
+  lng: number,
+  dateStr: string,
+  targetHour: number
+): Promise<HistoricalHourEnv> {
+  const hourIdx = Math.max(0, Math.min(23, Math.floor(targetHour)));
+  const qLat = snapOpenMeteoCoord(lat);
+  const qLng = snapOpenMeteoCoord(lng);
+
+  const weatherUrl = `${getOpenMeteoEndpointUrl('forecast')}?latitude=${qLat}&longitude=${qLng}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&start_date=${dateStr}&end_date=${dateStr}&timezone=Asia%2FSeoul`;
+  const marineUrl = `${getOpenMeteoEndpointUrl('marine')}?latitude=${qLat}&longitude=${qLng}&hourly=wave_height,wave_period,sea_surface_temperature,ocean_current_velocity,ocean_current_direction&start_date=${dateStr}&end_date=${dateStr}&timezone=Asia%2FSeoul`;
+
+  const [wRes, mRes] = await Promise.allSettled([
+    fetchOpenMeteoWithGuard('forecast', weatherUrl),
+    fetchOpenMeteoWithGuard('marine', marineUrl),
+  ]);
+
+  const out: HistoricalHourEnv = {};
+
+  if (wRes.status === 'fulfilled' && wRes.value.ok) {
+    try {
+      const wJson = await wRes.value.json();
+      const h = wJson?.hourly;
+      if (h?.temperature_2m?.[hourIdx] != null) out.temp = Math.round(Number(h.temperature_2m[hourIdx]) * 10) / 10;
+      if (h?.wind_speed_10m?.[hourIdx] != null) out.windSpeed = Math.round(Number(h.wind_speed_10m[hourIdx]) * 10) / 10;
+      if (h?.wind_direction_10m?.[hourIdx] != null) out.windDirection = Math.round(Number(h.wind_direction_10m[hourIdx]));
+    } catch {}
+  }
+
+  if (mRes.status === 'fulfilled' && mRes.value.ok) {
+    try {
+      const mJson = await mRes.value.json();
+      const h = mJson?.hourly;
+      if (h?.sea_surface_temperature?.[hourIdx] != null) out.waterTemp = Math.round(Number(h.sea_surface_temperature[hourIdx]) * 10) / 10;
+      if (h?.wave_height?.[hourIdx] != null) out.waveHeight = Math.round(Number(h.wave_height[hourIdx]) * 10) / 10;
+      if (h?.wave_period?.[hourIdx] != null) out.wavePeriod = Math.round(Number(h.wave_period[hourIdx]) * 10) / 10;
+      if (h?.ocean_current_velocity?.[hourIdx] != null) {
+        out.currentVelocity = Math.round((Number(h.ocean_current_velocity[hourIdx]) / 3.6) * 100) / 100;
+      }
+      if (h?.ocean_current_direction?.[hourIdx] != null) {
+        out.currentDirection = Math.round(Number(h.ocean_current_direction[hourIdx]));
+      }
+    } catch {}
+  }
+
+  return out;
 }

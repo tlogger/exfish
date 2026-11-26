@@ -1,5 +1,8 @@
 android
 google_play_assets
-public/*.aab
-*.aab
 .gemini
+.env.local
+photo_migration_backup_*.json
+*_report.md
+concepts_brief.md
+design_draft.md

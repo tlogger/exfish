@@ -45,7 +45,8 @@ export async function getCachedKhoaWind(obsCode: string): Promise<KhoaWindRecord
     'WIND',
     obsCode,
     ttlMs,
-    () => fetchKhoaWind(obsCode)
+    () => fetchKhoaWind(obsCode),
+    { useSupabaseL2: false }
   );
 }
 
@@ -60,7 +61,8 @@ export async function getCachedKhoaWaterTemp(obsCode: string): Promise<KhoaWater
     'WATER_TEMP',
     obsCode,
     ttlMs,
-    () => fetchKhoaWaterTemp(obsCode)
+    () => fetchKhoaWaterTemp(obsCode),
+    { useSupabaseL2: false }
   );
 }
 
@@ -98,6 +100,7 @@ export async function getCachedKhoaRoms(lat: number, lng: number): Promise<KhoaR
     'ROMS',
     `${rLat}_${rLng}`,
     ttlMs,
-    () => fetchKhoaRoms(lat, lng)
+    () => fetchKhoaRoms(lat, lng),
+    { useSupabaseL2: false }
   );
 }

@@ -14,6 +14,7 @@ import {
   REAL_CASTING_BALL_PRESETS,
   resetTackleConfigState,
   saveTackleConfig,
+  solveLeadCastAimPoint,
   VARIANT_FLOAT_HO_PRESETS,
 } from './tackleCalibration';
 
@@ -421,5 +422,49 @@ describe('tackleConfig state management & UI requirements', () => {
     const metalSink = calculateSinkingPhysics(20.0, 10, 0.3, metal20);
     const lureSink = calculateSinkingPhysics(20.0, 10, 0.3, getBaitSpecs('LURE', 2, 'GRUB'));
     expect(metalSink.sinkSpeedMps).toBeGreaterThan(lureSink.sinkSpeedMps);
+  });
+
+  it('distinguishes bait aerodynamic shape drag in crosswind and computes lead-cast aim point & directional sink', () => {
+    const metalBait = getBaitSpecs('METAL', 2, 'STRAIGHT', 6.0, 1.0, 1.0, 20.0);
+    const floatBait = getBaitSpecs('CASTING_BALL', 2, 'SHAD', 6.0, 1.0, 1.0, 20.0, 'OZ', 'VARIANT_FLOAT', 20.0);
+
+    const driftMetal = calculateAerodynamicCastingDrift(0, 50, 8, 90, 20, 1.0, 2.0, metalBait);
+    const driftFloat = calculateAerodynamicCastingDrift(0, 50, 8, 90, 20, 1.0, 2.0, floatBait);
+
+    expect(driftFloat.driftDistanceM).toBeGreaterThan(driftMetal.driftDistanceM);
+    expect(driftMetal.lineBellyM).toBeGreaterThanOrEqual(0);
+
+    // 5-arg directional sink physics & surface layer mode for VARIANT_FLOAT
+    const dirSinkCross = calculateSinkingPhysics(10, 12, 0.6, getBaitSpecs('LURE', 2, 'GRUB'), {
+      castBearingDeg: 0,
+      currentDirectionDeg: 90,
+      peLineSize: 1.0,
+    });
+    const dirSinkOncoming = calculateSinkingPhysics(10, 12, 0.6, getBaitSpecs('LURE', 2, 'GRUB'), {
+      castBearingDeg: 0,
+      currentDirectionDeg: 180,
+      peLineSize: 1.0,
+    });
+    expect(dirSinkCross.deltaThetaDeg).toBe(90);
+    expect(dirSinkOncoming.snagRisk).toBe('HIGH');
+    expect(dirSinkCross.fallTimeSec).toBeGreaterThan(dirSinkOncoming.fallTimeSec);
+
+    const floatFull = calculateSinkingPhysics(20, 15, 0.4, floatBait);
+    const floatHonor = calculateSinkingPhysics(20, 15, 0.4, floatBait, { honorFloatLayer: true });
+    expect(floatHonor.targetLayer).toBe('SURFACE');
+    expect(floatHonor.fallTimeSec).toBeLessThan(floatFull.fallTimeSec);
+    expect(floatHonor.fallTimeSec).toBeLessThanOrEqual(40);
+
+    // inverse lead-cast solver: 서풍(270도=동진) + 동류(90도=동진) 중첩 시 동쪽으로 밀리므로 좌측/서쪽(3xx도) 선행 조준
+    const config = getSavedTackleConfig();
+    const leadReinforced = solveLeadCastAimPoint(0, 45, 7, 270, 0.6, 90, 10, config);
+    expect(leadReinforced.leadBearingDeg).toBeGreaterThan(180);
+    expect(leadReinforced.leadAngleOffsetDeg).toBeLessThan(0);
+    expect(leadReinforced.expectedTotalDriftM).toBeGreaterThan(5);
+    expect(leadReinforced.tacticalAdvice.length).toBeGreaterThan(5);
+
+    // 반대로 동풍(90도=서진)과 동류(90도=동진)가 상쇄되면 총 편류가 줄어듦
+    const leadOpposed = solveLeadCastAimPoint(0, 45, 7, 90, 0.6, 90, 10, config);
+    expect(leadOpposed.expectedTotalDriftM).toBeLessThan(leadReinforced.expectedTotalDriftM);
   });
 });

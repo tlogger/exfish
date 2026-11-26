@@ -60,7 +60,7 @@ export const KHOA_TIDE_STATIONS: KhoaTideStation[] = [
   { code: 'DT_0061', name: '삼천포', region: 'SOUTH', lat: 34.9242, lng: 128.0697, meanRange: 260, highLagHours: 8.80, datumZ0: 1.60 },
   { code: 'DT_0016', name: '여수', region: 'SOUTH', lat: 34.7472, lng: 127.7656, meanRange: 280, highLagHours: 8.75, datumZ0: 1.70 },
   { code: 'DT_0092', name: '여호항', region: 'SOUTH', lat: 34.6619, lng: 127.4692, meanRange: 260, highLagHours: 9.00, datumZ0: 1.60 },
-  { code: 'DT_0013', name: '완도', region: 'SOUTH', lat: 34.316, lng: 126.757, meanRange: 320, highLagHours: 9.80, datumZ0: 1.95 },
+  { code: 'DT_0027', name: '완도', region: 'SOUTH', lat: 34.316, lng: 126.757, meanRange: 320, highLagHours: 9.80, datumZ0: 1.95 },
   { code: 'DT_0028', name: '진도', region: 'SOUTH', lat: 34.3778, lng: 126.3086, meanRange: 300, highLagHours: 9.80, datumZ0: 1.85 },
   { code: 'DT_0014', name: '통영', region: 'SOUTH', lat: 34.8278, lng: 128.4347, meanRange: 220, highLagHours: 8.50, datumZ0: 1.35 },
 
@@ -77,7 +77,7 @@ export const KHOA_TIDE_STATIONS: KhoaTideStation[] = [
   // 4. 제주도 조위관측소 (8물제 적용)
   { code: 'DT_0023', name: '모슬포', region: 'JEJU', lat: 33.2144, lng: 126.2511, meanRange: 230, highLagHours: 10.00, datumZ0: 1.40 },
   { code: 'DT_0010', name: '서귀포', region: 'JEJU', lat: 33.24, lng: 126.5617, meanRange: 220, highLagHours: 9.80, datumZ0: 1.35 },
-  { code: 'DT_0023', name: '성산포', region: 'JEJU', lat: 33.385, lng: 126.928, meanRange: 210, highLagHours: 10.20, datumZ0: 1.30 },
+  { code: 'DT_0022', name: '성산포', region: 'JEJU', lat: 33.385, lng: 126.928, meanRange: 210, highLagHours: 10.20, datumZ0: 1.30 },
   { code: 'DT_0004', name: '제주', region: 'JEJU', lat: 33.5275, lng: 126.543, meanRange: 230, highLagHours: 10.40, datumZ0: 1.40 },
   { code: 'DT_0021', name: '추자도', region: 'JEJU', lat: 33.9619, lng: 126.3003, meanRange: 260, highLagHours: 10.10, datumZ0: 1.60 },
 ];
@@ -298,7 +298,7 @@ export function applyPortCorrectionToSwtc(
   };
 }
 
-const CACHE_KEY_PREFIX = 'exfish_khoa_forecast_result_v5_';
+const CACHE_KEY_PREFIX = 'exfish_khoa_forecast_result_v6_';
 
 /**
  * 국가 공인 국립해양조사원(KHOA) 조위 정보 취득 및 캐싱 엔진
@@ -356,7 +356,7 @@ export async function getKhoaTideForecast(
   // 2. 일출/일몰 및 음력/물때 연산 (해역별 물때 체계 적용: 서해 7물제, 남해/동해 8물제)
   const noonDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 12, 0, 0);
   const moonAge = getMoonAge(noonDate);
-  const { mulText, lunarDay } = getMulInfo(moonAge, station.region);
+  const { mulText, lunarDay, mulNumber } = getMulInfo(moonAge, station.region);
   const sunTimes = SunCalc.getTimes(noonDate, lat, lng);
   const formatTime = (d: Date | null | undefined) =>
     !d || isNaN(d.getTime()) ? '--:--' : `${padZero(d.getHours())}:${padZero(d.getMinutes())}`;
@@ -569,7 +569,7 @@ export async function getKhoaTideForecast(
     source = 'KHOA_HARMONIC';
     const tideCycle = 12.42;
     const firstHighHour = (getAstronomicalHighHour(baseStation.highLagHours, lunarDay) + (correction ? correction.highTimeDiffMinutes / 60 : 0) + tideCycle) % tideCycle;
-    const springFactor = 0.4 + 0.6 * (Math.sin(((lunarDay - 1) / 15) * Math.PI) ** 2);
+    const springFactor = 0.4 + 0.6 * (Math.sin(((mulNumber - 1) / 15) * Math.PI) ** 2);
     const amplitude = ((correction ? baseStation.meanRange * correction.heightRatio : baseStation.meanRange) * springFactor) / 2;
     const baseMeanSeaLevel = Math.round(baseStation.datumZ0 * 100);
     const meanSeaLevel = correction

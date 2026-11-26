@@ -5,6 +5,46 @@ import { getSavedCloudConfig } from '../utils/cloudDb';
 import { createClient } from '@supabase/supabase-js';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
+import { getApiBaseUrl, isLocalDataMode } from '../utils/apiBase';
+
+export const USER_SESSION_TOKEN_STORAGE_KEY = 'exfish_user_session_token';
+
+export function getUserSessionToken(): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    return localStorage.getItem(USER_SESSION_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function clearUserSessionToken(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(USER_SESSION_TOKEN_STORAGE_KEY);
+  } catch {}
+}
+
+async function exchangeVerifiedSessionToken(provider: AuthProvider, accessToken: string): Promise<string | null> {
+  if (!accessToken || isLocalDataMode()) return null;
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/auth-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, accessToken }),
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data?.token && typeof localStorage !== 'undefined') {
+      localStorage.setItem(USER_SESSION_TOKEN_STORAGE_KEY, data.token);
+      return data.token;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export type AuthProvider = 'google' | 'kakao' | 'naver';
 
@@ -18,6 +58,14 @@ export function isUserAdmin(user?: { email?: string | null; isAdmin?: boolean } 
   if (!user.email) return false;
   return ADMIN_EMAILS.includes(user.email.toLowerCase().trim());
 }
+
+/** 이메일 기준 엄격한 paedros@gmail.com 관리자 판별 (낚시점 등록·해로드 ENC 전용) */
+export function isStrictPaedrosAdmin(user?: { email?: string | null } | null): boolean {
+  if (!user?.email) return false;
+  return user.email.toLowerCase().trim() === 'paedros@gmail.com';
+}
+
+export const GOOGLE_ACCESS_TOKEN_STORAGE_KEY = 'exfish_google_access_token';
 
 const OAUTH_KEYS_STORAGE = 'exfish_oauth_client_ids';
 
@@ -411,6 +459,9 @@ export async function processOAuthCallbackResult(callbackData: {
 
       const tokenData = await tokenRes.json();
       if (tokenData.access_token) {
+        if (typeof localStorage !== 'undefined') {
+          try { localStorage.setItem('exfish_kakao_access_token_tmp', tokenData.access_token); } catch {}
+        }
         const userRes = await fetch('https://kapi.kakao.com/v2/user/me', {
           headers: { Authorization: `Bearer ${tokenData.access_token}` },
         });
@@ -430,6 +481,9 @@ export async function processOAuthCallbackResult(callbackData: {
   // 2. 구글 accessToken 수신 처리
   if (provider === 'google' && accessToken && !directUser) {
     try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(GOOGLE_ACCESS_TOKEN_STORAGE_KEY, accessToken);
+      }
       const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
@@ -479,20 +533,32 @@ export async function processOAuthCallbackResult(callbackData: {
     expiresAt: now + 30 * 24 * 60 * 60 * 1000,
   };
 
-  // Supabase 중앙 DB의 user_accounts 테이블에 연동 (옵션)
-  try {
-    const cloudCfg = getSavedCloudConfig();
-    const supabase = createClient(cloudCfg.url, cloudCfg.anonKey);
-    await supabase.from('user_accounts').upsert({
-      provider,
-      provider_user_id: providerUserId,
-      name: finalName,
-      email: userEmail,
-      profile_image: userPhoto,
-      last_login_at: new Date().toISOString(),
-    }, { onConflict: 'provider,provider_user_id' });
-  } catch (err) {
-    console.warn('Supabase user sync notice:', err);
+  // OAuth 공급자 토큰 서버 검증 후 HMAC 세션 토큰 발급 (/api/auth-session)
+  const kakaoTmp = typeof localStorage !== 'undefined' ? localStorage.getItem('exfish_kakao_access_token_tmp') : null;
+  if (kakaoTmp && typeof localStorage !== 'undefined') {
+    try { localStorage.removeItem('exfish_kakao_access_token_tmp'); } catch {}
+  }
+  const providerTokenForSession = accessToken || kakaoTmp || (directUser as any)?.access_token || '';
+  if (providerTokenForSession) {
+    await exchangeVerifiedSessionToken(provider, providerTokenForSession);
+  }
+
+  // Supabase 중앙 DB의 user_accounts 테이블에 연동 (VITE_DATA_MODE=local 시 스킵)
+  if (!isLocalDataMode()) {
+    try {
+      const cloudCfg = getSavedCloudConfig();
+      const supabase = createClient(cloudCfg.url, cloudCfg.anonKey);
+      await supabase.from('user_accounts').upsert({
+        provider,
+        provider_user_id: providerUserId,
+        name: finalName,
+        email: userEmail,
+        profile_image: userPhoto,
+        last_login_at: new Date().toISOString(),
+      }, { onConflict: 'provider,provider_user_id' });
+    } catch (err) {
+      console.warn('Supabase user sync notice:', err);
+    }
   }
 
   saveAuthUser(authUser);

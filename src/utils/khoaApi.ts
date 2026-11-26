@@ -8,19 +8,21 @@
  * 5. roms: ROMS 수치예측모델 유향/유속/수온
  */
 
+import { isNativePlatform } from './nativeBridge';
+
 export const KHOA_SERVICE_KEY =
   '7Q54Z6DQ%2B9wH23fR%2FAlrOSh4XgQ9xyA8I%2F69h1tmrlCwtFqMG8zdR01z0h8%2Bo%2Ft1Uvt%2BwoN947y1ts5Maeoy%2Bg%3D%3D';
 
-/** 웹 환경(로컬 개발 및 Vercel 배포)에서는 프록시(/api-khoa)를 통해 CORS를 우회하고, 네이티브/기타 환경에서는 직접 호출 */
+/** 웹 환경에서는 상대 프록시(/api-khoa), 네이티브 APK(https://localhost)에서는 Vercel CDN 프록시 절대 URL 사용 */
 function getKhoaApiBaseUrl(): string {
+  if (isNativePlatform()) {
+    return 'https://exfish.vercel.app/api-khoa';
+  }
   if (
     typeof window !== 'undefined' &&
     window.location &&
     window.location.protocol &&
-    window.location.protocol.startsWith('http') &&
-    (window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.hostname.endsWith('.vercel.app'))
+    window.location.protocol.startsWith('http')
   ) {
     return '/api-khoa';
   }
@@ -126,21 +128,60 @@ export async function fetchKhoaTideLevel(
   }
 }
 
-/** 당일 1분 단위 KHOA 시계열(1440건)에서 현재 시각이 포함된 최신 페이지 번호(numOfRows=300 기준 1~5) 산출 */
-function getCurrentMinutePageNo(): number {
-  const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
+/** 당일 1분 단위 KHOA 시계열(1440건)에서 목표 시각(HH:mm) 또는 현재 시각이 포함된 페이지 번호(numOfRows=300 기준 1~5) 산출 */
+function getMinutePageNo(targetTimeStr?: string): number {
+  let mins: number;
+  if (targetTimeStr && /^\d{1,2}:\d{2}/.test(targetTimeStr)) {
+    const [h, m] = targetTimeStr.split(':').map(Number);
+    mins = (Number.isFinite(h) ? h : 12) * 60 + (Number.isFinite(m) ? m : 0);
+  } else {
+    const now = new Date();
+    mins = now.getHours() * 60 + now.getMinutes();
+  }
   return Math.min(5, Math.max(1, Math.ceil((mins + 5) / 300)));
 }
 
-/** 2. 조위관측소 실측 풍향/풍속 조회 (당일 현재 시각에 해당하는 최신 페이지 조회) */
+function parseObsrvnMinutes(obsrvnDt: string): number | null {
+  const m = /(\d{2}):(\d{2})/.exec(String(obsrvnDt || ''));
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+function pickBestItemByTime<T extends { obsrvnDt?: string }>(
+  items: T[],
+  targetTimeStr?: string,
+  isValid?: (it: T) => boolean
+): T | null {
+  const validItems = isValid ? items.filter(isValid) : items;
+  if (validItems.length === 0) return null;
+  if (!targetTimeStr || !/^\d{1,2}:\d{2}/.test(targetTimeStr)) {
+    return validItems[validItems.length - 1];
+  }
+  const [th, tm] = targetTimeStr.split(':').map(Number);
+  const targetMins = (Number.isFinite(th) ? th : 12) * 60 + (Number.isFinite(tm) ? tm : 0);
+  let best = validItems[0];
+  let bestDiff = Infinity;
+  for (const it of validItems) {
+    const om = parseObsrvnMinutes(it.obsrvnDt || '');
+    if (om == null) continue;
+    const diff = Math.abs(om - targetMins);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = it;
+    }
+  }
+  return best;
+}
+
+/** 2. 조위관측소 실측 풍향/풍속 조회 (목표 시각 또는 당일 현재 시각 페이지 조회) */
 export async function fetchKhoaWind(
   obsCode: string,
-  dateStr: string = getTodayString()
+  dateStr: string = getTodayString(),
+  targetTimeStr?: string
 ): Promise<KhoaWindRecord | null> {
   const cleanDate = dateStr.replace(/-/g, '');
   const baseUrl = getKhoaApiBaseUrl();
-  const targetPage = getCurrentMinutePageNo();
+  const targetPage = getMinutePageNo(targetTimeStr);
 
   const tryFetchPage = async (pageNo: number): Promise<KhoaWindRecord | null> => {
     const url = `${baseUrl}/1192136/surveyWind/GetSurveyWindApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=300&pageNo=${pageNo}`;
@@ -150,20 +191,20 @@ export async function fetchKhoaWind(
     const items = json?.body?.items?.item;
     if (!Array.isArray(items) || items.length === 0) return null;
 
-    for (let i = items.length - 1; i >= 0; i--) {
-      const it = items[i];
-      if (it.wspd != null && it.wndrct != null && !isNaN(Number(it.wspd))) {
-        return {
-          obsvtrNm: it.obsvtrNm,
-          lat: Number(it.lat),
-          lot: Number(it.lot),
-          obsrvnDt: it.obsrvnDt,
-          wndrct: Math.round(Number(it.wndrct)),
-          wspd: Math.round(Number(it.wspd) * 10) / 10,
-        };
-      }
-    }
-    return null;
+    const it = pickBestItemByTime(
+      items,
+      targetTimeStr,
+      (row: any) => row.wspd != null && row.wndrct != null && !isNaN(Number(row.wspd))
+    );
+    if (!it) return null;
+    return {
+      obsvtrNm: it.obsvtrNm,
+      lat: Number(it.lat),
+      lot: Number(it.lot),
+      obsrvnDt: it.obsrvnDt,
+      wndrct: Math.round(Number(it.wndrct)),
+      wspd: Math.round(Number(it.wspd) * 10) / 10,
+    };
   };
 
   try {
@@ -179,14 +220,15 @@ export async function fetchKhoaWind(
   }
 }
 
-/** 3. 조위관측소 실측 수온 조회 (당일 현재 시각에 해당하는 최신 페이지 조회) */
+/** 3. 조위관측소 실측 수온 조회 (목표 시각 또는 당일 현재 시각 페이지 조회) */
 export async function fetchKhoaWaterTemp(
   obsCode: string,
-  dateStr: string = getTodayString()
+  dateStr: string = getTodayString(),
+  targetTimeStr?: string
 ): Promise<KhoaWaterTempRecord | null> {
   const cleanDate = dateStr.replace(/-/g, '');
   const baseUrl = getKhoaApiBaseUrl();
-  const targetPage = getCurrentMinutePageNo();
+  const targetPage = getMinutePageNo(targetTimeStr);
 
   const tryFetchPage = async (pageNo: number): Promise<KhoaWaterTempRecord | null> => {
     const url = `${baseUrl}/1192136/surveyWaterTemp/GetSurveyWaterTempApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&obsCode=${obsCode}&date=${cleanDate}&numOfRows=300&pageNo=${pageNo}`;
@@ -196,19 +238,19 @@ export async function fetchKhoaWaterTemp(
     const items = json?.body?.items?.item;
     if (!Array.isArray(items) || items.length === 0) return null;
 
-    for (let i = items.length - 1; i >= 0; i--) {
-      const it = items[i];
-      if (it.wtem != null && !isNaN(Number(it.wtem))) {
-        return {
-          obsvtrNm: it.obsvtrNm,
-          lat: Number(it.lat),
-          lot: Number(it.lot),
-          obsrvnDt: it.obsrvnDt,
-          wtem: Math.round(Number(it.wtem) * 10) / 10,
-        };
-      }
-    }
-    return null;
+    const it = pickBestItemByTime(
+      items,
+      targetTimeStr,
+      (row: any) => row.wtem != null && !isNaN(Number(row.wtem))
+    );
+    if (!it) return null;
+    return {
+      obsvtrNm: it.obsvtrNm,
+      lat: Number(it.lat),
+      lot: Number(it.lot),
+      obsrvnDt: it.obsrvnDt,
+      wtem: Math.round(Number(it.wtem) * 10) / 10,
+    };
   };
 
   try {
@@ -224,13 +266,14 @@ export async function fetchKhoaWaterTemp(
   }
 }
 
-/** 4. 자연과학용 150m 격자 수심 조회 (주어진 lat, lng 반경 300m 바운딩 박스) */
+/** 4. 자연과학용 150m 격자 수심 조회 (0.0015° 격자 스냅으로 CDN 캐시 히트율 극대화) */
 export async function fetchKhoaWaterDepth(lat: number, lng: number): Promise<KhoaDepthRecord | null> {
-  // 약 300m Bounding Box (0.003도)
-  const ymin = (lat - 0.002).toFixed(4);
-  const ymax = (lat + 0.002).toFixed(4);
-  const xmin = (lng - 0.0025).toFixed(4);
-  const xmax = (lng + 0.0025).toFixed(4);
+  const snapLat = Math.round(lat / 0.0015) * 0.0015;
+  const snapLng = Math.round(lng / 0.0015) * 0.0015;
+  const ymin = (snapLat - 0.002).toFixed(4);
+  const ymax = (snapLat + 0.002).toFixed(4);
+  const xmin = (snapLng - 0.0025).toFixed(4);
+  const xmax = (snapLng + 0.0025).toFixed(4);
   const baseUrl = getKhoaApiBaseUrl();
 
   const url = `${baseUrl}/1192136/waterDepth/GetWaterDepthApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&numOfRows=10`;
@@ -242,37 +285,61 @@ export async function fetchKhoaWaterDepth(lat: number, lng: number): Promise<Kho
     const items = json?.body?.items?.item;
     if (!Array.isArray(items) || items.length === 0) return null;
 
-    // 포인트 좌표와 가장 유클리드 거리가 가까운 격자점 선택
-    let nearest: KhoaDepthRecord | null = null;
-    let minD = Infinity;
+    // 단일 최근접 셀만 취할 경우 방조제/석축 경계(dpwt <= 1.2m)가 선택되어 간출(0m)로 왜곡될 수 있음
+    // 동일 150m~300m 격자 내 외해 유효 수심 셀(dpwt >= 2.5m)이 존재하면 경계 천해 셀을 제외하고 역거리 가중 보간(IDW) 적용
+    const validItems = items
+      .filter((it) => it.dpwt != null && Number.isFinite(Number(it.dpwt)))
+      .map((it) => ({
+        lat: Number(it.lat),
+        lot: Number(it.lot),
+        dpwt: Number(it.dpwt),
+      }));
 
-    for (const it of items) {
-      if (it.dpwt == null) continue;
-      const dLat = Number(it.lat) - lat;
-      const dLot = Number(it.lot) - lng;
-      const d = dLat * dLat + dLot * dLot;
-      if (d < minD) {
-        minD = d;
-        nearest = {
-          lat: Number(it.lat),
-          lot: Number(it.lot),
-          dpwt: Math.round(Number(it.dpwt) * 10) / 10,
-        };
+    if (validItems.length === 0) return null;
+
+    const offshoreItems = validItems.filter((it) => it.dpwt >= 2.5);
+    const pool = offshoreItems.length > 0 ? offshoreItems : validItems;
+
+    let nearest = pool[0];
+    let minD = Infinity;
+    let weightSum = 0;
+    let weightedDpwtSum = 0;
+
+    for (const it of pool) {
+      const dLat = it.lat - lat;
+      const dLot = it.lot - lng;
+      const distSq = Math.max(1e-10, dLat * dLat + dLot * dLot);
+      const w = 1 / distSq;
+      weightSum += w;
+      weightedDpwtSum += w * it.dpwt;
+      if (distSq < minD) {
+        minD = distSq;
+        nearest = it;
       }
     }
-    return nearest;
+
+    const interpolatedDpwt =
+      weightSum > 0 ? Math.round((weightedDpwtSum / weightSum) * 10) / 10 : Math.round(nearest.dpwt * 10) / 10;
+
+    return {
+      lat: nearest.lat,
+      lot: nearest.lot,
+      dpwt: interpolatedDpwt,
+    };
   } catch (e) {
     console.warn(`[KHOA API] fetchKhoaWaterDepth failed (${lat}, ${lng}):`, e);
     return null;
   }
 }
 
-/** 5. ROMS 수치예측모델 유향/유속/수온 조회 (현재 시각에 가장 근접한 예측치 매칭) */
+/** 5. ROMS 수치예측모델 유향/유속/수온 조회 (0.02° 격자 스냅으로 CDN 캐시 히트율 극대화) */
 export async function fetchKhoaRoms(lat: number, lng: number): Promise<KhoaRomsRecord | null> {
-  const ymin = (lat - 0.02).toFixed(4);
-  const ymax = (lat + 0.02).toFixed(4);
-  const xmin = (lng - 0.025).toFixed(4);
-  const xmax = (lng + 0.025).toFixed(4);
+  const snapLat = Math.round(lat * 50) / 50;
+  const snapLng = Math.round(lng * 50) / 50;
+  const ymin = (snapLat - 0.02).toFixed(4);
+  const ymax = (snapLat + 0.02).toFixed(4);
+  const xmin = (snapLng - 0.025).toFixed(4);
+  const xmax = (snapLng + 0.025).toFixed(4);
   const baseUrl = getKhoaApiBaseUrl();
 
   const url = `${baseUrl}/1192136/roms/GetRomsApiService?serviceKey=${KHOA_SERVICE_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&numOfRows=200`;

@@ -20,6 +20,7 @@ import type {
   FishingShop,
   FishingSpot,
   MapProvider,
+  MapSecondaryLang,
   MarineData,
   ShopMemo,
   TideDayInfo,
@@ -101,7 +102,9 @@ export function App() {
   const [mapProvider, setMapProvider] = React.useState<MapProvider>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('exfish_map_provider');
-      if (saved === 'kakao' || saved === 'vworld') return saved;
+      if (saved === 'kakao' || saved === 'vworld' || saved === 'google' || saved === 'osm') {
+        return saved;
+      }
     }
     return 'vworld';
   });
@@ -109,6 +112,19 @@ export function App() {
     setMapProvider(provider);
     try {
       localStorage.setItem('exfish_map_provider', provider);
+    } catch {}
+  }, []);
+  const [mapSecondaryLang, setMapSecondaryLang] = React.useState<MapSecondaryLang>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('exfish_map_secondary_lang');
+      if (saved === 'ko' || saved === 'en') return saved;
+    }
+    return 'ko';
+  });
+  const handleChangeMapSecondaryLang = React.useCallback((lang: MapSecondaryLang) => {
+    setMapSecondaryLang(lang);
+    try {
+      localStorage.setItem('exfish_map_secondary_lang', lang);
     } catch {}
   }, []);
   const [viewOnlyFavorites, setViewOnlyFavorites] = React.useState<boolean>(false);
@@ -1120,7 +1136,13 @@ export function App() {
     setIsSearchingPoi(true);
     setShowPoiDropdown(true);
     try {
-      const results = await searchPoi(searchQuery.trim());
+      const results = await searchPoi(searchQuery.trim(), {
+        provider: mapProvider,
+        center: selectedSpot
+          ? { lat: selectedSpot.lat, lng: selectedSpot.lng }
+          : userLocation ?? undefined,
+        secondaryLang: mapSecondaryLang,
+      });
       setPoiResults(results);
     } catch (e) {
       console.error(e);
@@ -1547,6 +1569,8 @@ export function App() {
             mapMode={mapMode}
             onChangeMapMode={handleMapModeChange}
             mapProvider={mapProvider}
+            onChangeMapProvider={handleChangeMapProvider}
+            mapSecondaryLang={mapSecondaryLang}
             viewOnlyFavorites={viewOnlyFavorites}
             isTacklePopoverOpen={isTacklePopoverOpen}
             onToggleTacklePopover={setIsTacklePopoverOpen}
@@ -1754,6 +1778,8 @@ export function App() {
         onChangeCurrentUnit={setCurrentUnit}
         mapProvider={mapProvider}
         onChangeMapProvider={handleChangeMapProvider}
+        mapSecondaryLang={mapSecondaryLang}
+        onChangeMapSecondaryLang={handleChangeMapSecondaryLang}
       />
 
       {/* 입질 종합 지수 평가 기준 설명 헬프 모달 */}

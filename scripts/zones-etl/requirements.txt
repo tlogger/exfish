@@ -1,0 +1,2 @@
+# Pure Python (stdlib) implementation; optional pyproj/shapely not required.
+# Python >= 3.10 recommended.
