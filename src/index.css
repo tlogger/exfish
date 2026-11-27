@@ -28,8 +28,13 @@ html {
    data-map-mode: ROADMAP (주간 일반), DARK (야간 전용), HYBRID (고해상도 위성)
    ========================================================================== */
 
+/* 상세보기 패널은 지도 모드와 무관하게 통일 배경(#0F172A) 고정 */
+.spot-detail-panel {
+  background-color: #0F172A !important;
+  border-color: rgba(148, 163, 184, 0.14) !important;
+}
+
 /* 1. 주간 일반 지도 (ROADMAP): 밝은 지도 위 가시성 극대화 (딥 슬레이트 + 선명한 시안) */
-[data-map-mode="ROADMAP"] .spot-detail-panel,
 [data-map-mode="ROADMAP"] .map-floating-card {
   background-color: rgba(15, 23, 42, 0.94);
   border-color: rgba(6, 182, 212, 0.45);
@@ -37,7 +42,6 @@ html {
 }
 
 /* 2. 야간 지도 (DARK): 눈부심 방지 및 야간 낚시 시력 보호 (OLED 퓨어 블랙 + 은은한 야광) */
-[data-map-mode="DARK"] .spot-detail-panel,
 [data-map-mode="DARK"] .map-floating-card {
   background-color: rgba(2, 6, 23, 0.96) !important;
   border-color: rgba(56, 189, 248, 0.35) !important;
@@ -45,7 +49,6 @@ html {
 }
 
 /* 3. 위성 사진 (HYBRID): 복잡한 위성 텍스처(바위/파도) 위 글자 가독성 보장 (프로스티드 글래스 + 고대비 보더) */
-[data-map-mode="HYBRID"] .spot-detail-panel,
 [data-map-mode="HYBRID"] .map-floating-card {
   background-color: rgba(10, 15, 30, 0.92) !important;
   backdrop-filter: blur(16px) saturate(180%) !important;

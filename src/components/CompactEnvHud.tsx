@@ -96,22 +96,20 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
 
   const windBadgeStyle =
     windClass === 'TAILWIND'
-      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-      : windClass === 'HEADWIND'
-        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-        : windClass === 'CROSSWIND'
-          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-          : 'bg-slate-700/60 text-slate-300 border-slate-600';
+      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+      : windClass === 'HEADWIND' || windClass === 'CROSSWIND'
+        ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+        : 'bg-slate-800 text-slate-300 border-slate-700';
 
   const needsWindPivot = windClass === 'HEADWIND' || windSpeed >= 6.0;
 
   return (
-    <div className="rounded-xl border border-slate-700/80 bg-slate-900/90 p-2 space-y-1.5 shadow-sm">
+    <div className="rounded-[16px] border border-slate-700/60 bg-[#1E293B] p-[10px] space-y-2 shadow-sm">
       {/* 1x3 단일 시야 3대 실시간 환경 그리드 (바람, 조류, 파고·너울 - 상단 헤더와 중복 제거) */}
       <div className="grid grid-cols-3 gap-1.5 text-xs">
-        <div className="rounded-lg bg-slate-800/80 px-2 py-1.5 border border-slate-700/60">
+        <div className="rounded-xl bg-[#0F172A] px-2 py-1.5 border border-slate-700/50">
           <div className="flex items-center justify-between text-[10px] text-slate-400 leading-tight">
-            <span className="flex items-center gap-1"><Wind className="w-3 h-3 text-sky-400" />바람</span>
+            <span className="flex items-center gap-1"><Wind className="w-3 h-3 text-slate-400" />바람</span>
             <span className={`px-1 py-0 rounded border text-[9px] font-semibold leading-tight ${windBadgeStyle}`}>
               {getRelativeWindLabel(windClass)}
             </span>
@@ -126,9 +124,9 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
           </div>
         </div>
 
-        <div className="rounded-lg bg-slate-800/80 px-2 py-1.5 border border-slate-700/60">
+        <div className="rounded-xl bg-[#0F172A] px-2 py-1.5 border border-slate-700/50">
           <div className="flex items-center gap-1 text-[10px] text-slate-400 leading-tight">
-            <Compass className="w-3 h-3 text-cyan-400" />조류
+            <Compass className="w-3 h-3 text-slate-400" />조류
           </div>
           <div className="mt-0.5 flex items-baseline justify-between gap-1">
             <span className="font-bold text-slate-100 text-xs leading-tight">
@@ -140,9 +138,9 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
           </div>
         </div>
 
-        <div className="rounded-lg bg-slate-800/80 px-2 py-1.5 border border-slate-700/60">
+        <div className="rounded-xl bg-[#0F172A] px-2 py-1.5 border border-slate-700/50">
           <div className="flex items-center gap-1 text-[10px] text-slate-400 leading-tight">
-            <Waves className="w-3 h-3 text-indigo-400" />파고·너울
+            <Waves className="w-3 h-3 text-slate-400" />파고·너울
           </div>
           <div className="mt-0.5 flex items-baseline justify-between gap-1">
             <span className="font-bold text-slate-100 text-xs leading-tight">
@@ -156,7 +154,7 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
       </div>
 
       {/* 1탭 개인 채비 프리셋 전환 & 내 채비 공략 가능성 1줄 요약 */}
-      <div className="rounded-lg bg-slate-950/70 border border-slate-800 px-2.5 py-2 space-y-1.5">
+      <div className="rounded-xl bg-[#0F172A] border border-slate-700/50 px-2.5 py-2 space-y-1.5">
         {presetStore.presets.length > 0 && (
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
             {presetStore.presets.map((p) => {
@@ -168,8 +166,8 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
                   onClick={() => handleSelectPreset(p)}
                   className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium border transition ${
                     isActive
-                      ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/60'
-                      : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200'
+                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 font-semibold'
+                      : 'bg-[#1E293B] text-slate-400 border-slate-700/60 hover:text-slate-200'
                   }`}
                 >
                   {p.name}
@@ -181,15 +179,15 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
           <span>
             내 채비({activeRig.weightGrams}g):{' '}
-            <strong className={castability.deltaM != null && castability.deltaM < -5 ? 'text-rose-300' : 'text-emerald-300'}>
+            <strong className={castability.deltaM != null && castability.deltaM < -5 ? 'text-amber-300' : 'text-emerald-300'}>
               {castability.deltaM != null ? `비거리 ${castability.deltaM >= 0 ? '+' : ''}${castability.deltaM}m` : '아크 미설정'}
             </strong>
             {' · '}
             {castability.sink ? (
               castability.sink.canReachBottom ? (
-                <span className="text-cyan-300">바닥 안착 약 {Math.round(castability.sink.fallTimeSec ?? 0)}초</span>
+                <span className="text-emerald-300">바닥 안착 약 {Math.round(castability.sink.fallTimeSec ?? 0)}초</span>
               ) : (
-                <span className="text-rose-300 font-semibold">
+                <span className="text-amber-300 font-semibold">
                   바닥 불가 (최소 {castability.sink.recommendedMinWeightG ?? Math.ceil(activeRig.weightGrams * 1.5)}g↑)
                 </span>
               )
@@ -203,7 +201,7 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenCompare([spot.id])}
-                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-cyan-300 border border-slate-700 flex items-center gap-1"
+                className="px-2 py-1 rounded-lg bg-[#1E293B] hover:bg-slate-700 text-[10px] text-emerald-300 border border-emerald-500/35 flex items-center gap-1 font-medium"
               >
                 <ArrowRightLeft className="w-3 h-3" />비교담기
               </button>
@@ -212,7 +210,7 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
               <button
                 type="button"
                 onClick={() => setShowPivotList((v) => !v)}
-                className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-[10px] text-amber-200 border border-amber-500/40 flex items-center gap-1 font-semibold"
+                className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-[10px] text-amber-300 border border-amber-500/40 flex items-center gap-1 font-semibold"
               >
                 <ShieldAlert className="w-3 h-3" />등바람 대피
               </button>
@@ -223,7 +221,7 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
 
       {/* 등바람 대피 포인트 결과 드롭다운 */}
       {showPivotList && pivotResult && (
-        <div className="rounded-lg bg-slate-950/90 border border-amber-500/30 p-2.5 space-y-1.5 text-xs">
+        <div className="rounded-xl bg-[#0F172A] border border-amber-500/35 p-2.5 space-y-1.5 text-xs">
           <div className="font-semibold text-amber-300 flex items-center justify-between">
             <span>반경 20km 등바람 대피 포인트 ({getWindDirectionKor(windDir)} 기준)</span>
             <button type="button" onClick={() => setShowPivotList(false)} className="text-[10px] text-slate-400 hover:text-slate-200">닫기</button>
@@ -235,7 +233,7 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
                   key={c.spot.id}
                   type="button"
                   onClick={() => onSelectSpot?.(c.spot)}
-                  className="w-full text-left px-2 py-1.5 rounded bg-slate-800/80 hover:bg-slate-700/80 flex items-center justify-between"
+                  className="w-full text-left px-2 py-1.5 rounded-lg bg-[#1E293B] hover:bg-slate-700/80 flex items-center justify-between"
                 >
                   <span className="font-medium text-slate-100 truncate">{c.spot.name}</span>
                   <span className="shrink-0 text-[10px] text-emerald-300 ml-2">
@@ -255,7 +253,7 @@ export const CompactEnvHud: React.FC<CompactEnvHudProps> = ({
                       key={c.spot.id}
                       type="button"
                       onClick={() => onSelectSpot?.(c.spot)}
-                      className="w-full text-left px-2 py-1 rounded bg-slate-800/60 hover:bg-slate-700/60 flex items-center justify-between"
+                      className="w-full text-left px-2 py-1 rounded-lg bg-[#1E293B] hover:bg-slate-700/80 flex items-center justify-between"
                     >
                       <span className="text-slate-200 truncate">{c.spot.name}</span>
                       <span className="text-[10px] text-amber-300 ml-2">옆바람 {c.relativeWindAngleDeg}° · {c.distanceKm}km</span>

@@ -603,7 +603,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
   }, [spot, catchLogs, favoriteSpecies, weather, marine, simTideSnapshot, isNow, simTemp, simWindSpeed, simWindDir, simWindGust, simPressureHpa, simWaterTemp, simWaveHeight, simCurrentVel, simCurrentDir, targetHour, targetTime, realDepthResult.realDepthM]);
 
   return (
-    <div className="spot-detail-panel flex flex-col h-full bg-slate-900 border-l border-slate-800 text-white overflow-hidden shadow-2xl">
+    <div className="spot-detail-panel flex flex-col h-full bg-[#0F172A] border-l border-slate-800 text-slate-100 overflow-hidden shadow-2xl">
       {/* 1. 상단 일체형 히어로: 사진 유무에 따라 동적 높이 최적화 (사진 없을 시 컴팩트 헤더로 세로 공간 확보) */}
       {(() => {
         const hasPhotos = Boolean(spot.photo_urls && spot.photo_urls.length > 0);
@@ -629,8 +629,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         }
 
         return (
-          <div className="relative shrink-0 bg-slate-950 overflow-hidden border-b border-slate-800">
-            <div className={hasPhotos ? 'relative w-full h-36 sm:h-44 overflow-hidden' : 'relative w-full bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/40'}>
+          <div className="relative shrink-0 bg-[#0F172A] overflow-hidden border-b border-slate-800">
+            <div className={hasPhotos ? 'relative w-full h-36 sm:h-44 overflow-hidden' : 'relative w-full bg-[#0F172A]'}>
               {hasPhotos && (
                 <>
                   <img
@@ -639,32 +639,32 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
                   />
                   {/* 비네팅 & 딤 오버레이 (사진 위 글씨 가독성 확보) */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/45 to-slate-950/75" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A] via-[#0F172A]/50 to-[#0F172A]/75" />
                 </>
               )}
 
               {/* Superimpose / 컴팩트 콘텐츠 레이어 */}
-              <div className={hasPhotos ? 'absolute inset-0 p-3 sm:p-3.5 flex flex-col justify-between z-10' : 'relative px-3 py-2 flex flex-col gap-1 z-10'}>
+              <div className={hasPhotos ? 'absolute inset-0 p-3 flex flex-col justify-between z-10' : 'relative px-3 py-2 flex flex-col gap-1 z-10'}>
                 {/* 상단 행: 타입 뱃지 + 작성자 + 사진 인디케이터 + 액션 버튼 그룹 */}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-600/90 text-white shadow-sm backdrop-blur-sm">
+                    <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-[#1E293B] text-slate-200 border border-slate-700/70">
                       {spot.spot_type === 'ROCK' ? '갯바위' : spot.spot_type === 'SEAWALL' ? '석축' : spot.spot_type === 'BREAKWATER' ? '방파제' : spot.spot_type === 'BEACH' ? '해변/백사장' : '선착장'}
                     </span>
-                    <span className="text-[10px] text-slate-300 drop-shadow">작성: {spot.author_name}</span>
+                    <span className="text-[10px] text-slate-400">작성: {spot.author_name}</span>
                     {isAdmin && (
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/50 font-bold ml-1">
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/40 font-bold ml-1">
                         👑 ADMIN
                       </span>
                     )}
                     {hasPhotos && spot.photo_urls!.length > 1 && (
-                      <div className="flex gap-1 ml-1 bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded-full border border-white/10">
+                      <div className="flex gap-1 ml-1 bg-[#0F172A]/70 backdrop-blur-sm px-1.5 py-0.5 rounded-full border border-slate-700/60">
                         {spot.photo_urls!.map((_, idx) => (
                           <button
                             key={idx}
                             onClick={() => setActivePhotoIndex(idx)}
                             className={`w-1.5 h-1.5 rounded-full transition-all ${
-                              idx === activePhotoIndex ? 'bg-cyan-400 w-3' : 'bg-white/40'
+                              idx === activePhotoIndex ? 'bg-emerald-400 w-3' : 'bg-slate-500'
                             }`}
                           />
                         ))}
@@ -726,7 +726,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           alert(`포인트 정보:\n${shareText}`);
                         }
                       }}
-                      className="p-1.5 rounded-lg bg-black/60 backdrop-blur-sm text-slate-200 hover:text-cyan-400 border border-white/10 transition"
+                      className="p-1.5 rounded-lg bg-[#1E293B] text-slate-200 hover:text-emerald-300 border border-slate-700/60 transition"
                       title="공유"
                     >
                       <Share2 size={13} />
@@ -735,10 +735,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <>
                         <button
                           onClick={() => onEditSpot(spot)}
-                          className={`p-1.5 rounded-lg backdrop-blur-sm transition border ${
+                          className={`p-1.5 rounded-lg transition border ${
                             isAdmin
-                              ? 'bg-amber-950/70 border-amber-500/50 text-amber-300 hover:text-white'
-                              : 'bg-black/60 border-white/10 text-slate-200 hover:text-cyan-400'
+                              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:text-white'
+                              : 'bg-[#1E293B] border-slate-700/60 text-slate-200 hover:text-emerald-300'
                           }`}
                           title={isAdmin ? '포인트 수정 (관리자 전권)' : '포인트 수정'}
                         >
@@ -750,10 +750,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               onDeleteSpot(spot.id);
                             }
                           }}
-                          className={`p-1.5 rounded-lg backdrop-blur-sm transition border ${
+                          className={`p-1.5 rounded-lg transition border ${
                             isAdmin
-                              ? 'bg-rose-950/70 border-rose-500/50 text-rose-300 hover:text-white'
-                              : 'bg-black/60 border-white/10 text-slate-200 hover:text-rose-400'
+                              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:text-white'
+                              : 'bg-[#1E293B] border-slate-700/60 text-slate-200 hover:text-amber-300'
                           }`}
                           title={isAdmin ? '포인트 삭제 (관리자 전권)' : '포인트 삭제'}
                         >
@@ -764,7 +764,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     {/* 모바일 앱/웹 창 아래로 내리기 ('V' ChevronDown 버튼으로 교체) */}
                     <button
                       onClick={onMinimize || onClose}
-                      className="p-1.5 rounded-lg bg-cyan-600/80 hover:bg-cyan-500 backdrop-blur-sm text-white border border-cyan-400/30 transition md:hidden flex items-center justify-center shadow"
+                      className="p-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 border border-emerald-400/40 transition md:hidden flex items-center justify-center shadow"
                       title="상세보기 접기 (아래로 내리기)"
                     >
                       <ChevronDown size={16} />
@@ -773,20 +773,20 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
 
                 {/* 하단 행: 포인트 이름 + 실시간 최고 타깃 + 날씨/기온/수온 */}
-                <div className={hasPhotos ? 'space-y-1' : 'space-y-1'}>
-                  <h1 className="text-base sm:text-lg font-black text-white truncate drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+                <div className="space-y-1">
+                  <h1 className="text-base sm:text-lg font-black text-white truncate">
                     {spot.name}
                   </h1>
 
                   <div className={hasPhotos ? 'space-y-1' : 'flex flex-wrap items-center gap-1.5'}>
                     {/* 실시간 최고 타깃 */}
                     {biteScore?.topSpecies && (
-                      <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-cyan-950/90 to-blue-950/80 px-2 py-0.5 rounded-lg border border-cyan-500/40 text-[11px] shadow">
-                        <span className="text-cyan-400 font-black shrink-0">✨ 최고 타깃:</span>
+                      <div className="inline-flex items-center gap-1.5 bg-emerald-500/15 px-2 py-0.5 rounded-lg border border-emerald-500/40 text-[11px]">
+                        <span className="text-emerald-400 font-black shrink-0">✨ 최고 타깃:</span>
                         <button
                           type="button"
                           onClick={() => biteScore.topSpecies && setQuickModalSpecies(biteScore.topSpecies.speciesName)}
-                          className="font-bold text-white underline decoration-cyan-400 underline-offset-2 hover:text-cyan-200"
+                          className="font-bold text-slate-100 underline decoration-emerald-400 underline-offset-2 hover:text-emerald-200"
                         >
                           {biteScore.topSpecies.speciesName} ({biteScore.topSpecies.score}점)
                         </button>
@@ -794,12 +794,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     )}
 
                     {/* 날씨, 기온, 수온 배치 */}
-                    <div className="inline-flex items-center gap-2 bg-black/75 backdrop-blur-md px-2 py-0.5 rounded-lg border border-white/15 text-[11px] font-mono shadow-md">
-                      <span className="text-white font-sans font-bold">{simWeatherText}</span>
+                    <div className="inline-flex items-center gap-2 bg-[#1E293B] px-2 py-0.5 rounded-lg border border-slate-700/60 text-[11px] font-mono">
+                      <span className="text-slate-100 font-sans font-bold">{simWeatherText}</span>
                       <span className="text-slate-500">·</span>
-                      <span className="text-amber-300 font-bold">기온 {simTemp.toFixed(1)}°C</span>
+                      <span className="text-slate-300 font-semibold">기온 {simTemp.toFixed(1)}°C</span>
                       <span className="text-slate-500">·</span>
-                      <span className="text-cyan-300 font-bold">수온 {simWaterTemp > 0 ? `${simWaterTemp.toFixed(1)}°C` : '--'}</span>
+                      <span className="text-emerald-300 font-semibold">수온 {simWaterTemp > 0 ? `${simWaterTemp.toFixed(1)}°C` : '--'}</span>
                     </div>
                   </div>
                 </div>
@@ -808,17 +808,17 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
             {/* 2행: 안전 경보 & 고립 주의 배너 (경보가 있을 때만 영역 차지) */}
             {warnings.length > 0 && (
-              <div className="px-3 py-2">
-                <div className="p-2.5 rounded-xl bg-rose-950/90 backdrop-blur-md border border-rose-500/70 text-rose-100 text-xs flex items-start gap-2 shadow-lg animate-pulse">
-                  <div className="w-5 h-5 rounded-full bg-red-600 border border-white/90 shadow-md shadow-red-900/60 flex items-center justify-center text-white font-black text-xs shrink-0 mt-0.5">
+              <div className="p-[6px] bg-[#0F172A]">
+                <div className="p-[10px] rounded-[16px] bg-[#1E293B] border border-amber-500/50 text-slate-200 text-xs flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center text-slate-950 font-black text-xs shrink-0 mt-0.5">
                     !
                   </div>
                   <div className="flex-1 flex flex-col gap-0.5">
-                    <span className="font-extrabold text-rose-300 text-xs">안전주의:</span>
-                    <div className="text-xs text-rose-100 font-medium leading-relaxed flex flex-wrap gap-x-2">
+                    <span className="font-extrabold text-amber-300 text-xs">안전주의:</span>
+                    <div className="text-xs text-slate-200 font-medium leading-relaxed flex flex-wrap gap-x-2">
                       {warnings.map((w, idx) => (
                         <span key={idx} className="inline-flex items-center">
-                          {idx > 0 && <span className="text-rose-400 mr-2">·</span>}
+                          {idx > 0 && <span className="text-amber-400 mr-2">·</span>}
                           {w}
                         </span>
                       ))}
@@ -831,20 +831,20 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         );
       })()}
 
-      {/* 3. 아이콘 전용 탭 바 (텍스트 라벨 완전 제거로 높이 최소화) */}
-      <div className="flex border-b border-slate-800 bg-slate-900/95 shrink-0 px-2 py-1 gap-1.5">
+      {/* 3. 아이콘 전용 탭 바 (활성 탭 에머랄드 단일 통일) */}
+      <div className="flex border-b border-slate-800 bg-[#0F172A] shrink-0 px-2 py-1 gap-1.5">
         <button
           onClick={() => setActiveTab('WEATHER_TIDE')}
           className={`flex-1 py-2 rounded-xl flex items-center justify-center transition relative ${
             activeTab === 'WEATHER_TIDE'
-              ? 'bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-[#1E293B]'
           }`}
           title="기상과 물때"
         >
-          <Waves size={20} className={activeTab === 'WEATHER_TIDE' ? 'text-cyan-400 scale-110' : ''} />
+          <Waves size={20} className={activeTab === 'WEATHER_TIDE' ? 'text-emerald-400 scale-110' : ''} />
           {activeTab === 'WEATHER_TIDE' && (
-            <span className="absolute bottom-0 w-6 h-0.5 bg-cyan-400 rounded-full" />
+            <span className="absolute bottom-0 w-6 h-0.5 bg-emerald-400 rounded-full" />
           )}
         </button>
 
@@ -852,8 +852,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
           onClick={() => setActiveTab('LOGS')}
           className={`flex-1 py-2 rounded-xl flex items-center justify-center transition relative ${
             activeTab === 'LOGS'
-              ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-[#1E293B]'
           }`}
           title="어종과 조과"
         >
@@ -874,14 +874,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
           onClick={() => setActiveTab('DIRECTIONS')}
           className={`flex-1 py-2 rounded-xl flex items-center justify-center transition relative ${
             activeTab === 'DIRECTIONS'
-              ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-[#1E293B]'
           }`}
           title="포인트 정보"
         >
-          <Info size={20} className={activeTab === 'DIRECTIONS' ? 'text-amber-400 scale-110' : ''} />
+          <Info size={20} className={activeTab === 'DIRECTIONS' ? 'text-emerald-400 scale-110' : ''} />
           {activeTab === 'DIRECTIONS' && (
-            <span className="absolute bottom-0 w-6 h-0.5 bg-amber-400 rounded-full" />
+            <span className="absolute bottom-0 w-6 h-0.5 bg-emerald-400 rounded-full" />
           )}
         </button>
 
@@ -889,21 +889,21 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
           onClick={() => setActiveTab('MEMOS')}
           className={`flex-1 py-2 rounded-xl flex items-center justify-center transition relative ${
             activeTab === 'MEMOS'
-              ? 'bg-indigo-500/20 text-indigo-300 ring-1 ring-indigo-500/40 shadow-sm'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-[#1E293B]'
           }`}
           title="메모"
         >
           <div className="relative">
-            <MessageSquare size={20} className={activeTab === 'MEMOS' ? 'text-indigo-400 scale-110' : ''} />
+            <MessageSquare size={20} className={activeTab === 'MEMOS' ? 'text-emerald-400 scale-110' : ''} />
             {spotMemos.length > 0 && (
-              <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-indigo-500 text-white text-[9px] font-bold">
+              <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-emerald-500 text-slate-950 text-[9px] font-bold">
                 {spotMemos.length}
               </span>
             )}
           </div>
           {activeTab === 'MEMOS' && (
-            <span className="absolute bottom-0 w-6 h-0.5 bg-indigo-400 rounded-full" />
+            <span className="absolute bottom-0 w-6 h-0.5 bg-emerald-400 rounded-full" />
           )}
         </button>
 
@@ -913,21 +913,21 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             onClick={() => onToggleFavorite(spot.id)}
             className={`px-3 py-2 rounded-xl flex items-center justify-center transition active:scale-95 ${
               isFavorited
-                ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/50 shadow-sm'
-                : 'text-slate-400 hover:text-amber-300 hover:bg-slate-800/50'
+                ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-emerald-300 hover:bg-[#1E293B]'
             }`}
             title={isFavorited ? '즐겨찾기(찜) 해제' : '이 포인트 즐겨찾기(찜) 추가'}
             aria-label="즐겨찾기"
           >
-            <Star size={19} className={isFavorited ? 'fill-amber-400 text-amber-400 animate-in zoom-in-75' : ''} />
+            <Star size={19} className={isFavorited ? 'fill-emerald-400 text-emerald-400 animate-in zoom-in-75' : ''} />
           </button>
         )}
       </div>
 
-      {/* 탭 본문 영역 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* 탭 본문 영역 (배경 #0F172A, 카드 간격 6px 고정) */}
+      <div className="flex-1 overflow-y-auto p-[6px] space-y-[6px] bg-[#0F172A]">
         {activeTab === 'WEATHER_TIDE' && (
-          <div className="space-y-4">
+          <div className="space-y-[6px]">
             {/* v6 컴팩트 실시간 환경 HUD (스크롤 없는 2x3 6대 지표 + 1탭 채비 프리셋 + 등바람 대피) */}
             <CompactEnvHud
               spot={spot}
@@ -984,36 +984,36 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
               return (
                 <div
-                  className={`p-3 rounded-2xl border text-xs shadow-lg space-y-1.5 ${
+                  className={`p-[10px] rounded-[16px] bg-[#1E293B] border text-xs space-y-1.5 ${
                     isWarning
-                      ? 'bg-rose-950/90 border-rose-600 text-rose-100 shadow-rose-950/60 animate-pulse'
-                      : 'bg-amber-950/70 border-amber-600/80 text-amber-100 shadow-amber-950/40'
+                      ? 'border-amber-500/60 text-slate-100'
+                      : 'border-amber-500/40 text-slate-200'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 font-bold">
-                      <ShieldAlert size={16} className={isWarning ? 'text-rose-400' : 'text-amber-400'} />
-                      <span className={isWarning ? 'text-rose-200' : 'text-amber-200'}>
+                      <ShieldAlert size={16} className="text-amber-400" />
+                      <span className="text-amber-300">
                         해양경찰청 연안안전사고 위험예보 [{isWarning ? '🚨 경보' : '⚡ 주의보'}]
                       </span>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-slate-900/80 border border-slate-700">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-[#0F172A] text-amber-300 border border-amber-500/35">
                       {isSpringTide ? '사리(대조기)' : '연안위험'}
                     </span>
                   </div>
 
                   <div className="space-y-1 text-[11px] leading-relaxed">
                     {isSpringTide && isNearHighTide && (
-                      <p className="font-semibold text-rose-200">
-                        🚨 <strong>[만조 전후 갯바위 고립 주의]</strong> 현재 대조기(사리) 만조({nextHighTideTimeStr}) 전후 2시간 구간입니다. 바닷물이 빠르게 유입되어 갯바위 하산로나 진입로가 침수될 수 있으니 미리 퇴로를 확보하세요!
+                      <p className="font-semibold text-slate-200">
+                        🚨 <strong className="text-amber-300">[만조 전후 갯바위 고립 주의]</strong> 현재 대조기(사리) 만조({nextHighTideTimeStr}) 전후 2시간 구간입니다. 바닷물이 빠르게 유입되어 갯바위 하산로나 진입로가 침수될 수 있으니 미리 퇴로를 확보하세요!
                       </p>
                     )}
                     {isHighWave && (
-                      <p className="text-amber-200">
-                        🌊 <strong>[너울성 파도 월파 주의]</strong> 테트라포드(TTP) 및 간출암에 너울이 덮칠 수 있습니다. 미끄럼 방지 펠트화 및 구명조끼를 반드시 착용하세요.
+                      <p className="text-slate-200">
+                        🌊 <strong className="text-amber-300">[너울성 파도 월파 주의]</strong> 테트라포드(TTP) 및 간출암에 너울이 덮칠 수 있습니다. 미끄럼 방지 펠트화 및 구명조끼를 반드시 착용하세요.
                       </p>
                     )}
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[10px] text-slate-300">
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-700/60 text-[10px] text-slate-400">
                       <span>연안사고 예방법 낚시통제구역 진입 금지</span>
                       <span className="font-bold text-amber-300">📞 해양긴급신고 119 / 122</span>
                     </div>
@@ -1056,24 +1056,22 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
               return (
                 <div
-                  className={`p-3 rounded-2xl border text-xs shadow-xl space-y-2 transition-all ${
-                    isDanger
-                      ? 'bg-rose-950/95 border-rose-500 text-rose-100 ring-2 ring-rose-500/50 animate-pulse'
-                      : isCaution
-                      ? 'bg-amber-950/90 border-amber-500/80 text-amber-100 shadow-amber-950/50'
-                      : 'bg-slate-900/90 border-slate-700/80 text-slate-200'
+                  className={`p-[10px] rounded-[16px] bg-[#1E293B] border text-xs space-y-2 transition-all ${
+                    isDanger || isCaution
+                      ? 'border-amber-500/50 text-slate-100'
+                      : 'border-slate-700/60 text-slate-200'
                   }`}
                 >
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-1.5 font-bold">
                       {isDanger || isCaution ? (
-                        <div className="w-5 h-5 rounded-full bg-red-600 border border-white/90 shadow-md shadow-red-900/60 flex items-center justify-center text-white font-black text-xs shrink-0 animate-pulse">
+                        <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center text-slate-950 font-black text-xs shrink-0">
                           !
                         </div>
                       ) : (
-                        <Clock size={16} className="text-cyan-400" />
+                        <Clock size={16} className="text-emerald-400" />
                       )}
-                      <span className={isDanger ? 'text-rose-200 text-sm font-extrabold' : isCaution ? 'text-amber-200 text-sm font-extrabold' : 'text-cyan-200'}>
+                      <span className={isDanger || isCaution ? 'text-amber-300 text-sm font-extrabold' : 'text-emerald-300'}>
                         {isDanger
                           ? '🚨 [갯바위 침수 고립 위험] 즉시 철수하십시오!'
                           : isCaution
@@ -1095,32 +1093,32 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                             true
                           );
                         }}
-                        className="px-2.5 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-600/70 text-[10px] flex items-center gap-1 font-bold shadow-sm transition active:scale-95"
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-[10px] flex items-center gap-1 font-bold transition active:scale-95"
                         title="로컬 알림 + 사이렌 + 햅틱 비상 경보 테스트"
                       >
-                        <Volume2 size={12} className="text-rose-400 animate-pulse" />
+                        <Volume2 size={12} className="text-amber-400" />
                         <span>비상 알람 테스트</span>
                       </button>
                       <button
                         type="button"
                         onClick={toggleEvacAlarm}
-                        className={`px-2.5 py-1 rounded-lg border text-[10px] flex items-center gap-1 font-bold transition active:scale-95 shadow-sm ${
+                        className={`px-2.5 py-1 rounded-lg border text-[10px] flex items-center gap-1 font-bold transition active:scale-95 ${
                           isEvacAlarmEnabled
-                            ? 'bg-rose-600 text-white border-rose-400 ring-2 ring-rose-400/50 animate-pulse'
-                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                            ? 'bg-amber-500 text-slate-950 border-amber-400'
+                            : 'bg-[#0F172A] text-slate-300 border-slate-700/60 hover:text-white'
                         }`}
                         title="들물 안전 실시간 감시 및 비상 알림 토글"
                       >
-                        <Bell size={12} className={isEvacAlarmEnabled ? 'text-white' : 'text-slate-400'} />
+                        <Bell size={12} className={isEvacAlarmEnabled ? 'text-slate-950' : 'text-slate-400'} />
                         <span>{isEvacAlarmEnabled ? '안전 감시 가동중' : '들물 감시 켜기'}</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80">
+                  <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-700/60">
                     <div>
                       <span className="text-slate-400">기준 간조: </span>
-                      <strong className="text-cyan-300 font-mono">{nearestLow.time}</strong>
+                      <strong className="text-emerald-300 font-mono">{nearestLow.time}</strong>
                       <span className="text-slate-400"> ({nearestLow.height}cm)</span>
                       {isFloodStarted ? (
                         <span className="text-slate-400 ml-1.5">
@@ -1128,7 +1126,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         </span>
                       ) : (
                         <span className="text-slate-400 ml-1.5">
-                          · 간조까지 <strong className="text-cyan-300 font-mono">{Math.abs(nearestLow.diffMinutes)}분</strong> 전
+                          · 간조까지 <strong className="text-emerald-300 font-mono">{Math.abs(nearestLow.diffMinutes)}분</strong> 전
                         </span>
                       )}
                     </div>
@@ -1140,12 +1138,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                             탈출 잔여: <span className="text-sm font-mono text-white">{remainingMinutes}분</span>
                           </span>
                         ) : (
-                          <span className="font-bold text-rose-400 animate-pulse">
+                          <span className="font-bold text-amber-400">
                             골든타임 초과 (+{Math.abs(remainingMinutes)}분)
                           </span>
                         )
                       ) : (
-                        <span className="text-cyan-300 font-bold">간조 후 90분 골든타임 예정</span>
+                        <span className="text-emerald-300 font-bold">간조 후 90분 골든타임 예정</span>
                       )}
                     </div>
                   </div>
@@ -1288,45 +1286,45 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               const displayCurrentHeight = curPredictPoint?.height ?? currentTidePoint?.height;
 
               return (
-                <div className="p-3.5 sm:p-4 bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 border border-cyan-500/40 rounded-2xl shadow-xl space-y-3">
+                <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2.5">
                   {/* 1행: 물때 명칭 & 음력 & 국립해양조사원 관측소 & 현재 조위 */}
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-extrabold text-base sm:text-lg text-cyan-300 drop-shadow">🌊 {displayMulText}</span>
+                      <span className="font-extrabold text-base sm:text-lg text-emerald-300">🌊 {displayMulText}</span>
                       <span className="text-xs sm:text-sm text-slate-300 font-medium">({displayLunarDate})</span>
-                      <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 font-medium">
+                      <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-[#0F172A] text-slate-300 border border-slate-700/60 font-medium">
                         국립해양조사원 {nearestStation.station.name} 관측소 ({nearestStation.distanceKm}km)
                       </span>
                     </div>
                     {displayCurrentHeight !== undefined && (
-                      <div className="text-xs sm:text-sm text-cyan-200 font-mono font-bold bg-cyan-950/90 border border-cyan-700/70 px-2.5 py-1 rounded-lg shadow-inner flex items-center gap-1.5">
+                      <div className="text-xs sm:text-sm text-emerald-300 font-mono font-bold bg-[#0F172A] border border-emerald-500/35 px-2.5 py-1 rounded-xl flex items-center gap-1.5">
                         <span className="text-slate-400 font-sans font-normal text-xs">현재:</span>
                         <span className="text-white font-extrabold">{displayCurrentHeight}cm</span>
                         {currentTidePoint?.stateText && (
-                          <span className="text-cyan-300 font-sans text-xs">({currentTidePoint.stateText})</span>
+                          <span className="text-emerald-300 font-sans text-xs">({currentTidePoint.stateText})</span>
                         )}
                       </div>
                     )}
                   </div>
 
                   {/* 2행: 24시간 실시간 조위 곡선 그래픽 (바다타임 표준 그래픽 시각화) */}
-                  <div className="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80 p-2 shadow-inner">
+                  <div className="relative overflow-hidden rounded-xl border border-slate-700/50 bg-[#0F172A] p-2">
                     <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mb-1 px-1">
                       <span>00:00</span>
-                      <span className="text-cyan-400 font-sans font-semibold">24시간 연속 조위 변화 곡선</span>
+                      <span className="text-emerald-300 font-sans font-semibold">24시간 연속 조위 변화 곡선</span>
                       <span>24:00</span>
                     </div>
                     <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-16 overflow-visible">
                       <defs>
                         <linearGradient id="tideGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
-                          <stop offset="100%" stopColor="#0284c7" stopOpacity="0.05" />
+                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.40" />
+                          <stop offset="100%" stopColor="#10b981" stopOpacity="0.03" />
                         </linearGradient>
                       </defs>
                       {/* 수위 영역 그래디언트 채우기 */}
                       <path d={areaD} fill="url(#tideGrad)" />
                       {/* 수위 조석 곡선 */}
-                      <path d={pathD} fill="none" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round" />
+                      <path d={pathD} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" />
 
                       {/* 만조/간조 극점 그래픽 핀 & 텍스트 */}
                       {rawExtremums.map((ev, idx) => {
@@ -1339,14 +1337,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               cx={px}
                               cy={py}
                               r={isHigh ? 3.5 : 3}
-                              fill={isHigh ? '#f43f5e' : '#38bdf8'}
+                              fill={isHigh ? '#f59e0b' : '#34d399'}
                               stroke="#0f172a"
                               strokeWidth="1.5"
                             />
                             <text
                               x={px}
                               y={isHigh ? Math.max(10, py - 6) : Math.min(svgH - 2, py + 11)}
-                              fill={isHigh ? '#fb7185' : '#7dd3fc'}
+                              fill={isHigh ? '#fbbf24' : '#34d399'}
                               fontSize="8.5"
                               fontWeight="bold"
                               textAnchor="middle"
@@ -1373,10 +1371,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   </div>
 
                   {/* 3행: 물때 & 태양 이벤트 시간표 (박스/아이콘 제거하여 한 줄 유지) */}
-                  <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/90 shadow-md">
+                  <div className="overflow-hidden rounded-xl border border-slate-700/50 bg-[#0F172A]">
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
-                        <tr className="border-b border-slate-800 bg-slate-900/80 text-[10px] text-slate-400 font-semibold">
+                        <tr className="border-b border-slate-800 bg-[#1E293B]/60 text-[10px] text-slate-400 font-semibold">
                           <th className="py-1 px-2.5 w-14 text-center">시간</th>
                           <th className="py-1 px-2.5 w-14 text-center">구분</th>
                           <th className="py-1 px-2.5 text-right">조위 (수위 변화)</th>
@@ -1392,29 +1390,23 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           return (
                             <tr
                               key={idx}
-                              className={`transition-colors ${
-                                isHigh
-                                  ? 'hover:bg-rose-950/20'
-                                  : isLow
-                                  ? 'hover:bg-blue-950/20'
-                                  : 'hover:bg-slate-900/40'
-                              }`}
+                              className="transition-colors hover:bg-[#1E293B]/50"
                             >
                               <td className="py-1 px-2.5 text-center font-bold text-slate-200 text-[11px] whitespace-nowrap">
                                 {item.time}
                               </td>
                               <td className="py-1 px-2.5 text-center whitespace-nowrap">
                                 {isHigh && (
-                                  <span className="font-bold text-rose-400 text-[11px]">만조</span>
+                                  <span className="font-bold text-amber-400 text-[11px]">만조</span>
                                 )}
                                 {isLow && (
-                                  <span className="font-bold text-cyan-400 text-[11px]">간조</span>
+                                  <span className="font-bold text-emerald-400 text-[11px]">간조</span>
                                 )}
                                 {isSunrise && (
-                                  <span className="font-medium text-amber-400 text-[11px]">일출</span>
+                                  <span className="font-medium text-slate-300 text-[11px]">일출</span>
                                 )}
                                 {isSunset && (
-                                  <span className="font-medium text-indigo-400 text-[11px]">일몰</span>
+                                  <span className="font-medium text-slate-400 text-[11px]">일몰</span>
                                 )}
                               </td>
                               <td className="py-1 px-2.5 text-right whitespace-nowrap">
@@ -1425,7 +1417,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                     </span>
                                     <span
                                       className={`text-[10px] font-semibold ${
-                                        isHigh ? 'text-rose-400' : 'text-cyan-400'
+                                        isHigh ? 'text-amber-400' : 'text-emerald-400'
                                       }`}
                                     >
                                       ({isHigh ? '+' : '-'}{item.diff}cm)
@@ -1460,13 +1452,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               return (
                 <>
                   {hasAnyDanger && (
-                    <div className="p-3 bg-rose-950/85 border border-rose-500 rounded-2xl flex items-center gap-2.5 text-rose-200 text-xs shadow-lg shadow-rose-950/50 animate-pulse">
-                      <ShieldAlert size={22} className="text-rose-400 shrink-0" />
+                    <div className="p-[10px] bg-[#1E293B] border border-amber-500/50 rounded-[16px] flex items-center gap-2.5 text-slate-200 text-xs">
+                      <ShieldAlert size={22} className="text-amber-400 shrink-0" />
                       <div>
-                        <div className="font-bold text-rose-300 flex items-center gap-1.5">
+                        <div className="font-bold text-amber-300 flex items-center gap-1.5">
                           <span>🚨 해양 기상 특보급 위험 경고</span>
                         </div>
-                        <p className="text-[11px] text-rose-200/95 leading-relaxed pt-0.5">
+                        <p className="text-[11px] text-slate-300 leading-relaxed pt-0.5">
                           {isWaveDanger && '⚠️ 높은 파고(너울)로 인한 갯바위/방파제 테트라포드 월파 위험! '}
                           {isWindDanger && '⚠️ 강풍/돌풍으로 인한 낚시 불가 및 실족 추락 위험! '}
                           {isCurrentDanger && '⚠️ 빠른 급류/와류로 인한 채비 쓸림 및 해상 안전사고 위험! '}
@@ -1477,10 +1469,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   )}
 
                   {/* 48시간 미래 환경 타임라인 시뮬레이터 (슬라이더 바로 아래 4대 날씨 카드가 인접하여 직관적 관찰 가능) */}
-                  <div className="p-3.5 bg-slate-950/90 border border-cyan-500/30 rounded-2xl shadow-lg space-y-2.5">
+                  <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/40">
                           {isNow
                             ? '⏱️ 실시간 환경'
                             : `⏱️ ${targetMonth}/${targetDate} ${targetHourStr}:00 (+${timelineOffsetHours}시간 예측)`}
@@ -1488,7 +1480,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         {!isNow && (
                           <button
                             onClick={() => setTimelineOffsetHours(0)}
-                            className="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-200 font-semibold"
+                            className="flex items-center gap-1 text-[11px] text-emerald-300 hover:text-emerald-200 font-semibold"
                           >
                             <RotateCcw size={11} /> 현재 시각 복귀
                           </button>
@@ -1498,8 +1490,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         onClick={() => setIsPlaying(!isPlaying)}
                         className={`flex items-center justify-center p-1.5 rounded-lg transition shadow ${
                           isPlaying
-                            ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                            : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                            ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                            : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
                         }`}
                         title={isPlaying ? '시뮬레이션 일시정지' : '미래 예측 자동 재생'}
                         aria-label={isPlaying ? '일시정지' : '재생'}
@@ -1520,7 +1512,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           setTimelineOffsetHours(Number(e.target.value));
                           if (isPlaying) setIsPlaying(false);
                         }}
-                        className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                        className="w-full h-1.5 bg-[#0F172A] rounded-lg appearance-none cursor-pointer accent-emerald-400"
                       />
                       <div className="flex justify-between text-[10px] text-slate-400 font-mono">
                         <span>현재 (0h)</span>
@@ -1542,21 +1534,19 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       simCurrentVel > 0.8 ? '급류' : simCurrentVel > 0.5 ? '본류' : simCurrentVel > 0.2 ? '완만' : '정조·약류';
 
                     return (
-                      <div className="grid grid-cols-3 gap-1.5 text-xs">
+                      <div className="grid grid-cols-3 gap-[6px] text-xs">
                         {/* 박스1: 풍향 화살표(상대풍향), 풍속(돌풍) */}
                         <div
-                          className={`px-2 py-1.5 rounded-xl border transition-colors ${
-                            isWindDanger
-                              ? 'bg-rose-950/80 border-rose-600'
-                              : isWindWarning
-                              ? 'bg-amber-950/60 border-amber-600'
-                              : 'bg-slate-800/70 border-slate-700/60'
+                          className={`p-[10px] rounded-[16px] bg-[#1E293B] border transition-colors ${
+                            isWindDanger || isWindWarning
+                              ? 'border-amber-500/50'
+                              : 'border-slate-700/60'
                           }`}
                         >
                           <div className="flex items-center justify-between text-[10px] text-slate-400 leading-tight">
                             <span className="flex items-center gap-0.5">
                               <span
-                                className="inline-flex items-center justify-center w-3.5 h-3.5 text-cyan-300 font-bold text-xs"
+                                className="inline-flex items-center justify-center w-3.5 h-3.5 text-slate-300 font-bold text-xs"
                                 style={{ transform: `rotate(${simWindDir}deg)` }}
                               >
                                 ↓
@@ -1565,19 +1555,19 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                             </span>
                             {relWindLabel && (
                               <span className={`px-1 rounded text-[9px] font-semibold ${
-                                windClass === 'TAILWIND' ? 'text-emerald-300 bg-emerald-500/20' :
-                                windClass === 'HEADWIND' ? 'text-rose-300 bg-rose-500/20' :
-                                'text-amber-300 bg-amber-500/20'
+                                windClass === 'TAILWIND'
+                                  ? 'text-emerald-300 bg-emerald-500/15'
+                                  : 'text-amber-300 bg-amber-500/15'
                               }`}>
                                 {relWindLabel}
                               </span>
                             )}
                           </div>
                           <div className="mt-0.5 flex items-baseline gap-1 truncate">
-                            <span className={`text-xs font-bold ${isWindDanger ? 'text-rose-200' : isWindWarning ? 'text-amber-300' : 'text-cyan-300'}`}>
+                            <span className={`text-xs font-bold ${isWindDanger || isWindWarning ? 'text-amber-300' : 'text-slate-100'}`}>
                               {formatWindSpeed(simWindSpeed, windUnit)}
                             </span>
-                            <span className="text-[10px] text-amber-300/90 truncate">
+                            <span className="text-[10px] text-slate-400 truncate">
                               ({formatWindSpeed(simWindGust, windUnit)})
                             </span>
                           </div>
@@ -1585,25 +1575,23 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
                         {/* 박스2: 조류 화살표, 조류 속도 (정조/약류 등) */}
                         <div
-                          className={`px-2 py-1.5 rounded-xl border transition-colors ${
-                            isCurrentDanger
-                              ? 'bg-rose-950/80 border-rose-600'
-                              : isCurrentWarning
-                              ? 'bg-amber-950/60 border-amber-600'
-                              : 'bg-slate-800/70 border-slate-700/60'
+                          className={`p-[10px] rounded-[16px] bg-[#1E293B] border transition-colors ${
+                            isCurrentDanger || isCurrentWarning
+                              ? 'border-amber-500/50'
+                              : 'border-slate-700/60'
                           }`}
                         >
                           <div className="flex items-center justify-between text-[10px] text-slate-400 leading-tight">
                             <span className="flex items-center gap-0.5">
                               <span
-                                className="inline-flex items-center justify-center w-3.5 h-3.5 text-emerald-300 font-bold text-xs"
+                                className="inline-flex items-center justify-center w-3.5 h-3.5 text-emerald-400 font-bold text-xs"
                                 style={{ transform: `rotate(${simCurrentDir}deg)` }}
                               >
                                 ↑
                               </span>
                               <span>조류</span>
                             </span>
-                            <span className={`text-[9px] font-semibold ${isCurrentDanger ? 'text-rose-200' : isCurrentWarning ? 'text-amber-300' : 'text-emerald-400'}`}>
+                            <span className={`text-[9px] font-semibold ${isCurrentDanger || isCurrentWarning ? 'text-amber-300' : 'text-emerald-400'}`}>
                               {currentStateLabel}
                             </span>
                           </div>
@@ -1614,20 +1602,18 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
                         {/* 박스3: 파고, 파고 주기 */}
                         <div
-                          className={`px-2 py-1.5 rounded-xl border transition-colors ${
-                            isWaveDanger
-                              ? 'bg-rose-950/80 border-rose-600'
-                              : isWaveWarning
-                              ? 'bg-amber-950/60 border-amber-600'
-                              : 'bg-slate-800/70 border-slate-700/60'
+                          className={`p-[10px] rounded-[16px] bg-[#1E293B] border transition-colors ${
+                            isWaveDanger || isWaveWarning
+                              ? 'border-amber-500/50'
+                              : 'border-slate-700/60'
                           }`}
                         >
                           <div className="text-[10px] text-slate-400 leading-tight">파고·주기</div>
                           <div className="mt-0.5 flex items-baseline justify-between gap-1 truncate">
-                            <span className={`text-xs font-bold ${isWaveDanger ? 'text-rose-200' : isWaveWarning ? 'text-amber-300' : 'text-blue-300'}`}>
+                            <span className={`text-xs font-bold ${isWaveDanger || isWaveWarning ? 'text-amber-300' : 'text-slate-100'}`}>
                               {simWaveHeight.toFixed(1)}m
                             </span>
-                            <span className="text-[10px] text-slate-300">
+                            <span className="text-[10px] text-slate-400">
                               {marine?.wavePeriod ? `${marine.wavePeriod}초` : '-'}
                             </span>
                           </div>
@@ -1637,7 +1623,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   })()}
 
                   {/* 2-1. [KHOA 연동] 수심 및 안착시간 (채비 비거리 예측과 동일 지표) */}
-                  <div className="p-2.5 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/40 border border-cyan-800/60 rounded-2xl space-y-2 shadow-lg">
+                  <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="font-bold text-xs text-slate-100 shrink-0">
@@ -1647,19 +1633,19 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           {getTackleShortLabel(tackleConfig)}
                         </span>
                       </div>
-                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shrink-0">
+                      <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/35 shrink-0">
                         {khoaDepthRecord ? `KHOA · ${nearestStationInfo.station.name}` : `추정 · ${nearestStationInfo.station.name}`}
                       </span>
                     </div>
 
-                    <div className="bg-slate-950/80 rounded-xl px-2.5 py-2 border border-cyan-500/30 space-y-1 text-[11px] font-mono">
+                    <div className="bg-[#0F172A] rounded-xl px-2.5 py-2 border border-slate-700/50 space-y-1 text-[11px] font-mono">
                       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
                         <span className="text-slate-300">
-                          비거리 <strong className="text-cyan-300 text-xs">{tackleConfig.calibratedDistanceMeters}m</strong>
+                          비거리 <strong className="text-emerald-300 text-xs">{tackleConfig.calibratedDistanceMeters}m</strong>
                           <span className="text-slate-500 text-[10px]"> ({tackleConfig.totalWeightGrams ?? tackleConfig.weightGrams}g)</span>
                         </span>
                         <span className="text-slate-300">
-                          수심 <strong className="text-sky-300">{realDepthResult.isExposed ? '간출(0m)' : `${realDepthResult.realDepthM.toFixed(1)}m`}</strong>
+                          수심 <strong className="text-slate-100">{realDepthResult.isExposed ? '간출(0m)' : `${realDepthResult.realDepthM.toFixed(1)}m`}</strong>
                         </span>
                         <span className="text-slate-300">
                           유속 <strong className="text-emerald-300">{simCurrentVel.toFixed(1)}m/s</strong>
@@ -1667,10 +1653,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 pt-1 border-t border-slate-800/80">
                         <span className="text-slate-300">
-                          바닥안착 <strong className="text-amber-300">{selectedSinkPhysics.fallTimeSec}초</strong>
+                          바닥안착 <strong className="text-emerald-300">{selectedSinkPhysics.fallTimeSec}초</strong>
                         </span>
                         <span className="text-slate-300">
-                          하강속도 <strong className="text-cyan-200">{Math.round(selectedSinkPhysics.effSinkSpeedMps * 100)}cm/s</strong>
+                          하강속도 <strong className="text-slate-100">{Math.round(selectedSinkPhysics.effSinkSpeedMps * 100)}cm/s</strong>
                         </span>
                         {selectedSinkPhysics.driftDistanceM > 0.3 && (
                           <span className="text-slate-300">
@@ -1679,14 +1665,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         )}
                       </div>
                       {selectedSinkPhysics.canReachBottom === false && (
-                        <div className="text-[10px] text-rose-400 font-semibold pt-0.5">
+                        <div className="text-[10px] text-amber-300 font-semibold pt-0.5">
                           흘림 과도 · {selectedSinkPhysics.recommendedMinWeightG}g+ 증량 권장
                         </div>
                       )}
                     </div>
 
                     {realDepthResult.isExposed && (
-                      <div className="text-[10px] text-rose-300 bg-rose-950/40 p-1.5 rounded-lg border border-rose-800/50">
+                      <div className="text-[10px] text-amber-300 bg-amber-500/10 p-1.5 rounded-lg border border-amber-500/35">
                         {realDepthResult.statusText}
                       </div>
                     )}
@@ -1697,15 +1683,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
             {/* 3. [제안 6] 현재 시각 기준 연속 조위 변화 곡선 (-6h ~ +36h, 스크롤 없는 반응형 100% 뷰) */}
             {tide && (
-              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2.5">
+              <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-200">
+                  <span className="font-bold text-slate-100">
                     조위 변화 곡선 (-6h ~ +36h 실시간 예측)
                   </span>
                 </div>
 
                 {/* 그래프 본체: 스크롤 없이 가로 100% 반응형으로 채움 */}
-                <div className="w-full h-56 pt-1">
+                <div className="w-full h-56 pt-1 rounded-xl bg-[#0F172A] border border-slate-700/50">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
                       data={tide.curve36 || tide.hourly72Curve || tide.hourlyCurve}
@@ -1713,8 +1699,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     >
                       <defs>
                         <linearGradient id="tideGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.65} />
-                          <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.45} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
                         </linearGradient>
                       </defs>
 
@@ -1726,10 +1712,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                             key={`feed-zone-${fIdx}`}
                             x1={f.startDisplayTime}
                             x2={f.endDisplayTime}
-                            fill="#f59e0b"
-                            fillOpacity={0.16}
-                            stroke="#f59e0b"
-                            strokeOpacity={0.5}
+                            fill="#10b981"
+                            fillOpacity={0.14}
+                            stroke="#10b981"
+                            strokeOpacity={0.45}
                             strokeDasharray="2 2"
                           />
                         );
@@ -1751,14 +1737,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               ? ` (${data.tideDiff > 0 ? `+${data.tideDiff}` : data.tideDiff}cm)`
                               : '';
                             return (
-                              <div className="bg-slate-900/95 border border-slate-700 p-2.5 rounded-xl text-xs shadow-2xl backdrop-blur-md">
+                              <div className="bg-[#0F172A] border border-slate-700 p-2.5 rounded-xl text-xs shadow-2xl">
                                 <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-1 font-bold mb-1">
-                                  <span className="text-cyan-300">
+                                  <span className="text-emerald-300">
                                     {data.dayLabel && <span className="mr-1 text-slate-400">[{data.dayLabel}]</span>}
                                     {data.timeStr}
                                   </span>
                                   {data.isCurrent && (
-                                    <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[9px] font-bold">
+                                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold">
                                       현재
                                     </span>
                                   )}
@@ -1780,13 +1766,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         return (
                           <ReferenceLine
                             x={curPoint.displayTime}
-                            stroke="#22d3ee"
+                            stroke="#34d399"
                             strokeWidth={2}
                             strokeDasharray="3 3"
                             label={{
                               value: `현재 (${curPoint.height}cm)`,
                               position: 'top',
-                              fill: '#22d3ee',
+                              fill: '#34d399',
                               fontSize: 10,
                               fontWeight: 'bold',
                             }}
@@ -1797,7 +1783,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <Area
                         type="monotone"
                         dataKey="height"
-                        stroke="#22d3ee"
+                        stroke="#10b981"
                         strokeWidth={2.5}
                         fillOpacity={1}
                         fill="url(#tideGradient)"
@@ -1810,14 +1796,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
             {/* 4. 예상 입질 기회 테이블 (일자 D+0/D+1 · 시간 · 이유) */}
             {tide?.feedingTimes && tide.feedingTimes.length > 0 && (
-              <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-1.5">
+              <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-1.5">
                 <div className="text-xs font-bold text-emerald-300">
                   <span>예상 입질 기회</span>
                 </div>
-                <div className="overflow-hidden rounded-xl border border-slate-800/80">
+                <div className="overflow-hidden rounded-xl border border-slate-700/50 bg-[#0F172A]">
                   <table className="w-full text-[11px] text-left border-collapse">
                     <thead>
-                      <tr className="bg-slate-900/80 border-b border-slate-800 text-[10px] text-slate-400">
+                      <tr className="bg-[#1E293B]/60 border-b border-slate-800 text-[10px] text-slate-400">
                         <th className="py-1 px-2 w-12 text-center">일자</th>
                         <th className="py-1 px-2 w-32">시간</th>
                         <th className="py-1 px-2">이유</th>
@@ -1830,7 +1816,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         const pureTime = f.timeRange.replace(/^\((오늘|내일|모레)\)\s*/, '').trim();
                         const cleanReason = f.reason.replace(/[^\w\sㄱ-힣.,·~()]/g, '').trim();
                         return (
-                          <tr key={idx} className="hover:bg-emerald-950/20">
+                          <tr key={idx} className="hover:bg-emerald-500/10">
                             <td className="py-1 px-2 text-center font-mono font-bold text-emerald-300 whitespace-nowrap">
                               {dCode}
                             </td>
@@ -1850,20 +1836,20 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             )}
 
             {/* 5. Windy 상시 노출 (요구사항 7) */}
-            <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+            <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
               <div className="flex items-center justify-end">
                 <a
                   href={windyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-2.5 py-1 rounded-md bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-800/60 text-[11px] text-cyan-300 flex items-center gap-1 font-bold transition shadow-xs"
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-[11px] text-emerald-300 flex items-center gap-1 font-bold transition"
                 >
                   <span>windy 새창 열기</span>
                   <ExternalLink size={10} />
                 </a>
               </div>
 
-              <div className="relative w-full h-52 rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
+              <div className="relative w-full h-52 rounded-xl overflow-hidden border border-slate-700/50 bg-[#0F172A]">
                 <iframe
                   title="Windy Map"
                   src={`https://embed.windy.com/embed2.html?lat=${spot.lat}&lon=${spot.lng}&detailLat=${spot.lat}&detailLon=${spot.lng}&width=400&height=200&zoom=11&level=surface&overlay=wind&product=ecmwf&menu=&message=&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=m%2Fs&metricTemp=%C2%B0C&radarRange=-1`}
@@ -1877,31 +1863,29 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
 
         {activeTab === 'LOGS' && (
-          <div className="space-y-3">
+          <div className="space-y-[6px]">
             {/* [요구사항 7] 입질 종합 지수 브리핑 카드 (타임라인 오프셋 연동) */}
             {effectiveBiteScore && (
-              <div className="p-3 rounded-2xl bg-slate-900/90 border border-cyan-500/40 flex items-center justify-between gap-3 shadow-lg">
+              <div className="p-[10px] rounded-[16px] bg-[#1E293B] border border-slate-700/60 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white font-extrabold shadow shrink-0">
+                  <div className="flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 font-extrabold shrink-0">
                     <span className="text-[10px] leading-none opacity-80">{isNow ? '종합' : `+${timelineOffsetHours}h`}</span>
                     <span className="text-lg leading-none font-mono font-black">{effectiveBiteScore.totalScore}</span>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5 flex-wrap">
+                    <div className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5 flex-wrap">
                       <span>{isNow ? '실시간' : '예측'} 종합 입질 {effectiveBiteScore.totalScore}점</span>
                       <span
                         className={`px-1.5 py-0.2 rounded text-[9px] ${
                           effectiveBiteScore.windRelation.includes('최적')
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                            : effectiveBiteScore.windRelation.includes('주의')
-                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                            ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40'
+                            : 'bg-amber-500/15 text-amber-300 border border-amber-500/40'
                         }`}
                       >
                         {effectiveBiteScore.windRelation}
                       </span>
                       {effectiveBiteScore.targetSummaryLabel && (
-                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-cyan-900/60 text-cyan-200 border border-cyan-700/50 truncate max-w-[140px]">
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-[#0F172A] text-slate-300 border border-slate-700/60 truncate max-w-[140px]">
                           🎯 {effectiveBiteScore.targetSummaryLabel}
                         </span>
                       )}
@@ -1927,14 +1911,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             {/* 1. 이 포인트에서 낚이는 어종별 실시간 입질 지수 */}
             {(() => {
               return (
-                <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl shadow-lg space-y-2.5">
+                <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
                   <button
                     type="button"
                     onClick={() => setIsSpeciesBiteDrawerOpen(!isSpeciesBiteDrawerOpen)}
                     className="w-full flex items-center justify-between cursor-pointer select-none"
                   >
                     <div className="flex items-center gap-1.5">
-                      <Fish size={15} className="text-cyan-400" />
+                      <Fish size={15} className="text-emerald-400" />
                       <span className="text-xs font-bold text-slate-100">
                         실시간 어종별 입질 지수
                       </span>
@@ -1945,28 +1929,26 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     <ChevronDown
                       size={15}
                       className={`text-slate-400 transition-transform duration-200 ${
-                        isSpeciesBiteDrawerOpen ? 'rotate-180 text-cyan-400' : ''
+                        isSpeciesBiteDrawerOpen ? 'rotate-180 text-emerald-400' : ''
                       }`}
                     />
                   </button>
 
                   {/* 리스트 뷰 형태의 실시간 어종 목록 (Drawer 접힘/펼침 지원) */}
                   {isSpeciesBiteDrawerOpen && (
-                    <div className="divide-y divide-slate-800/80 bg-slate-900/60 rounded-xl border border-slate-800 overflow-hidden">
+                    <div className="divide-y divide-slate-800/80 bg-[#0F172A] rounded-xl border border-slate-700/50 overflow-hidden">
                       {scoredList.map((item) => {
                         const { name, ecology, scoreInfo, isFavorite, hitsCount, isPeakSeason } = item;
                         const score = scoreInfo.score;
                         const isExpanded = expandedSpecies === name;
                         const rigInfo = getSpeciesRigInfo(name);
 
-                        // 점수 등급별 스타일
-                        const scoreBg = score >= 80
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
-                          : score >= 65
-                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                        // 점수 등급별 스타일 (강조 Emerald / 경고 Amber / 중립 Slate)
+                        const scoreBg = score >= 65
+                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
                           : score >= 50
-                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-                          : 'bg-slate-800/80 text-slate-400 border-slate-700';
+                          ? 'bg-[#1E293B] text-slate-300 border-slate-700/60'
+                          : 'bg-amber-500/15 text-amber-300 border-amber-500/40';
 
                         const scoreLabel = score >= 80 ? '대박 찬스' : score >= 65 ? '호조황 기대' : score >= 50 ? '무난한 편' : '비활성';
 
@@ -1974,17 +1956,17 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           <div
                             key={`scored-species-${name}`}
                             onClick={() => setExpandedSpecies(isExpanded ? null : name)}
-                            className={`p-2.5 transition select-none cursor-pointer rounded-xl ${
+                            className={`p-2.5 transition select-none cursor-pointer ${
                               isFavorite
-                                ? 'bg-amber-950/20 hover:bg-amber-950/30'
-                                : 'hover:bg-slate-850/60'
-                            } ${isExpanded ? 'bg-slate-900/90 ring-1 ring-cyan-500/30' : ''}`}
+                                ? 'bg-emerald-500/5 hover:bg-emerald-500/10'
+                                : 'hover:bg-[#1E293B]/60'
+                            } ${isExpanded ? 'bg-[#1E293B]/80 ring-1 ring-emerald-500/35' : ''}`}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 {isFavorite && (
-                                  <span className="flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold">
-                                    <Star size={9} className="fill-amber-300" /> 관심
+                                  <span className="flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 text-[9px] font-bold">
+                                    <Star size={9} className="fill-emerald-300" /> 관심
                                   </span>
                                 )}
 
@@ -1993,15 +1975,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                   <span>🐟 {name}</span>
                                   <ChevronDown
                                     size={13}
-                                    className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-cyan-300' : ''}`}
+                                    className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-emerald-400' : ''}`}
                                   />
                                 </span>
 
-                                <span className="px-1.5 py-0.2 rounded bg-slate-800/90 text-slate-300 text-[10px]">
+                                <span className="px-1.5 py-0.2 rounded bg-[#1E293B] text-slate-300 text-[10px]">
                                   {ecology.categoryName}
                                 </span>
                                 {isPeakSeason && (
-                                  <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-semibold">
+                                  <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 text-[9px] font-semibold">
                                     제철
                                   </span>
                                 )}
@@ -2023,31 +2005,31 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                             {isExpanded && (
                               <div
                                 onClick={(e) => e.stopPropagation()}
-                                className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-2.5 animate-in fade-in duration-150"
+                                className="mt-2 pt-2 border-t border-slate-700/60 space-y-2 animate-in fade-in duration-150"
                               >
                                 {/* 1. 어종 설명 & 생태 요약 */}
-                                <div className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                                <div className="p-2.5 bg-[#0F172A] rounded-xl border border-slate-700/50 space-y-1.5 text-xs">
                                   <div className="text-slate-200 leading-relaxed text-[11px]">
                                     {ecology.description}
                                   </div>
                                   <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-400 pt-0.5">
                                     {ecology.bottomName && (
-                                      <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                                      <span className="px-1.5 py-0.5 rounded bg-[#1E293B] border border-slate-700/60 text-slate-300">
                                         바닥: {ecology.bottomName}
                                       </span>
                                     )}
                                     {ecology.waterLayerName && (
-                                      <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
+                                      <span className="px-1.5 py-0.5 rounded bg-[#1E293B] border border-slate-700/60 text-slate-300">
                                         유영층: {ecology.waterLayerName}
                                       </span>
                                     )}
                                     {ecology.minLengthCm && (
-                                      <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700/80 text-amber-300 font-bold">
+                                      <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold">
                                         {ecology.minLengthCm}cm 이하 방생
                                       </span>
                                     )}
                                     {ecology.prohibitedNote && (
-                                      <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700/80 text-slate-300 text-[9.5px]">
+                                      <span className="px-1.5 py-0.5 rounded bg-[#1E293B] border border-slate-700/60 text-slate-300 text-[9.5px]">
                                         {ecology.prohibitedNote}
                                       </span>
                                     )}
@@ -2055,43 +2037,41 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 </div>
 
                               {/* 2. [요구사항 5] 선호 물때 & 선호 시간대 & 적정 수온 브리핑 */}
-                              <div className="p-2.5 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 rounded-xl border border-cyan-800/40 space-y-1.5 text-xs">
-                                <div className="font-bold text-cyan-300 flex items-center gap-1.5 text-xs">
+                              <div className="p-2.5 bg-[#0F172A] rounded-xl border border-emerald-500/30 space-y-1.5 text-xs">
+                                <div className="font-bold text-emerald-300 flex items-center gap-1.5 text-xs">
                                   <span>🌊 최적 공략 물때 & 피딩 타임</span>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-300">
                                   <div>
-                                    <strong className="text-cyan-400">· 선호 물때:</strong>{' '}
+                                    <strong className="text-slate-400">· 선호 물때:</strong>{' '}
                                     <span className="text-slate-200">
                                       {ecology.currentPrefName || (spot.best_tides?.length ? spot.best_tides.join(', ') : '전 물때 무난')}
                                     </span>
                                   </div>
                                   <div>
-                                    <strong className="text-cyan-400">· 선호 시간대:</strong>{' '}
+                                    <strong className="text-slate-400">· 선호 시간대:</strong>{' '}
                                     <span className="text-slate-200">
                                       {ecology.activityName || (spot.best_times?.length ? spot.best_times.join(', ') : '새벽/해질녘 피딩')}
                                     </span>
                                   </div>
                                   <div className="sm:col-span-2">
-                                    <strong className="text-cyan-400">· 적정 수온:</strong>{' '}
+                                    <strong className="text-slate-400">· 적정 수온:</strong>{' '}
                                     <span className="text-slate-200">
                                       최적 {ecology.tempRange.optMin}~{ecology.tempRange.optMax}°C (생존한계 {ecology.tempRange.min}~{ecology.tempRange.max}°C)
                                     </span>
                                   </div>
                                 </div>
-                                <div className="text-[10.5px] text-amber-300/90 pt-1 border-t border-cyan-900/40">
+                                <div className="text-[10.5px] text-emerald-300 pt-1 border-t border-slate-800">
                                   <strong>히트 골든타임:</strong> {rigInfo.goldenHoursText(tide?.sunrise || '06:30', tide?.sunset || '18:30', tide?.mulNumber || 7)}
                                 </div>
                               </div>
 
                               {/* 3. [요구사항 7] 맞춤 추천 채비 상세 */}
-                              <div className="p-2.5 bg-slate-950/90 rounded-xl border border-cyan-900/60 space-y-2 text-[11px]">
-                                <div className="font-bold text-cyan-300 flex items-center justify-between flex-wrap gap-1">
+                              <div className="p-2.5 bg-[#0F172A] rounded-xl border border-slate-700/50 space-y-2 text-[11px]">
+                                <div className="font-bold text-emerald-300 flex items-center justify-between flex-wrap gap-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span>맞춤 추천 채비 ({name})</span>
-                                    <span
-                                      className={`px-1.5 py-0.2 rounded text-[9.5px] font-bold border ${rigInfo.methodBadgeColor?.bg || 'bg-cyan-500/20'} ${rigInfo.methodBadgeColor?.text || 'text-cyan-300'} ${rigInfo.methodBadgeColor?.border || 'border-cyan-500/40'}`}
-                                    >
+                                    <span className="px-1.5 py-0.2 rounded text-[9.5px] font-bold border bg-emerald-500/15 text-emerald-300 border-emerald-500/40">
                                       {rigInfo.primaryMethodName}
                                     </span>
                                   </div>
@@ -2103,11 +2083,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-slate-300 text-[10px]">
                                   {rigInfo.rig?.isLureApplicable ? (
                                     <div>
-                                      <strong className="text-cyan-400">· 루어/에기:</strong> {rigInfo.recommendedRig.lure}
+                                      <strong className="text-emerald-300">· 루어/에기:</strong> {rigInfo.recommendedRig.lure}
                                     </div>
                                   ) : (
                                     <div>
-                                      <strong className="text-amber-400">· 원투/채비:</strong> {rigInfo.rig?.hookRig || rigInfo.recommendedRig.hookWeight}
+                                      <strong className="text-emerald-300">· 원투/채비:</strong> {rigInfo.rig?.hookRig || rigInfo.recommendedRig.hookWeight}
                                     </div>
                                   )}
                                   <div>
@@ -2127,12 +2107,12 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 </div>
 
                                 {!rigInfo.rig?.isLureApplicable && rigInfo.rig?.lureAltText && (
-                                  <div className="text-[9.5px] text-slate-300 bg-slate-900 px-2 py-1 rounded border border-slate-800">
+                                  <div className="text-[9.5px] text-amber-300 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/35">
                                     ⚠️ <strong>주의:</strong> {rigInfo.rig.lureAltText}
                                   </div>
                                 )}
 
-                                <div className="text-[10px] text-slate-200 bg-slate-900 p-1.5 rounded-lg border border-slate-800">
+                                <div className="text-[10px] text-slate-200 bg-[#1E293B] p-1.5 rounded-lg border border-slate-700/60">
                                   <strong>핵심 액션:</strong> {rigInfo.recommendedRig.action}
                                 </div>
                               </div>
@@ -2149,20 +2129,20 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
             {/* 2. 채비 및 수심 공략 팁 (실시간 어종별 입질 지수 아래로 이동) */}
             {spot.description && (
-              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
-                <span className="text-xs font-bold text-slate-300">💡 채비 및 수심 공략 팁</span>
+              <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-1">
+                <span className="text-xs font-bold text-slate-200">💡 채비 및 수심 공략 팁</span>
                 <p className="text-xs text-slate-300 leading-relaxed">{spot.description}</p>
               </div>
             )}
 
             {/* 3. 조과 히스토리 및 조과 등록 (실시간 어종별 입질 지수 아래로 이동) */}
-            <div className="flex justify-between items-center pt-1">
+            <div className="flex justify-between items-center px-1 pt-0.5">
               <span className="text-xs font-semibold text-slate-300">
                 조과 히스토리 ({catchLogs.length}건)
               </span>
               <button
                 onClick={onOpenCatchLogModal}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition active:scale-95 cursor-pointer"
               >
                 <PlusCircle size={14} />
                 <span>조과/꽝 등록</span>
@@ -2183,33 +2163,33 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 : null;
 
               return (
-                <div className="p-3 bg-gradient-to-r from-slate-900 to-blue-950/70 border border-slate-800 rounded-xl space-y-2 text-xs">
+                <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2 text-xs">
                   <div className="flex justify-between items-center">
-                    <span className="font-bold text-slate-200">
+                    <span className="font-bold text-slate-100">
                       손맛 통계
                     </span>
-                    <span className="text-[11px] text-cyan-400 font-mono font-bold">
+                    <span className="text-[11px] text-emerald-300 font-mono font-bold">
                       히트율: {hitRate}%
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                    <div className="bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+                  <div className="grid grid-cols-3 gap-1.5 text-center">
+                    <div className="bg-[#0F172A] p-2 rounded-xl border border-slate-700/50">
                       <div className="text-[10px] text-slate-400">총 출조</div>
                       <div className="text-sm font-bold text-white font-mono">{total}회</div>
                     </div>
-                    <div className="bg-emerald-950/50 p-2 rounded-lg border border-emerald-800/60">
+                    <div className="bg-[#0F172A] p-2 rounded-xl border border-emerald-500/35">
                       <div className="text-[10px] text-emerald-400">손맛 성공</div>
                       <div className="text-sm font-bold text-emerald-300 font-mono">{hitLogs.length}회</div>
                     </div>
-                    <div className="bg-rose-950/50 p-2 rounded-lg border border-rose-800/60">
-                      <div className="text-[10px] text-rose-400">꽝 (노피시)</div>
-                      <div className="text-sm font-bold text-rose-300 font-mono">{hitlessLogs.length}회</div>
+                    <div className="bg-[#0F172A] p-2 rounded-xl border border-amber-500/35">
+                      <div className="text-[10px] text-amber-400">꽝 (노피시)</div>
+                      <div className="text-sm font-bold text-amber-300 font-mono">{hitlessLogs.length}회</div>
                     </div>
                   </div>
                   {(avgHitTemp || avgHitlessTemp) && (
-                    <div className="text-[11px] text-slate-400 pt-1 flex justify-between border-t border-slate-800/80">
+                    <div className="text-[11px] text-slate-400 pt-1 flex justify-between border-t border-slate-700/60">
                       {avgHitTemp && <span>🐟 성공 시 평균수온: <strong className="text-emerald-300">{avgHitTemp}°C</strong></span>}
-                      {avgHitlessTemp && <span>❌ 꽝 당시 평균수온: <strong className="text-rose-300">{avgHitlessTemp}°C</strong></span>}
+                      {avgHitlessTemp && <span>❌ 꽝 당시 평균수온: <strong className="text-amber-300">{avgHitlessTemp}°C</strong></span>}
                     </div>
                   )}
                 </div>
@@ -2223,21 +2203,21 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 return (
                   <div
                     key={log.id}
-                    className={`p-3 rounded-xl space-y-2 text-xs border transition ${
+                    className={`p-[10px] rounded-[16px] bg-[#1E293B] space-y-2 text-xs border transition ${
                       isHitless
-                        ? 'bg-rose-950/20 border-rose-900/40 hover:border-rose-700/60'
-                        : 'bg-slate-850/80 border-slate-800 hover:border-slate-700'
+                        ? 'border-amber-500/40'
+                        : 'border-slate-700/60'
                     }`}
                   >
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-2 flex-wrap">
                         {isHitless ? (
                           <>
-                            <span className="px-2 py-0.5 rounded bg-rose-600 text-white font-bold text-[11px] shadow-sm flex items-center gap-1">
+                            <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/40 font-bold text-[11px] flex items-center gap-1">
                               <span>💔 꽝</span>
                               <span className="text-[10px] opacity-90">(떠나버린 물고기)</span>
                             </span>
-                            <span className="text-sm font-bold text-rose-200">
+                            <span className="text-sm font-bold text-slate-100">
                               대상어: {log.fish_species}
                             </span>
                             <span className="text-slate-400 text-[11px]">(0수 / 입질 없음)</span>
@@ -2248,7 +2228,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               {log.fish_species}
                             </span>
                             {log.fish_size_cm && (
-                              <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-bold">
+                              <span className="px-1.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 font-mono font-bold">
                                 {log.fish_size_cm} cm
                               </span>
                             )}
@@ -2264,7 +2244,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           <>
                             <button
                               onClick={() => onEditLog(log)}
-                              className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-cyan-400 transition"
+                              className="p-1 rounded-lg bg-[#0F172A] hover:bg-slate-800 text-slate-300 hover:text-emerald-300 transition"
                               title={isAdmin ? "조과 기록 수정 (관리자 권한)" : "조과 기록 수정"}
                             >
                               <Edit size={13} />
@@ -2275,7 +2255,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                   onDeleteLog(log.id);
                                 }
                               }}
-                              className="p-1 rounded bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition"
+                              className="p-1 rounded-lg bg-[#0F172A] hover:bg-amber-500/15 text-slate-400 hover:text-amber-300 transition"
                               title={isAdmin ? "조과 기록 삭제 (관리자 권한)" : "조과 기록 삭제"}
                             >
                               <Trash2 size={13} />
@@ -2288,28 +2268,28 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     {/* 출조 시간대 정보 (시작~종료 및 총 낚시시간) */}
                     {(log.start_time || log.end_time || log.duration_minutes) && (
                       <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
-                        <Clock size={11} className="text-cyan-400" />
+                        <Clock size={11} className="text-slate-400" />
                         <span>낚시 시간: </span>
-                        <span className="font-mono text-cyan-200">
+                        <span className="font-mono text-slate-100">
                           {log.start_time || ''} ~ {log.end_time || ''}
                         </span>
                         {log.duration_minutes != null && log.duration_minutes > 0 && (
-                          <span className="text-amber-300 font-medium">
+                          <span className="text-emerald-300 font-medium">
                             ({Math.floor(log.duration_minutes / 60)}시간 {log.duration_minutes % 60}분간)
                           </span>
                         )}
                       </div>
                     )}
 
-                    {/* 당시 환경 스냅샷 배지 (풍향, 풍속, 수온, 물때, 조류) */}
+                    {/* 당시 환경 스냅샷 배지 (중립 슬레이트 통일) */}
                     <div className="flex flex-wrap gap-1.5 text-[11px]">
-                      <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-900/60">
+                      <span className="px-2 py-0.5 rounded-lg bg-[#0F172A] text-slate-300 border border-slate-700/60">
                         🌊 {log.catch_mul} ({log.tide_state})
                       </span>
-                      <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-900/60">
+                      <span className="px-2 py-0.5 rounded-lg bg-[#0F172A] text-slate-300 border border-slate-700/60">
                         🌡️ 수온 {log.water_temp}°C
                       </span>
-                      <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-900/60 inline-flex items-center gap-1">
+                      <span className="px-2 py-0.5 rounded-lg bg-[#0F172A] text-slate-300 border border-slate-700/60 inline-flex items-center gap-1">
                         <span>💨</span>
                         {log.wind_direction != null && (
                           <span
@@ -2322,7 +2302,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         <span>{formatWindSpeed(log.wind_speed, windUnit)}</span>
                       </span>
                       {log.current_velocity != null && (
-                        <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-900/60 font-mono">
+                        <span className="px-2 py-0.5 rounded-lg bg-[#0F172A] text-emerald-300 border border-emerald-500/35 font-mono">
                           🧭 조류 {formatCurrentVelocity(log.current_velocity, currentUnit)}
                         </span>
                       )}
@@ -2334,7 +2314,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               `https://map.kakao.com/link/map/${encodeURIComponent(spot.name)},${log.lat},${log.lng}`
                             )
                           }
-                          className="px-2 py-0.5 rounded bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-900/60 font-mono cursor-pointer transition"
+                          className="px-2 py-0.5 rounded-lg bg-[#0F172A] hover:bg-slate-800 text-emerald-300 border border-slate-700/60 font-mono cursor-pointer transition"
                         >
                           📍 {log.lat.toFixed(4)}, {log.lng.toFixed(4)}
                         </button>
@@ -2349,7 +2329,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     )}
 
                     {log.memo && (
-                      <div className={`p-2 rounded text-slate-300 leading-relaxed ${isHitless ? 'bg-rose-950/30 border border-rose-900/30' : 'bg-slate-900'}`}>
+                      <div className="p-2 rounded-xl text-slate-300 leading-relaxed bg-[#0F172A] border border-slate-700/50">
                         {log.memo}
                       </div>
                     )}
@@ -2399,8 +2379,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         mulTextOverride: log.catch_mul,
                       });
                       return (
-                        <div className="mt-1.5 p-2.5 rounded-xl bg-rose-950/40 border border-rose-800/40 text-[11px] space-y-1.5 animate-in fade-in duration-150">
-                          <div className="flex items-center justify-between text-rose-300 font-bold border-b border-rose-900/50 pb-1">
+                        <div className="mt-1.5 p-2.5 rounded-xl bg-[#0F172A] border border-amber-500/35 text-[11px] space-y-1.5 animate-in fade-in duration-150">
+                          <div className="flex items-center justify-between text-amber-300 font-bold border-b border-slate-800 pb-1">
                             <span>💔 실패 원인 분석: {pm.topFactors[0]?.name} ({pm.topFactors[0]?.contributionPercent}%)</span>
                             <span className="text-[10px] text-slate-400 font-mono">정밀 환경·물리벡터</span>
                           </div>
@@ -2412,7 +2392,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-amber-300 bg-slate-900/90 p-2 rounded-lg border border-slate-800 mt-0.5">
+                          <div className="text-[10px] text-amber-300 bg-[#1E293B] p-2 rounded-lg border border-slate-700/60 mt-0.5">
                             {pm.tacticalAdvice}
                           </div>
                         </div>
@@ -2420,7 +2400,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     })()}
 
                     {log.photo_url && (
-                      <div className="mt-2 h-32 rounded-lg overflow-hidden border border-slate-800">
+                      <div className="mt-2 h-32 rounded-xl overflow-hidden border border-slate-700/50">
                         <img src={log.photo_url} alt="Catch" className="w-full h-full object-cover" />
                       </div>
                     )}
@@ -2432,13 +2412,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
         )}
 
         {activeTab === 'DIRECTIONS' && (
-          <div className="space-y-3 text-sm">
-            {/* 목적지 안내 & 도보 진입로/주차 팁 통합 박스 (과도한 이중 박스 제거 및 슬레이트 톤 적용) */}
-            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
-              <span className="text-xs font-bold text-slate-200">
+          <div className="space-y-[6px] text-sm">
+            {/* 목적지 안내 & 도보 진입로/주차 팁 통합 박스 */}
+            <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
+              <span className="text-xs font-bold text-slate-100">
                 목적지
               </span>
-              <div className="text-xs space-y-2.5 pt-0.5">
+              <div className="text-xs space-y-2 pt-0.5">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="truncate">
                     <strong className="text-slate-400">네비 검색 지명:</strong>{' '}
@@ -2448,20 +2428,20 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         e.preventDefault();
                         openExternalUrl(kakaoNaviUrl);
                       }}
-                      className="text-amber-300 font-bold hover:text-amber-200 underline decoration-amber-500/50 hover:decoration-amber-300 inline-flex items-center gap-1 transition"
+                      className="text-emerald-300 font-bold hover:text-emerald-200 underline decoration-emerald-500/50 hover:decoration-emerald-300 inline-flex items-center gap-1 transition"
                       title="카카오맵 길찾기 바로 연결"
                     >
                       <span>{destinationName}</span>
-                      <ExternalLink size={12} className="text-amber-400" />
+                      <ExternalLink size={12} className="text-emerald-400" />
                     </a>
                   </div>
 
-                  {/* 목적지의 '카카오맵'과 '로드뷰'를 같은 줄에 표시 (잔잔한 슬레이트 스타일) */}
+                  {/* 목적지의 '카카오맵'과 '로드뷰'를 같은 줄에 표시 */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => openExternalUrl(kakaoNaviUrl)}
-                      className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
                     >
                       <span>카카오맵</span>
                       <ExternalLink size={11} />
@@ -2469,7 +2449,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => openExternalUrl(`https://map.kakao.com/link/roadview/${spot.lat},${spot.lng}`)}
-                      className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-[#0F172A] hover:bg-slate-800 text-slate-200 border border-slate-700/60 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
                     >
                       <span>로드뷰</span>
                       <ExternalLink size={11} />
@@ -2478,7 +2458,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => openExternalUrl(spot.related_url!)}
-                        className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                        className="px-2.5 py-1 rounded-lg bg-[#0F172A] hover:bg-slate-800 text-emerald-300 border border-slate-700/60 text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
                         title={spot.related_url}
                       >
                         <span>관련 URL</span>
@@ -2497,7 +2477,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         e.preventDefault();
                         openExternalUrl(spot.navi_url!);
                       }}
-                      className="text-cyan-400 underline"
+                      className="text-emerald-300 underline"
                     >
                       {spot.navi_url}
                     </a>
@@ -2505,7 +2485,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 )}
 
                 {/* 도보 진입로 및 팁 통합 */}
-                <div className="pt-2 border-t border-slate-800 space-y-1">
+                <div className="pt-2 border-t border-slate-700/60 space-y-1">
                   <span className="text-[11px] font-bold text-slate-400">도보 진입로 & 주차 팁</span>
                   <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-line">
                     {spot.directions || '등록된 진입로 정보가 없습니다.'}
@@ -2516,9 +2496,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
             {/* 캐스팅 공략 방향 안내 */}
             {spot.casting_directions && spot.casting_directions.length > 0 && (
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1 text-xs text-slate-300">
+              <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-1 text-xs text-slate-300">
                 <span className="text-[11px] font-bold text-slate-400">캐스팅 공략 방향</span>
-                <p className="text-cyan-300 font-semibold">
+                <p className="text-emerald-300 font-semibold">
                   {spot.casting_directions.includes('ALL') ? '전방위 (모든 방향 공략 가능)' : spot.casting_directions.join(', ')}
                 </p>
               </div>
@@ -2531,23 +2511,23 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
 
               return (
-                <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+                <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
                   <button
                     type="button"
                     onClick={() => setIsEncyclopediaDrawerOpen(!isEncyclopediaDrawerOpen)}
                     className="w-full flex items-center justify-between cursor-pointer select-none"
                   >
-                    <div className="flex items-center gap-1.5 font-bold text-xs text-slate-200">
-                      <Fish size={15} className="text-cyan-400" />
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-slate-100">
+                      <Fish size={15} className="text-emerald-400" />
                       <span>연안 어종 정보</span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-900 text-slate-300 border border-slate-800">
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-[#0F172A] text-slate-300 border border-slate-700/60">
                         {uniqueSpeciesList.length}종
                       </span>
                     </div>
                     <ChevronDown
                       size={15}
                       className={`text-slate-400 transition-transform duration-200 ${
-                        isEncyclopediaDrawerOpen ? 'rotate-180 text-cyan-400' : ''
+                        isEncyclopediaDrawerOpen ? 'rotate-180 text-emerald-400' : ''
                       }`}
                     />
                   </button>
@@ -2569,10 +2549,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                             type="button"
                             key={cat.id}
                             onClick={() => setEncyclopediaCategory(cat.id)}
-                            className={`px-2 py-0.8 rounded-md shrink-0 transition font-medium ${
+                            className={`px-2 py-0.8 rounded-lg shrink-0 transition font-medium ${
                               encyclopediaCategory === cat.id
-                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 font-bold'
-                                : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200'
+                                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 font-bold'
+                                : 'bg-[#0F172A] text-slate-400 border border-slate-700/60 hover:text-slate-200'
                             }`}
                           >
                             {cat.label}
@@ -2598,8 +2578,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 key={sp.name}
                                 className={`rounded-xl border transition overflow-hidden ${
                                   isExpanded
-                                    ? 'bg-slate-900/95 border-cyan-500/60 shadow-lg'
-                                    : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700'
+                                    ? 'bg-[#0F172A] border-emerald-500/45'
+                                    : 'bg-[#0F172A] border-slate-700/50 hover:border-slate-600'
                                 }`}
                               >
                                 {/* 어종 요약 헤더 (클릭 시 토글) */}
@@ -2610,35 +2590,35 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
                                     <span className="font-bold text-xs text-white truncate">{sp.name}</span>
-                                    <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700/80 shrink-0">
+                                    <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-[#1E293B] text-slate-400 border border-slate-700/60 shrink-0">
                                       {sp.categoryName.split('(')[0]}
                                     </span>
                                     {isTastiest && (
-                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-amber-300 border border-slate-700 font-bold shrink-0">
+                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 font-bold shrink-0">
                                         제철
                                       </span>
                                     )}
                                     {isPeak && !isTastiest && (
-                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-emerald-300 border border-slate-700 font-bold shrink-0">
+                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 font-bold shrink-0">
                                         시즌
                                       </span>
                                     )}
                                   </div>
 
                                   <div className="flex items-center gap-2 shrink-0">
-                                    <span className="text-[10px] font-mono text-cyan-300">
+                                    <span className="text-[10px] font-mono text-emerald-300">
                                       {sp.tempRange.optMin}~{sp.tempRange.optMax}°C
                                     </span>
                                     <ChevronDown
                                       size={14}
-                                      className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180 text-cyan-400' : ''}`}
+                                      className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180 text-emerald-400' : ''}`}
                                     />
                                   </div>
                                 </button>
 
                         {/* 클릭 시 펼쳐지는 어종 종합 정보 */}
                         {isExpanded && (
-                          <div className="p-3 pt-1 border-t border-slate-800/80 space-y-2 text-[11px] bg-slate-950/70">
+                          <div className="p-2.5 pt-1 border-t border-slate-800 space-y-2 text-[11px] bg-[#0F172A]">
                             {sp.scientificName && (
                               <div className="text-[10px] font-mono text-slate-500 italic">
                                 학명: {sp.scientificName}
@@ -2649,7 +2629,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               {sp.description}
                             </p>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-slate-900/80 p-2 rounded-lg border border-slate-800 text-[10.5px]">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-[#1E293B] p-2 rounded-lg border border-slate-700/60 text-[10.5px]">
                               <div>
                                 <strong className="text-slate-400">· 서식 바닥:</strong> {sp.bottomName}
                               </div>
@@ -2670,15 +2650,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                 </div>
                               )}
                               {sp.recommendedBait && (
-                                <div className="sm:col-span-2 text-cyan-300">
+                                <div className="sm:col-span-2 text-emerald-300">
                                   <strong className="text-slate-300">· 추천 채비/미끼:</strong> {sp.recommendedBait}
                                 </div>
                               )}
                             </div>
 
-                            {/* 금어기 및 포획 금지 규정 (평범한 슬레이트 배경/외곽선) */}
+                            {/* 금어기 및 포획 금지 규정 */}
                             {(sp.minLengthCm || sp.prohibitedPeriod || sp.prohibitedNote) && (
-                              <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-[10px] text-slate-300 space-y-0.5">
+                              <div className="p-2 rounded-lg bg-[#1E293B] border border-amber-500/35 text-[10px] text-slate-300 space-y-0.5">
                                 <div className="font-bold flex items-center gap-1 text-slate-200">
                                   <span>⚖️ 수산자원관리법 규정</span>
                                   {sp.minLengthCm && (
@@ -2696,9 +2676,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               </div>
                             )}
 
-                            {/* 제철 및 맛 (평범한 슬레이트 배경/외곽선) */}
+                            {/* 제철 및 맛 */}
                             {sp.tastiestDesc && (
-                              <div className="text-[10px] text-slate-300 bg-slate-900 px-2 py-1 rounded border border-slate-800">
+                              <div className="text-[10px] text-slate-300 bg-[#1E293B] px-2 py-1 rounded border border-slate-700/60">
                                 <strong>맛있는 제철:</strong> {sp.tastiestDesc} ({sp.tastiestMonths?.join(', ')}월)
                               </div>
                             )}
@@ -2726,10 +2706,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             const youtubeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(youtubeKeywords)}`;
 
             return (
-              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+              <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded bg-rose-600 flex items-center justify-center text-white text-[10px] font-black">
+                  <span className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 text-[10px] font-black">
                       ▶
                     </span>
                     <span>유튜브 검색 링크</span>
@@ -2739,37 +2719,36 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   href={youtubeSearchUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 transition flex items-center justify-between group"
+                  className="p-2.5 rounded-xl bg-[#0F172A] hover:bg-slate-800 border border-slate-700/50 text-slate-200 transition flex items-center justify-between group"
                 >
-                  <div className="truncate pr-2 text-xs font-bold text-white group-hover:text-rose-300">
+                  <div className="truncate pr-2 text-xs font-bold text-white group-hover:text-emerald-300">
                     📺 {youtubeKeywords}
                   </div>
-                  <ExternalLink size={13} className="text-slate-400 group-hover:text-rose-300 shrink-0" />
+                  <ExternalLink size={13} className="text-slate-400 group-hover:text-emerald-300 shrink-0" />
                 </a>
               </div>
             );
           })()}
 
             {/* 기타 안내 및 체크리스트 & 모바일 APK 다운로드 링크 */}
-            <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
-              <span className="text-xs font-bold text-slate-200">
+            <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
+              <span className="text-xs font-bold text-slate-100">
                 기타
               </span>
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                {/* 7.5 입질 지수 기준 색상을 체크리스트와 통일 (인디고 톤) */}
+              <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                 <button
                   type="button"
                   onClick={() => setIsBiteScoreHelpOpen(true)}
-                  className="p-2.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm active:scale-98 cursor-pointer"
+                  className="p-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
                   title="입질 종합 지수(Bite Index) 평가 기준 설명 열람"
                 >
-                  <Info size={14} className="text-indigo-400 shrink-0" />
+                  <Info size={14} className="text-emerald-400 shrink-0" />
                   <span>입질지수 기준</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsChecklistOpen(true)}
-                  className="p-2.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm active:scale-98 cursor-pointer"
+                  className="p-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
                   title="출조 필수품 및 안전 점검 체크리스트 열기"
                 >
                   <span>체크리스트</span>
@@ -2777,25 +2756,25 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
 
               {/* 모바일 앱 다운로드 (exfish.apk) 링크 */}
-              <div className="pt-2 border-t border-slate-800/80">
+              <div className="pt-2 border-t border-slate-700/60">
                 <a
                   href="./exfish.apk"
                   download="exfish.apk"
-                  className="w-full p-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-between shadow-md group cursor-pointer"
+                  className="w-full p-2.5 rounded-xl bg-[#0F172A] hover:bg-slate-800 border border-slate-700/50 text-slate-200 text-xs font-bold transition flex items-center justify-between group cursor-pointer"
                   title="APK 다운로드"
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-base">📱</span>
-                    <span className="text-white font-bold group-hover:text-cyan-300">APK 다운로드</span>
+                    <span className="text-white font-bold group-hover:text-emerald-300">APK 다운로드</span>
                   </div>
-                  <Download size={16} className="text-slate-400 group-hover:text-cyan-300 group-hover:translate-y-0.5 transition shrink-0" />
+                  <Download size={16} className="text-slate-400 group-hover:text-emerald-300 group-hover:translate-y-0.5 transition shrink-0" />
                 </a>
               </div>
 
-              {/* 7.6 앱 버전 정보: 시스템 버전 외곽선 제거 */}
-              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+              {/* 7.6 앱 버전 정보 */}
+              <div className="pt-2 border-t border-slate-700/60 flex items-center justify-between text-[11px] text-slate-400 font-mono">
                 <span>시스템 버전</span>
-                <span className="text-cyan-400 font-bold">
+                <span className="text-emerald-300 font-bold">
                   v{APP_VERSION}
                 </span>
               </div>
@@ -2809,25 +2788,25 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
           const authorValue = isUserLoggedIn ? currentUser!.name : newMemoAuthor;
 
           return (
-            <div className="space-y-3 text-xs">
-              {/* 새 메모 작성 폼 (Drawer 접힘/펼침 지원, 5줄 입력창, 통상 외곽선 적용) */}
-              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
+            <div className="space-y-[6px] text-xs">
+              {/* 새 메모 작성 폼 */}
+              <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
                 <button
                   type="button"
                   onClick={() => setIsMemoDrawerOpen(!isMemoDrawerOpen)}
                   className="w-full flex items-center justify-between cursor-pointer select-none py-0.5"
                 >
-                  <span className="font-semibold text-slate-200 text-xs">메모 남기기</span>
+                  <span className="font-semibold text-slate-100 text-xs">메모 남기기</span>
                   <ChevronDown
                     size={15}
                     className={`text-slate-400 transition-transform duration-200 ${
-                      isMemoDrawerOpen ? 'rotate-180 text-cyan-400' : ''
+                      isMemoDrawerOpen ? 'rotate-180 text-emerald-400' : ''
                     }`}
                   />
                 </button>
 
                 {isMemoDrawerOpen && (
-                  <form onSubmit={handleAddSpotMemo} className="space-y-2.5 pt-1 border-t border-slate-800/80">
+                  <form onSubmit={handleAddSpotMemo} className="space-y-2 pt-1.5 border-t border-slate-700/60">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] text-slate-400 block mb-0.5">작성자 닉네임</label>
@@ -2840,10 +2819,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                           }}
                           readOnly={isUserLoggedIn}
                           placeholder="조사 닉네임"
-                          className={`w-full border rounded px-2.5 py-1.5 text-white font-medium focus:outline-none text-xs ${
+                          className={`w-full border rounded-lg px-2.5 py-1.5 text-white font-medium focus:outline-none text-xs ${
                             isUserLoggedIn
-                              ? 'bg-slate-800/60 border-slate-700/50 text-slate-300 cursor-not-allowed'
-                              : 'bg-slate-900 border-slate-700 focus:border-cyan-400'
+                              ? 'bg-[#0F172A]/70 border-slate-700/50 text-slate-400 cursor-not-allowed'
+                              : 'bg-[#0F172A] border-slate-700/60 focus:border-emerald-400'
                           }`}
                         />
                       </div>
@@ -2852,7 +2831,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         <select
                           value={newMemoTag}
                           onChange={(e) => setNewMemoTag(e.target.value as SpotMemoTag)}
-                          className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-white focus:outline-none focus:border-cyan-400 text-xs"
+                          className="w-full bg-[#0F172A] border border-slate-700/60 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:border-emerald-400 text-xs"
                         >
                           <option value="GENERAL">일반</option>
                           <option value="SAFETY">안전</option>
@@ -2869,7 +2848,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         value={newMemoContent}
                         onChange={(e) => setNewMemoContent(e.target.value)}
                         placeholder="예: 간조 2시간 전부터 진입로가 드러납니다. 갯바위 젖은 곳 매우 미끄러우니 안전 유의하세요!"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 text-xs leading-relaxed min-h-[110px]"
+                        className="w-full bg-[#0F172A] border border-slate-700/60 rounded-xl p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 text-xs leading-relaxed min-h-[110px]"
                       />
                     </div>
 
@@ -2877,7 +2856,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <button
                         type="submit"
                         disabled={isSubmittingMemo || !newMemoContent.trim()}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:opacity-40 text-white font-bold transition shadow cursor-pointer"
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:opacity-40 text-slate-950 font-bold transition cursor-pointer"
                       >
                         <Send size={12} />
                         <span>{isSubmittingMemo ? '등록 중...' : '등록'}</span>
@@ -2887,8 +2866,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 )}
               </div>
 
-              {/* 태그 필터 칩 (요구사항 4-5) */}
-              <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+              {/* 태그 필터 칩 */}
+              <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
                 {[
                   { id: 'ALL', label: '전체' },
                   { id: 'SAFETY', label: '안전' },
@@ -2899,10 +2878,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   <button
                     key={f.id}
                     onClick={() => setMemoFilterTag(f.id)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium shrink-0 transition cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-medium shrink-0 transition cursor-pointer border ${
                       memoFilterTag === f.id
-                        ? 'bg-cyan-500 text-slate-950 font-bold'
-                        : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold'
+                        : 'bg-[#1E293B] text-slate-400 border-slate-700/60 hover:text-slate-200'
                     }`}
                   >
                     {f.label}
@@ -2916,7 +2895,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
                 if (filtered.length === 0) {
                   return (
-                    <div className="p-8 text-center bg-slate-950/60 rounded-xl border border-slate-800 text-slate-400 space-y-1">
+                    <div className="p-[10px] py-8 text-center bg-[#1E293B] rounded-[16px] border border-slate-700/60 text-slate-400 space-y-1">
                       <MessageSquare size={28} className="mx-auto text-slate-600" />
                       <p className="text-xs">현장 팁을 남기세요</p>
                     </div>
@@ -2929,19 +2908,19 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   const isCondition = m.tag === 'CONDITION';
 
                   const tagBadge = isSafety ? (
-                    <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800 text-[10px] font-bold">
+                    <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/40 text-[10px] font-bold">
                       안전
                     </span>
                   ) : isParking ? (
-                    <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-bold">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">
                       진입
                     </span>
                   ) : isCondition ? (
-                    <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[10px] font-bold">
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">
                       상황
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[10px]">
+                    <span className="px-2 py-0.5 rounded-md bg-[#0F172A] text-slate-300 border border-slate-700/60 text-[10px]">
                       일반
                     </span>
                   );
@@ -2956,18 +2935,16 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                   return (
                     <div
                       key={m.id}
-                      className={`p-3 rounded-xl space-y-1.5 border transition ${
+                      className={`p-[10px] rounded-[16px] bg-[#1E293B] space-y-1.5 border transition ${
                         isSafety
-                          ? 'bg-rose-950/20 border-rose-900/40'
-                          : isParking
-                          ? 'bg-amber-950/15 border-amber-900/40'
-                          : 'bg-slate-900 border-slate-800'
+                          ? 'border-amber-500/40'
+                          : 'border-slate-700/60'
                       }`}
                     >
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
                           {tagBadge}
-                          <span className="font-bold text-slate-200 text-xs">{m.user_name}</span>
+                          <span className="font-bold text-slate-100 text-xs">{m.user_name}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-slate-500 font-mono">{dateStr}</span>
@@ -2978,7 +2955,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                                   handleDeleteSpotMemo(m.id);
                                 }
                               }}
-                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
+                              className="p-1 rounded-lg text-slate-500 hover:text-amber-300 hover:bg-[#0F172A] transition"
                               title={isAdmin ? "메모 삭제 (관리자 권한)" : "메모 삭제"}
                             >
                               <Trash2 size={12} />
