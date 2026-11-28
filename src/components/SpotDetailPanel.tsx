@@ -61,7 +61,7 @@ import {
 import { generatePostMortemReport } from '../utils/postMortemEngine';
 import { playEvacuationBeep } from '../utils/tideAlertSound';
 import { sendEmergencyEvacuationNotification, requestNotificationPermission } from '../utils/nativeBridge';
-import { findNearestKhoaStation } from '../utils/tideService';
+import { findNearestKhoaStation, isOverseasCoordinate } from '../utils/tideService';
 import { resolveUnifiedWaterDepth } from '../utils/depthSinkEngine';
 import { useLandingKhoaDepth } from '../utils/castingLanding';
 import {
@@ -1213,7 +1213,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                       <span className="font-extrabold text-base sm:text-lg text-emerald-300">{displayMulText}</span>
                       <span className="text-xs sm:text-sm text-slate-300 font-medium">({displayLunarDate})</span>
                       <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-[#0F172A] text-slate-300 border border-slate-700/60 font-medium">
-                        국립해양조사원 {nearestStation.station.name} 관측소 ({nearestStation.distanceKm}km)
+                        {isOverseasCoordinate(spot.lat, spot.lng)
+                          ? '글로벌 조위 (Open-Meteo)'
+                          : `국립해양조사원 ${nearestStation.station.name} 관측소 (${nearestStation.distanceKm}km)`}
                       </span>
                     </div>
                     {displayCurrentHeight !== undefined && (
@@ -1548,7 +1550,11 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         </span>
                       </div>
                       <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/35 shrink-0">
-                        {khoaDepthRecord ? `KHOA · ${nearestStationInfo.station.name}` : `추정 · ${nearestStationInfo.station.name}`}
+                        {isOverseasCoordinate(spot.lat, spot.lng)
+                          ? '글로벌 · 추정'
+                          : khoaDepthRecord
+                          ? `KHOA · ${nearestStationInfo.station.name}`
+                          : `추정 · ${nearestStationInfo.station.name}`}
                       </span>
                     </div>
 

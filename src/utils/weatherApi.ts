@@ -1,5 +1,5 @@
 import { MarineData, WeatherData } from '../types';
-import { findNearestKhoaStation } from './tideService';
+import { findNearestKhoaStation, isOverseasCoordinate } from './tideService';
 import { getCachedKhoaRoms, getCachedKhoaWind, getCachedKhoaWaterTemp } from './khoaCache';
 import { isNativePlatform } from './nativeBridge';
 
@@ -298,7 +298,7 @@ export async function fetchWeatherData(lat: number, lng: number): Promise<Weathe
     } catch (err) {
       console.warn('Weather API fallback used:', err);
       const nearest = findNearestKhoaStation(lat, lng);
-      const khoaWind = await getCachedKhoaWind(nearest.station.code).catch(() => null);
+      const khoaWind = isOverseasCoordinate(lat, lng) ? null : await getCachedKhoaWind(nearest.station.code).catch(() => null);
 
       const fallback: WeatherData = {
         temp: 18.5,
@@ -374,8 +374,8 @@ export async function fetchMarineData(lat: number, lng: number): Promise<MarineD
     const url = `${baseUrl}?latitude=${qLat}&longitude=${qLng}&current=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&hourly=wave_height,wave_period,sea_surface_temperature,ocean_current_velocity,ocean_current_direction&forecast_days=4&timezone=Asia%2FSeoul`;
 
     const nearest = findNearestKhoaStation(lat, lng);
-    const khoaTempPromise = getCachedKhoaWaterTemp(nearest.station.code).catch(() => null);
-    const romsPromise = getCachedKhoaRoms(lat, lng).catch(() => null);
+    const khoaTempPromise = isOverseasCoordinate(lat, lng) ? Promise.resolve(null) : getCachedKhoaWaterTemp(nearest.station.code).catch(() => null);
+    const romsPromise = isOverseasCoordinate(lat, lng) ? Promise.resolve(null) : getCachedKhoaRoms(lat, lng).catch(() => null);
 
     try {
       const [res, khoaTemp, roms] = await Promise.all([

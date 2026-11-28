@@ -98,6 +98,18 @@ export function findNearestKhoaStation(lat: number, lng: number): { station: Kho
   return { station: nearest, distanceKm: Math.round(minDistance * 10) / 10 };
 }
 
+/** 해외 포인트 자동 판별 기준 거리 (최근접 KHOA 관측소 > 35km 시 글로벌 조위/기상 자동 전환) */
+export const OVERSEAS_KHOA_CUTOFF_KM = 35;
+
+/**
+ * 한국 연안(KHOA 관측소 반경 35km 이내) 외 해외 포인트 여부 판별
+ * - 대마도 히타카츠항(부산 55km), 일본·동남아·글로벌 포인트는 true 반환
+ * - 제주·울릉도·독도·거문도·흑산도 등 국내 도서는 자체 KHOA 관측소가 0~25km 이내에 있어 false 유지
+ */
+export function isOverseasCoordinate(lat: number, lng: number): boolean {
+  return findNearestKhoaStation(lat, lng).distanceKm > OVERSEAS_KHOA_CUTOFF_KM;
+}
+
 /** 2자리 숫자 포맷 */
 function padZero(num: number): string {
   return num < 10 ? `0${num}` : `${num}`;
@@ -129,9 +141,111 @@ export interface KhoaTideForecastResult {
   hourlyCurve: TideHourlyPoint[];
   currentHeight: number;
   currentStateText: string;
-  source: 'KHOA_API' | 'KHOA_CACHED' | 'KHOA_HARMONIC';
+  source: 'KHOA_API' | 'KHOA_CACHED' | 'KHOA_HARMONIC' | 'GLOBAL_OPENMETEO';
   tideDayInfo?: TideDayInfo;
   swtcWeekly?: KhoaSwtcWeeklyResult | null;
+}
+
+/**
+ * Open-Meteo Marine `sea_level_height_msl` 1시간 시계열(m)로부터
+ * 당일 24시간 조위 곡선(cm) 및 만조/간조 극점(포물선 보간) 추출
+ */
+export function extractTideFromSeaLevelSeries(
+  times: string[],
+  heightsM: (number | null)[],
+  baseDate: Date
+): {
+  events: TideForecastEvent[];
+  hourlyCurve: TideHourlyPoint[];
+  currentHeight: number;
+  rangeCm: number;
+} | null {
+  const dateKey = `${baseDate.getFullYear()}-${padZero(baseDate.getMonth() + 1)}-${padZero(baseDate.getDate())}`;
+  const validPairs: { idx: number; time: string; valM: number }[] = [];
+  for (let i = 0; i < times.length; i++) {
+    const v = heightsM[i];
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      validPairs.push({ idx: i, time: times[i], valM: v });
+    }
+  }
+  if (validPairs.length < 18) return null;
+
+  const dayIndices: number[] = [];
+  for (let i = 0; i < times.length; i++) {
+    if (times[i]?.startsWith(dateKey) && typeof heightsM[i] === 'number' && Number.isFinite(heightsM[i])) {
+      dayIndices.push(i);
+    }
+  }
+  if (dayIndices.length < 12) return null;
+
+  const minM = Math.min(...validPairs.map((p) => p.valM));
+  const maxM = Math.max(...validPairs.map((p) => p.valM));
+  const toCm = (m: number) => Math.max(5, Math.round((m - minM) * 100) + 20);
+
+  const hourlyCurve: TideHourlyPoint[] = [];
+  for (let h = 0; h < 24; h++) {
+    const prefix = `${dateKey}T${padZero(h)}:`;
+    const idx = times.findIndex((t) => t?.startsWith(prefix));
+    const rawM = idx >= 0 && typeof heightsM[idx] === 'number' ? (heightsM[idx] as number) : minM;
+    hourlyCurve.push({
+      hour: h,
+      time: `${padZero(h)}:00`,
+      height: toCm(rawM),
+    });
+  }
+
+  // 포물선 3점 보간으로 당일 극치(만조/간조) 정밀 추출
+  const rawExtremes: { type: 'HIGH' | 'LOW'; time: string; height: number; minutes: number }[] = [];
+  for (const idx of dayIndices) {
+    if (idx <= 0 || idx >= times.length - 1) continue;
+    const prev = heightsM[idx - 1];
+    const cur = heightsM[idx];
+    const next = heightsM[idx + 1];
+    if (typeof prev !== 'number' || typeof cur !== 'number' || typeof next !== 'number') continue;
+
+    const isHigh = cur >= prev && cur > next;
+    const isLow = cur <= prev && cur < next;
+    if (!isHigh && !isLow) continue;
+
+    const denom = prev - 2 * cur + next;
+    const offsetHours = Math.abs(denom) > 1e-6 ? Math.max(-0.5, Math.min(0.5, 0.5 * (prev - next) / denom)) : 0;
+    const peakM = cur - 0.25 * (prev - next) * offsetHours;
+
+    const hhStr = times[idx].slice(11, 13);
+    const baseHour = Number(hhStr) || 0;
+    const totalMins = Math.max(0, Math.min(1439, Math.round((baseHour + offsetHours) * 60)));
+    const hh = Math.floor(totalMins / 60);
+    const mm = totalMins % 60;
+
+    rawExtremes.push({
+      type: isHigh ? 'HIGH' : 'LOW',
+      time: `${padZero(hh)}:${padZero(mm)}`,
+      height: toCm(peakM),
+      minutes: totalMins,
+    });
+  }
+
+  rawExtremes.sort((a, b) => a.minutes - b.minutes);
+  const events: TideForecastEvent[] = rawExtremes.map((ev, i) => {
+    const opp = rawExtremes.find((o, idx) => idx !== i && o.type !== ev.type);
+    return {
+      type: ev.type,
+      typeLabel: ev.type === 'HIGH' ? '만조' : '간조',
+      time: ev.time,
+      height: ev.height,
+      diff: opp ? Math.abs(ev.height - opp.height) : Math.round((maxM - minM) * 100),
+    };
+  });
+
+  const curHour = Math.min(23, Math.max(0, baseDate.getHours()));
+  const currentHeight = hourlyCurve[curHour]?.height ?? toCm(validPairs[0].valM);
+
+  return {
+    events,
+    hourlyCurve,
+    currentHeight,
+    rangeCm: Math.max(20, Math.round((maxM - minM) * 100)),
+  };
 }
 
 /**
@@ -333,6 +447,123 @@ export async function getKhoaTideForecast(
     : nearestDist;
 
   const dateKey = `${baseDate.getFullYear()}-${padZero(baseDate.getMonth() + 1)}-${padZero(baseDate.getDate())}`;
+
+  // 0. 해외 포인트(KHOA 관측소 반경 35km 초과) 자동 감지 -> Open-Meteo 글로벌 해수면 조위(sea_level_height_msl) 사용
+  if (!correction && nearestDist > OVERSEAS_KHOA_CUTOFF_KM) {
+    const gLat = Math.round(lat * 100) / 100;
+    const gLng = Math.round(lng * 100) / 100;
+    const globalCacheKey = `exfish_global_tide_v1_${gLat.toFixed(2)}_${gLng.toFixed(2)}_${dateKey}`;
+
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(globalCacheKey);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (cached && cached.expireAt > Date.now() && cached.data?.tideDayInfo) {
+            return cached.data;
+          }
+        }
+      } catch {}
+    }
+
+    const noonDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 12, 0, 0);
+    const moonAge = getMoonAge(noonDate);
+    const { mulText, lunarDay } = getMulInfo(moonAge, 'SOUTH');
+    const sunTimes = SunCalc.getTimes(noonDate, lat, lng);
+    const sunrise = sunTimes.sunrise && !isNaN(sunTimes.sunrise.getTime())
+      ? `${padZero(sunTimes.sunrise.getHours())}:${padZero(sunTimes.sunrise.getMinutes())}`
+      : '06:30';
+    const sunset = sunTimes.sunset && !isNaN(sunTimes.sunset.getTime())
+      ? `${padZero(sunTimes.sunset.getHours())}:${padZero(sunTimes.sunset.getMinutes())}`
+      : '18:30';
+    const lunarDateStr = `음력 ${Math.max(1, Math.min(30, Math.floor(lunarDay)))}일`;
+
+    let globalExtracted: ReturnType<typeof extractTideFromSeaLevelSeries> = null;
+    try {
+      const apiBase =
+        typeof window !== 'undefined' && window.location?.origin?.startsWith('http') && !window.location.origin.includes('localhost')
+          ? '/api-openmeteo/marine'
+          : 'https://marine-api.open-meteo.com/v1/marine';
+      const url = `${apiBase}?latitude=${gLat}&longitude=${gLng}&hourly=sea_level_height_msl&forecast_days=3&timezone=auto`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (res.ok) {
+        const json = await res.json();
+        const times: string[] = json?.hourly?.time || [];
+        const heightsM: (number | null)[] = json?.hourly?.sea_level_height_msl || [];
+        globalExtracted = extractTideFromSeaLevelSeries(times, heightsM, baseDate);
+      }
+    } catch (err) {
+      console.warn('[tideService] Global Open-Meteo sea_level_height_msl fallback:', err);
+    }
+
+    const virtualStation: KhoaTideStation = {
+      code: 'GLOBAL_OM',
+      name: '글로벌 조위 (Open-Meteo)',
+      region: 'SOUTH',
+      lat,
+      lng,
+      meanRange: globalExtracted?.rangeCm ?? 180,
+      highLagHours: 0,
+      datumZ0: 0,
+    };
+
+    const unifiedTide = globalExtracted
+      ? calculateTideDay(lat, lng, baseDate, {
+          events: globalExtracted.events,
+          hourlyCurve: globalExtracted.hourlyCurve,
+        })
+      : calculateTideDay(lat, lng, baseDate);
+
+    const events = globalExtracted?.events ?? [
+      ...(unifiedTide.highTides || []).map((h) => ({ type: 'HIGH' as const, typeLabel: '만조' as const, time: h.time, height: h.height })),
+      ...(unifiedTide.lowTides || []).map((l) => ({ type: 'LOW' as const, typeLabel: '간조' as const, time: l.time, height: l.height })),
+    ];
+    const hourlyCurve = globalExtracted?.hourlyCurve ?? (unifiedTide.hourlyCurve || []).slice(0, 24).map((p) => ({
+      hour: p.hour,
+      time: p.timeStr,
+      height: p.height,
+    }));
+    const currentHeight = globalExtracted?.currentHeight ?? hourlyCurve[baseDate.getHours()]?.height ?? 100;
+
+    const nowH = baseDate.getHours() + baseDate.getMinutes() / 60;
+    const nextEv = events.find((e) => {
+      const [eh, em] = e.time.split(':').map(Number);
+      return eh * 60 + em >= nowH * 60;
+    });
+    const currentStateText = nextEv
+      ? nextEv.type === 'HIGH'
+        ? `${nextEv.time} 만조 향해 들물 진행 중`
+        : `${nextEv.time} 간조 향해 날물 진행 중`
+      : '조석 안정기';
+
+    const globalResult: KhoaTideForecastResult = {
+      station: virtualStation,
+      distanceKm: 0,
+      targetDateStr: dateKey,
+      mulText: unifiedTide.mulText || mulText,
+      lunarDateStr: unifiedTide.lunarDateStr || lunarDateStr,
+      sunrise,
+      sunset,
+      events,
+      hourlyCurve,
+      currentHeight,
+      currentStateText,
+      source: 'GLOBAL_OPENMETEO',
+      tideDayInfo: unifiedTide,
+    };
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(
+          globalCacheKey,
+          JSON.stringify({ expireAt: Date.now() + 6 * 60 * 60 * 1000, data: globalResult })
+        );
+      } catch {}
+    }
+
+    return globalResult;
+  }
+
   const cacheKey = `${CACHE_KEY_PREFIX}${correction ? `${correction.name}_` : ''}${baseStation.code}_${dateKey}`;
 
   // 1. 결과 캐시 검사 (단, 구형 KHOA_HARMONIC 또는 swtcWeekly 누락 캐시는 우회하여 공식 데이터 갱신)
