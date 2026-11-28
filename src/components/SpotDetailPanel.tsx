@@ -607,29 +607,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       {/* 1. 상단 일체형 히어로: 사진 유무에 따라 동적 높이 최적화 (사진 없을 시 컴팩트 헤더로 세로 공간 확보) */}
       {(() => {
         const hasPhotos = Boolean(spot.photo_urls && spot.photo_urls.length > 0);
-        const warnings: string[] = [];
-        if (simWindSpeed >= 8 || simWindGust >= 13) {
-          warnings.push(`강풍/돌풍 주의 (${simWindSpeed.toFixed(1)}m/s, 돌풍 ${simWindGust.toFixed(1)}m/s)`);
-        }
-        if (simWaveHeight >= 1.5) {
-          warnings.push(`높은 파고/너울 주의 (${simWaveHeight.toFixed(1)}m)`);
-        }
-        if (simCurrentVel >= 0.9) {
-          warnings.push(`급류/채비 쓸림 주의 (${simCurrentVel.toFixed(1)}m/s)`);
-        }
-        const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
-        if (isHazardTerrain && tide?.highTides && tide.highTides.length > 0) {
-          const nowMinutes = now.getHours() * 60 + now.getMinutes();
-          for (const ht of tide.highTides) {
-            const [h, m] = ht.time.split(':').map(Number);
-            const htMinutes = h * 60 + m;
-            const diff = htMinutes - nowMinutes;
-            if (diff > 0 && diff <= 120) {
-              warnings.push(`만조(${ht.time}) ${diff}분 전! 퇴로 확보 필수`);
-              break;
-            }
-          }
-        }
 
         return (
           <div className="relative shrink-0 bg-[#0F172A] overflow-hidden border-b border-slate-800">
@@ -809,27 +786,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               </div>
             </div>
 
-            {/* 2행: 안전 경보 & 고립 주의 배너 (경보가 있을 때만 영역 차지) */}
-            {warnings.length > 0 && (
-              <div className="p-[6px] bg-[#0F172A]">
-                <div className="p-[10px] rounded-[16px] bg-[#1E293B] border border-amber-500/50 text-slate-200 text-xs flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center text-slate-950 font-black text-xs shrink-0 mt-0.5">
-                    !
-                  </div>
-                  <div className="flex-1 flex flex-col gap-0.5">
-                    <span className="font-extrabold text-amber-300 text-xs">안전주의:</span>
-                    <div className="text-xs text-slate-200 font-medium leading-relaxed flex flex-wrap gap-x-2">
-                      {warnings.map((w, idx) => (
-                        <span key={idx} className="inline-flex items-center">
-                          {idx > 0 && <span className="text-amber-400 mr-2">·</span>}
-                          {w}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* 2행: 안전 경보는 기상·물때 탭 최상단으로 이동 */}
           </div>
         );
       })()}
@@ -931,6 +888,53 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-[6px] space-y-[6px] bg-[#0F172A]">
         {activeTab === 'WEATHER_TIDE' && (
           <div className="space-y-[6px]">
+            {/* 통합 안전 경고 배너 (기상과 물때 탭 최상단) */}
+            {(() => {
+              const tabWarnings: string[] = [];
+              if (simWindSpeed >= 8 || simWindGust >= 13) {
+                tabWarnings.push(`강풍/돌풍 주의 (${simWindSpeed.toFixed(1)}m/s, 돌풍 ${simWindGust.toFixed(1)}m/s)`);
+              }
+              if (simWaveHeight >= 1.5) {
+                tabWarnings.push(`높은 파고/너울 주의 (${simWaveHeight.toFixed(1)}m)`);
+              }
+              if (simCurrentVel >= 0.9) {
+                tabWarnings.push(`급류/채비 쓸림 주의 (${simCurrentVel.toFixed(1)}m/s)`);
+              }
+              const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
+              if (isHazardTerrain && tide?.highTides && tide.highTides.length > 0) {
+                const nowMinutes = now.getHours() * 60 + now.getMinutes();
+                for (const ht of tide.highTides) {
+                  const [h, m] = ht.time.split(':').map(Number);
+                  const htMinutes = h * 60 + m;
+                  const diff = htMinutes - nowMinutes;
+                  if (diff > 0 && diff <= 120) {
+                    tabWarnings.push(`만조(${ht.time}) ${diff}분 전! 퇴로 확보 필수`);
+                    break;
+                  }
+                }
+              }
+              if (tabWarnings.length === 0) return null;
+
+              return (
+                <div className="p-[10px] rounded-[16px] bg-[#1E293B] border border-amber-500/50 text-slate-200 text-xs flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center text-slate-950 font-black text-xs shrink-0 mt-0.5">
+                    !
+                  </div>
+                  <div className="flex-1 flex flex-col gap-0.5">
+                    <span className="font-extrabold text-amber-300 text-xs">안전주의:</span>
+                    <div className="text-xs text-slate-200 font-medium leading-relaxed flex flex-wrap gap-x-2">
+                      {tabWarnings.map((w, idx) => (
+                        <span key={idx} className="inline-flex items-center">
+                          {idx > 0 && <span className="text-amber-400 mr-2">·</span>}
+                          {w}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* [항목 1] 갯바위/석축 들물 고립 방지 탈출 골든타임 카운트다운 타이머 & 비프 경보 (석축, 갯바위, 해변, 백사장에만 적용) */}
             {tide && (() => {
               const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
@@ -2297,20 +2301,20 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         mulTextOverride: log.catch_mul,
                       });
                       return (
-                        <div className="mt-1.5 p-2.5 rounded-xl bg-[#0F172A] border border-amber-500/35 text-[11px] space-y-1.5 animate-in fade-in duration-150">
+                        <div className="mt-1.5 p-2.5 rounded-xl bg-[#0F172A] border border-amber-500/35 text-[12.5px] space-y-1.5 animate-in fade-in duration-150">
                           <div className="flex items-center justify-between text-amber-300 font-bold border-b border-slate-800 pb-1">
                             <span>💔 실패 원인 분석: {pm.topFactors[0]?.name} ({pm.topFactors[0]?.contributionPercent}%)</span>
-                            <span className="text-[10px] text-slate-400 font-mono">정밀 환경·물리벡터</span>
+                            <span className="text-[11px] text-slate-400 font-mono">정밀 환경·물리벡터</span>
                           </div>
-                          <div className="text-[10.5px] text-slate-300 leading-snug">
+                          <div className="text-[12px] text-slate-200 leading-relaxed">
                             {pm.topFactors[0]?.description}
                             {pm.topFactors[1] && (
-                              <span className="block text-[10px] text-slate-400 mt-0.5">
+                              <span className="block text-[11.5px] text-slate-400 mt-0.5">
                                 2순위: {pm.topFactors[1].name} ({pm.topFactors[1].contributionPercent}% · {pm.topFactors[1].metricLabel})
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-amber-300 bg-[#1E293B] p-2 rounded-lg border border-slate-700/60 mt-0.5">
+                          <div className="text-[11.5px] text-amber-300 bg-[#1E293B] p-2 rounded-lg border border-slate-700/60 mt-0.5 leading-relaxed">
                             {pm.tacticalAdvice}
                           </div>
                         </div>

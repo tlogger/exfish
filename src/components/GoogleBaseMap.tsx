@@ -1,6 +1,6 @@
 import React from 'react';
 import { getApiBaseUrl } from '../utils/apiBase';
-import { hasGoogleMapsApiKey, loadGoogleMapsApi } from '../utils/googleMapsLoader';
+import { hasGoogleMapsApiKey, loadGoogleMapsApi, resetGoogleMapsLoader } from '../utils/googleMapsLoader';
 import { globalZoomToLevel, levelToGlobalZoom } from '../utils/mapCoordSync';
 import { OPENSEAMAP_SEAMARK_TILES } from '../utils/osmBilingualStyle';
 import { calculateDestinationPoint, type BaseMapProps } from './mapCanvasTypes';
@@ -40,6 +40,7 @@ export const GoogleBaseMap: React.FC<BaseMapProps> = ({
     hasGoogleMapsApiKey() ? null : 'MISSING_KEY'
   );
   const [isReady, setIsReady] = React.useState(false);
+  const [retryNonce, setRetryNonce] = React.useState(0);
 
   const centerRef = React.useRef(center);
   centerRef.current = center;
@@ -177,7 +178,7 @@ export const GoogleBaseMap: React.FC<BaseMapProps> = ({
       }
       mapRef.current = null;
     };
-  }, [colorSchemeKey, dragTrackerRef, isMarkerClickRef, notifyViewport, secondaryLang]);
+  }, [colorSchemeKey, dragTrackerRef, isMarkerClickRef, notifyViewport, retryNonce, secondaryLang]);
 
   // 공통 투영 브릿지 등록
   React.useEffect(() => {
@@ -354,36 +355,51 @@ export const GoogleBaseMap: React.FC<BaseMapProps> = ({
   if (loadError) {
     const isMissingKey = loadError === 'MISSING_KEY';
     return (
-      <div className="flex h-full w-full items-center justify-center bg-slate-950 p-6 text-center text-slate-200">
-        <div className="max-w-sm space-y-3 rounded-2xl border border-slate-800 bg-slate-900/95 p-5 shadow-2xl">
-          <div className="text-sm font-bold text-cyan-300">
-            {isMissingKey ? 'Google Maps API 키 미설정' : 'Google Maps 로드 실패'}
+      <div className="flex h-full w-full items-center justify-center bg-[#0F172A] p-6 text-center text-slate-200">
+        <div className="max-w-sm space-y-3 rounded-[16px] border border-slate-700/60 bg-[#1E293B] p-4 shadow-2xl">
+          <div className="text-sm font-bold text-amber-300">
+            {isMissingKey ? 'Google Maps API 키 미설정' : 'Google Maps 로드 지연 / 실패'}
           </div>
-          <p className="text-xs leading-relaxed text-slate-400">
+          <p className="text-xs leading-relaxed text-slate-300">
             {isMissingKey
               ? 'Google Maps를 사용하려면 환경변수 VITE_GOOGLE_MAPS_API_KEY가 필요합니다. 키 없이도 무료 OSM 해양도 지도로 해외 포인트를 바로 이용할 수 있습니다.'
               : loadError}
           </p>
-          {onFallbackProvider && (
-            <button
-              type="button"
-              onClick={() => onFallbackProvider('osm')}
-              className="w-full rounded-xl bg-cyan-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-cyan-500"
-            >
-              무료 OSM 해양도 지도로 전환
-            </button>
-          )}
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            {!isMissingKey && (
+              <button
+                type="button"
+                onClick={() => {
+                  resetGoogleMapsLoader();
+                  setLoadError(null);
+                  setRetryNonce((n) => n + 1);
+                }}
+                className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-emerald-400"
+              >
+                다시 시도 (대기)
+              </button>
+            )}
+            {onFallbackProvider && (
+              <button
+                type="button"
+                onClick={() => onFallbackProvider('osm')}
+                className={`${isMissingKey ? 'col-span-2 bg-emerald-500 text-slate-950 hover:bg-emerald-400' : 'bg-[#0F172A] text-slate-200 border border-slate-700/60 hover:bg-slate-800'} rounded-xl px-3 py-2 text-xs font-bold transition`}
+              >
+                OSM 지도로 전환
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`relative w-full h-full ${isDarkMode ? 'bg-slate-950' : 'bg-slate-900'}`}>
-      <div ref={hostRef} className="w-full h-full" />
+    <div className="relative h-full w-full bg-[#0F172A]">
+      <div ref={hostRef} className="h-full w-full" />
       {!isReady && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/70 text-xs font-medium text-cyan-300">
-          Google Maps 초기화 중...
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#0F172A]/80 text-xs font-medium text-emerald-300">
+          Google Maps 불러오는 중...
         </div>
       )}
     </div>
