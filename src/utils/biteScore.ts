@@ -469,6 +469,24 @@ export function calculateSingleSpeciesScore(
 }
 
 /**
+ * 포인트 출현·대상 어종 개별 점수(내림차순)로부터 입질 종합 기본 점수를 산출합니다.
+ * - 1~2종: 전체 평균 (예: 우럭 90점, 광어 80점 -> 85점)
+ * - 3종 이상: 비활성/휴면 어종(<30점)이 대박 어종 점수를 과도하게 희석하지 않도록
+ *   활성 어종(>=30점) 중 상위 최대 3종의 평균을 사용하며, 전 어종이 비활성이면 전체 평균 사용
+ */
+export function aggregateSpeciesBiteScore(sortedScoresDesc: number[]): number {
+  if (sortedScoresDesc.length === 0) return 0;
+  if (sortedScoresDesc.length <= 2) {
+    return Math.round(
+      sortedScoresDesc.reduce((acc, s) => acc + s, 0) / sortedScoresDesc.length
+    );
+  }
+  const activeScores = sortedScoresDesc.filter((s) => s >= 30);
+  const pool = activeScores.length > 0 ? activeScores.slice(0, 3) : sortedScoresDesc;
+  return Math.round(pool.reduce((acc, s) => acc + s, 0) / pool.length);
+}
+
+/**
  * ExFish 어종 생태 기반 맞춤형 입질 종합 지수 (Bite Index, 100점 만점)
  * - 관심 대상어(favoriteSpecies)가 주어지면 해당 어종들의 생태 데이터를 기반으로 점수 산출
  */
@@ -576,10 +594,8 @@ export function calculateBiteScore(
   speciesScores.sort((a, b) => b.score - a.score);
   const topSpecies = speciesScores[0];
 
-  // 종합 점수: 관심 어종들의 평균 점수 (최대 100점)
-  const avgSpeciesScore = Math.round(
-    speciesScores.reduce((acc, curr) => acc + curr.score, 0) / speciesScores.length
-  );
+  // 종합 점수: 포인트 출현·대상 어종(또는 관심어종)의 상위 활성 어종 기반 평균 (최대 100점)
+  const avgSpeciesScore = aggregateSpeciesBiteScore(speciesScores.map((s) => s.score));
 
   // 풍속/너울 및 파고 채비 쓸림 감점 반영
   let totalScore = avgSpeciesScore;

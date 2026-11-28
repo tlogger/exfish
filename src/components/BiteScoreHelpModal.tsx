@@ -10,105 +10,122 @@ export const BiteScoreHelpModal: React.FC<BiteScoreHelpModalProps> = ({ isOpen, 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl text-white shadow-2xl p-5 sm:p-6 my-6 max-h-[92vh] overflow-y-auto space-y-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-[#0F172A] border border-slate-700/60 rounded-[16px] w-full max-w-xl text-slate-100 shadow-2xl p-[12px] sm:p-4 my-6 max-h-[92vh] overflow-y-auto space-y-[8px]">
         {/* 모달 헤더 */}
-        <div className="flex justify-between items-center pb-3 border-b border-slate-800">
+        <div className="flex justify-between items-center pb-2.5 border-b border-slate-800">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-black text-sm shadow">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-300 font-black text-sm">
               Ex
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-white">
-                입질 종합 지수 (Bite Index) 평가 기준
+                입질 종합 지수
               </h2>
               <p className="text-[11px] text-slate-400">
-                100점 만점 기준 환경 데이터 분석 및 어종별 맞춤 산출 알고리즘
+                100점 만점 · 어종별 생태 채점 및 포인트 종합 산출 방식
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition"
+            className="w-8 h-8 rounded-lg bg-[#1E293B] hover:bg-slate-700 text-slate-300 border border-slate-700/60 flex items-center justify-center transition"
           >
             <X size={16} />
           </button>
         </div>
 
-        {/* 4대 핵심 평가 배점 안내 */}
-        <div className="space-y-2.5 text-xs text-slate-200">
+        {/* 1단계: 각 어종별 입질 지수 산출 (100점 만점) */}
+        <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2 text-xs">
+          <div className="font-bold text-emerald-300">
+            1단계 · 각 어종별 입질 지수 (100점 만점)
+          </div>
           <p className="leading-relaxed text-slate-300">
-            <strong>ExFish 입질 종합 지수</strong>는 한국 연안 바다낚시의 성공 확률을 결정짓는 4대 핵심 해양·기상 요소를 실시간 결합하여 <strong>100점 만점</strong>으로 환산한 종합 입질 예측 지수입니다.
+            포인트의 각 어종마다 4대 해양·생태 요소를 실시간 채점하고 사리/정조 탁도 보정(-6~+3점)을 반영해 어종별 0~100점을 산출합니다.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-            {/* 1. 물때 & 조석 (30점) */}
-            <div className="p-3 bg-slate-800/70 border border-slate-700 rounded-xl space-y-1">
-              <div className="flex items-center justify-between font-bold text-cyan-300">
-                <span className="flex items-center gap-1">🌊 물때 & 조류 적합도</span>
-                <span className="font-mono text-cyan-400">최대 30점</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            <div className="p-2.5 bg-[#0F172A] border border-slate-700/50 rounded-xl space-y-1">
+              <div className="flex items-center justify-between font-bold text-slate-100">
+                <span>어종별 활성 수온</span>
+                <span className="font-mono text-emerald-300">최대 30점</span>
               </div>
               <p className="text-[11px] text-slate-300 leading-snug">
-                사리(6~9물)의 원활한 조류 흐름 여부와 포인트별 선호 물때, 그리고 대상어종이 좋아하는 조류 속도(강조류 vs 완류) 일치도를 채점합니다.
+                어종 고유의 최적 활성 수온(저서 어종은 수심·계절별 저층 수온 보정 포함) 일치도를 정밀 채점합니다.
               </p>
             </div>
 
-            {/* 2. 바람 & 안전 (25점) */}
-            <div className="p-3 bg-slate-800/70 border border-slate-700 rounded-xl space-y-1">
-              <div className="flex items-center justify-between font-bold text-emerald-300">
-                <span className="flex items-center gap-1">💨 풍속 & 맞바람/등바람</span>
-                <span className="font-mono text-emerald-400">최대 25점</span>
+            <div className="p-2.5 bg-[#0F172A] border border-slate-700/50 rounded-xl space-y-1">
+              <div className="flex items-center justify-between font-bold text-slate-100">
+                <span>시간대 · 해창 골든타임</span>
+                <span className="font-mono text-emerald-300">최대 25점</span>
               </div>
               <p className="text-[11px] text-slate-300 leading-snug">
-                캐스팅과 밑걸림 파악이 쉬운 4.0m/s 이하 등바람은 만점(25점)을 부여하며, 7m/s 이상 맞바람 및 너울 발생 시 감점 및 주의보를 발령합니다.
+                일출/일몰 해창 피딩과 어종별 주행성·야행성(수심 15m 미만 비활성 시간대 제한 포함)을 반영합니다.
               </p>
             </div>
 
-            {/* 3. 표층 수온(SST) 적합도 (25점) */}
-            <div className="p-3 bg-slate-800/70 border border-slate-700 rounded-xl space-y-1">
-              <div className="flex items-center justify-between font-bold text-rose-300">
-                <span className="flex items-center gap-1">🌡️ 어종별 활성 수온 대역</span>
-                <span className="font-mono text-rose-400">최대 25점</span>
+            <div className="p-2.5 bg-[#0F172A] border border-slate-700/50 rounded-xl space-y-1">
+              <div className="flex items-center justify-between font-bold text-slate-100">
+                <span>조류 유속 · 물때 위상</span>
+                <span className="font-mono text-emerald-300">최대 25점</span>
               </div>
               <p className="text-[11px] text-slate-300 leading-snug">
-                어종마다 먹이활동을 왕성하게 시작하는 고유 활성 수온이 다릅니다 (우럭 11~17°C, 광어 13~19°C, 무늬오징어 17~23°C 등). 실측 표층수온과의 매칭도를 정밀 계산합니다.
+                어종이 선호하는 유속(강조류/중류/완류)과 들물·날물·물돌이 위상 일치도를 채점합니다.
               </p>
             </div>
 
-            {/* 4. 시간대 & 주야간 골든타임 (20점) */}
-            <div className="p-3 bg-slate-800/70 border border-slate-700 rounded-xl space-y-1">
-              <div className="flex items-center justify-between font-bold text-amber-300">
-                <span className="flex items-center gap-1">⏰ 골든 피딩 타임</span>
-                <span className="font-mono text-amber-400">최대 20점</span>
+            <div className="p-2.5 bg-[#0F172A] border border-slate-700/50 rounded-xl space-y-1">
+              <div className="flex items-center justify-between font-bold text-slate-100">
+                <span>지형 · 제철 적합도</span>
+                <span className="font-mono text-emerald-300">최대 20점</span>
               </div>
               <p className="text-[11px] text-slate-300 leading-snug">
-                일출(새벽 해창)과 일몰(피딩), 그리고 어종 고유의 주행성/야행성 습성(예: 낙지는 밤, 주꾸미는 낮)에 부합하는 시각에 추가 가산점을 부여합니다.
+                포인트 지형(갯바위·방파제·해변·선착장)과 어종 서식 바닥·제철 시즌 일치도를 반영합니다.
               </p>
             </div>
           </div>
         </div>
 
+        {/* 2단계: 입질 종합 지수 산출 (출현·대상 어종 통합 + 물리 환경 감점) */}
+        <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2 text-xs">
+          <div className="font-bold text-emerald-300">
+            2단계 · 입질 종합 지수 산출 (출현·대상 어종 통합)
+          </div>
+          <div className="space-y-1.5 text-[11px] text-slate-300 leading-relaxed">
+            <p>
+              • <strong className="text-slate-100">대상 어종 합산</strong>: 포인트 출현·대상 어종(관심어종 설정 시 교집합 우선)의 개별 점수를 종합합니다. 1~2종은 전체 평균을 사용하며, 3종 이상일 때는 야간/주간 휴면 어종(30점 미만)이 호황 어종 점수를 왜곡하지 않도록 <strong className="text-emerald-300">활성 어종 상위 최대 3종의 평균</strong>으로 기본 점수를 산출합니다.
+            </p>
+            <p>
+              • <strong className="text-slate-100">물리 출조 환경 감점</strong>: 기본 점수에서 실제 낚시 운용을 방해하는 <strong className="text-amber-300">파고 채비 쓸림(-2~-14점), 맞바람/강풍(-3~-14점), 급류 과속(-3~-12점)</strong>을 차감해 최종 종합 지수를 확정합니다.
+            </p>
+            <div className="p-2 rounded-xl bg-[#0F172A] border border-slate-700/50 text-slate-200 font-mono text-[11px]">
+              예) 우럭 90점 · 광어 80점 → 기본 평균 <strong className="text-emerald-300">85점</strong> (바람·파고 양호 시 최종 <strong className="text-emerald-300">85점</strong>, 맞바람 6m/s 시 -8점 → <strong className="text-amber-300">77점</strong>)
+            </div>
+          </div>
+        </div>
+
         {/* 종합 점수 구간별 판정 가이드 */}
-        <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2 text-xs">
-          <span className="font-bold text-white flex items-center gap-1.5">
-            📊 점수 구간별 출조 가이드
+        <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2 text-xs">
+          <span className="font-bold text-slate-100">
+            점수 구간별 출조 가이드
           </span>
           <div className="space-y-1.5 text-[11px]">
-            <div className="flex items-center justify-between p-1.5 rounded bg-emerald-950/40 border border-emerald-800/60 text-emerald-200">
-              <span className="font-bold">🔥 85점 이상: 특급 출조 찬스</span>
-              <span>수온, 물때, 바람, 피딩 삼박자가 완벽한 대박 찬스</span>
+            <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#0F172A] border border-emerald-500/40 text-emerald-300">
+              <span className="font-bold shrink-0">85점 이상 · 특급 찬스</span>
+              <span className="text-slate-300 text-right">수온·물때·바람·피딩 최적 구간</span>
             </div>
-            <div className="flex items-center justify-between p-1.5 rounded bg-cyan-950/40 border border-cyan-800/60 text-cyan-200">
-              <span className="font-bold">✨ 70 ~ 84점: 호조황 기대</span>
-              <span>입질 찬스 진입 중, 들물/날물 본류대 집중 공략 추천</span>
+            <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#0F172A] border border-emerald-500/25 text-emerald-300">
+              <span className="font-bold shrink-0">70 ~ 84점 · 호조황 기대</span>
+              <span className="text-slate-300 text-right">들물/날물 본류대 집중 공략 추천</span>
             </div>
-            <div className="flex items-center justify-between p-1.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
-              <span className="font-bold">⚖️ 50 ~ 69점: 무난한 여건</span>
-              <span>조류가 흐르는 중들물 골든타임을 노려 집중 낚시</span>
+            <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#0F172A] border border-slate-700/60 text-slate-200">
+              <span className="font-bold shrink-0">50 ~ 69점 · 무난한 여건</span>
+              <span className="text-slate-400 text-right">중들물·해창 타이밍 중심 공략</span>
             </div>
-            <div className="flex items-center justify-between p-1.5 rounded bg-rose-950/40 border border-rose-800/60 text-rose-200">
-              <span className="font-bold">⚠️ 50점 미만: 주의/비활성</span>
-              <span>강풍, 고/저수온 또는 너울 주의, 안전 장구 필수 착용</span>
+            <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#0F172A] border border-amber-500/40 text-amber-300">
+              <span className="font-bold shrink-0">50점 미만 · 주의/비활성</span>
+              <span className="text-slate-300 text-right">강풍·너울·비활성 시간대 주의</span>
             </div>
           </div>
         </div>
@@ -117,7 +134,7 @@ export const BiteScoreHelpModal: React.FC<BiteScoreHelpModalProps> = ({ isOpen, 
         <div className="flex justify-end pt-1">
           <button
             onClick={onClose}
-            className="w-full sm:w-auto px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition"
+            className="w-full sm:w-auto px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition"
           >
             확인 및 닫기
           </button>

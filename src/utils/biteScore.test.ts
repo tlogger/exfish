@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   estimateTargetWaterTemp,
   calculateSmoothTempScore,
+  aggregateSpeciesBiteScore,
   findTopGoldenWindows48h,
   calculateBiteScore,
 } from './biteScore';
@@ -282,5 +283,16 @@ describe('biteScore temperature and ecological scoring', () => {
     const squidTurbid = calculateBiteScore(spot, baseWeather, turbidMarine, springTide, ['무늬오징어'], evening);
     const squidMid = calculateBiteScore(spot, baseWeather, turbidMarine, midTide, ['무늬오징어'], evening);
     expect(squidTurbid.speciesScores?.[0].score).toBeLessThan(squidMid.speciesScores?.[0].score ?? 100);
+  });
+
+  it('aggregates composite bite score rationally from target/resident species (e.g. 우럭 90, 광어 80 -> 85)', () => {
+    // 2종: 우럭 90점, 광어 80점 -> 산술 평균 85점
+    expect(aggregateSpeciesBiteScore([90, 80])).toBe(85);
+    // 3종 모두 활성: 상위 3종 평균 -> 80점
+    expect(aggregateSpeciesBiteScore([90, 80, 70])).toBe(80);
+    // 다어종 포인트에서 휴면 어종(15점)이 섞여도 활성 어종(90, 80) 중심으로 왜곡 방지 -> 85점
+    expect(aggregateSpeciesBiteScore([90, 80, 15, 15, 15])).toBe(85);
+    // 전 어종 비활성일 경우 그대로 낮은 평균 유지 -> 14점
+    expect(aggregateSpeciesBiteScore([15, 12])).toBe(14);
   });
 });

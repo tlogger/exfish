@@ -608,11 +608,14 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       {(() => {
         const hasPhotos = Boolean(spot.photo_urls && spot.photo_urls.length > 0);
         const warnings: string[] = [];
-        if (weather && weather.windSpeed >= 8) {
-          warnings.push(`순간 강풍 주의 (${weather.windSpeed}m/s)`);
+        if (simWindSpeed >= 8 || simWindGust >= 13) {
+          warnings.push(`강풍/돌풍 주의 (${simWindSpeed.toFixed(1)}m/s, 돌풍 ${simWindGust.toFixed(1)}m/s)`);
         }
-        if (marine && marine.waveHeight >= 1.5) {
-          warnings.push(`높은 파고/너울 주의 (${marine.waveHeight}m)`);
+        if (simWaveHeight >= 1.5) {
+          warnings.push(`높은 파고/너울 주의 (${simWaveHeight.toFixed(1)}m)`);
+        }
+        if (simCurrentVel >= 0.9) {
+          warnings.push(`급류/채비 쓸림 주의 (${simCurrentVel.toFixed(1)}m/s)`);
         }
         const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
         if (isHazardTerrain && tide?.highTides && tide.highTides.length > 0) {
@@ -928,114 +931,6 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-[6px] space-y-[6px] bg-[#0F172A]">
         {activeTab === 'WEATHER_TIDE' && (
           <div className="space-y-[6px]">
-            {/* [최상단 통합 배치] 모든 경고 카드 (해양 기상 특보 + 연안안전사고 위험예보 + 들물 고립 탈출 골든타임) */}
-            {(() => {
-              const isWindDangerTop = simWindSpeed >= 9.5 || simWindGust >= 13.0;
-              const isCurrentDangerTop = simCurrentVel >= 0.9;
-              const isWaveDangerTop = simWaveHeight >= 1.8;
-              if (!isWindDangerTop && !isCurrentDangerTop && !isWaveDangerTop) return null;
-
-              return (
-                <div className="p-[10px] bg-[#1E293B] border border-amber-500/50 rounded-[16px] flex items-center gap-2.5 text-slate-200 text-xs">
-                  <ShieldAlert size={22} className="text-amber-400 shrink-0" />
-                  <div>
-                    <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                      <span>🚨 해양 기상 특보급 위험 경고</span>
-                    </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed pt-0.5">
-                      {isWaveDangerTop && '⚠️ 높은 파고(너울)로 인한 갯바위/방파제 테트라포드 월파 위험! '}
-                      {isWindDangerTop && '⚠️ 강풍/돌풍으로 인한 낚시 불가 및 실족 추락 위험! '}
-                      {isCurrentDangerTop && '⚠️ 빠른 급류/와류로 인한 채비 쓸림 및 해상 안전사고 위험! '}
-                      출조를 자제하고 안전장구(구명조끼/펠트화)를 반드시 점검하세요.
-                    </p>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* [제안 2] 국립해양조사원·해양경찰청 연안안전사고 위험예보제 위젯 (석축, 갯바위, 해변, 백사장에만 적용) */}
-            {(() => {
-              const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
-              if (!isHazardTerrain) return null;
-
-              const isSpringTide = tide ? (tide.mulNumber >= 6 && tide.mulNumber <= 10) : false;
-              const now = currentTime;
-              const curMinutes = now.getHours() * 60 + now.getMinutes();
-              let isNearHighTide = false;
-              let nextHighTideTimeStr = '';
-
-              if (tide?.highTides && tide.highTides.length > 0) {
-                for (const ht of tide.highTides) {
-                  const parts = ht.time.split(':').map(Number);
-                  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-                    const htMinutes = parts[0] * 60 + parts[1];
-                    if (Math.abs(curMinutes - htMinutes) <= 120) {
-                      isNearHighTide = true;
-                      nextHighTideTimeStr = ht.time;
-                      break;
-                    }
-                  }
-                }
-                if (!nextHighTideTimeStr && tide.highTides[0]) {
-                  nextHighTideTimeStr = tide.highTides[0].time;
-                }
-              }
-
-              const isHighWave = simWaveHeight >= 1.5;
-              const isHighWind = simWindSpeed >= 8.5;
-
-              // 연안안전사고 예보 등급 판정
-              const safetyLevel: 'WARNING' | 'ADVISORY' | 'NORMAL' =
-                (isSpringTide && isNearHighTide && isHighWave) || simWaveHeight >= 2.0 || simWindSpeed >= 11.0
-                  ? 'WARNING' // 경보
-                  : (isSpringTide && isNearHighTide) || isHighWave || isHighWind || (tide && tide.mulNumber >= 7 && tide.mulNumber <= 9)
-                  ? 'ADVISORY' // 주의보
-                  : 'NORMAL'; // 관심
-
-              if (safetyLevel === 'NORMAL') return null;
-
-              const isWarning = safetyLevel === 'WARNING';
-
-              return (
-                <div
-                  className={`p-[10px] rounded-[16px] bg-[#1E293B] border text-xs space-y-1.5 ${
-                    isWarning
-                      ? 'border-amber-500/60 text-slate-100'
-                      : 'border-amber-500/40 text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 font-bold">
-                      <ShieldAlert size={16} className="text-amber-400" />
-                      <span className="text-amber-300">
-                        해양경찰청 연안안전사고 위험예보 [{isWarning ? '🚨 경보' : '⚡ 주의보'}]
-                      </span>
-                    </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-[#0F172A] text-amber-300 border border-amber-500/35">
-                      {isSpringTide ? '사리(대조기)' : '연안위험'}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1 text-[11px] leading-relaxed">
-                    {isSpringTide && isNearHighTide && (
-                      <p className="font-semibold text-slate-200">
-                        🚨 <strong className="text-amber-300">[만조 전후 갯바위 고립 주의]</strong> 현재 대조기(사리) 만조({nextHighTideTimeStr}) 전후 2시간 구간입니다. 바닷물이 빠르게 유입되어 갯바위 하산로나 진입로가 침수될 수 있으니 미리 퇴로를 확보하세요!
-                      </p>
-                    )}
-                    {isHighWave && (
-                      <p className="text-slate-200">
-                        🌊 <strong className="text-amber-300">[너울성 파도 월파 주의]</strong> 테트라포드(TTP) 및 간출암에 너울이 덮칠 수 있습니다. 미끄럼 방지 펠트화 및 구명조끼를 반드시 착용하세요.
-                      </p>
-                    )}
-                    <div className="flex items-center justify-between pt-1 border-t border-slate-700/60 text-[10px] text-slate-400">
-                      <span>연안사고 예방법 낚시통제구역 진입 금지</span>
-                      <span className="font-bold text-amber-300">📞 해양긴급신고 119 / 122</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
             {/* [항목 1] 갯바위/석축 들물 고립 방지 탈출 골든타임 카운트다운 타이머 & 비프 경보 (석축, 갯바위, 해변, 백사장에만 적용) */}
             {tide && (() => {
               const isHazardTerrain = spot.spot_type === 'ROCK' || spot.spot_type === 'SEAWALL' || spot.spot_type === 'BEACH';
@@ -1895,7 +1790,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                     <span className="text-[10px] leading-none opacity-80">{isNow ? '종합' : `+${timelineOffsetHours}h`}</span>
                     <span className="text-lg leading-none font-mono font-black">{effectiveBiteScore.totalScore}</span>
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5 flex-wrap">
                       <span>{isNow ? '실시간' : '예측'} 종합 입질 {effectiveBiteScore.totalScore}점</span>
                       <span
@@ -1908,15 +1803,15 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         {effectiveBiteScore.windRelation}
                       </span>
                       {effectiveBiteScore.targetSummaryLabel && (
-                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-[#0F172A] text-slate-300 border border-slate-700/60 truncate max-w-[140px]">
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-[#0F172A] text-slate-300 border border-slate-700/60 break-words">
                           🎯 {effectiveBiteScore.targetSummaryLabel}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-300 truncate pt-0.5">{effectiveBiteScore.verdict}</p>
+                    <p className="text-xs text-slate-200 leading-relaxed break-words pt-1">{effectiveBiteScore.verdict}</p>
                     {effectiveBiteScore.waveSweepWarning && (
-                      <p className="text-[10.5px] text-amber-300 font-medium truncate pt-0.5 flex items-center gap-1">
-                        <span>{effectiveBiteScore.waveSweepWarning}</span>
+                      <p className="text-[11px] text-amber-300 font-medium leading-relaxed break-words pt-1">
+                        {effectiveBiteScore.waveSweepWarning}
                       </p>
                     )}
                   </div>
@@ -2032,7 +1927,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                               >
                                 {/* 1. 어종 설명 & 생태 요약 */}
                                 <div className="p-2.5 bg-[#0F172A] rounded-xl border border-slate-700/50 space-y-1.5 text-xs">
-                                  <div className="text-slate-200 leading-relaxed text-[11px]">
+                                  <div className="text-slate-200 leading-relaxed text-[13px] md:text-[15px]">
                                     {ecology.description}
                                   </div>
                                   <div className="flex flex-wrap gap-1.5 text-[10px] text-slate-400 pt-0.5">
@@ -2153,8 +2048,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
             {/* 2. 채비 및 수심 공략 팁 (실시간 어종별 입질 지수 아래로 이동) */}
             {spot.description && (
               <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-1">
-                <span className="text-xs font-bold text-slate-200">💡 채비 및 수심 공략 팁</span>
-                <p className="text-xs text-slate-300 leading-relaxed">{spot.description}</p>
+                <span className="text-[13.5px] font-bold text-slate-100">💡 채비 및 수심 공략 팁</span>
+                <p className="text-sm text-slate-200 leading-relaxed">{spot.description}</p>
               </div>
             )}
 
