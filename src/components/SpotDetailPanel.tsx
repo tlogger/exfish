@@ -1,5 +1,5 @@
 import React from 'react';
-import { CompactEnvHud } from './CompactEnvHud';
+import { CompactEnvHud, SpotCompareAndWindCard } from './CompactEnvHud';
 import {
   Bell,
   ChevronDown,
@@ -928,16 +928,30 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-[6px] space-y-[6px] bg-[#0F172A]">
         {activeTab === 'WEATHER_TIDE' && (
           <div className="space-y-[6px]">
-            {/* v6 컴팩트 실시간 환경 HUD (스크롤 없는 2x3 6대 지표 + 1탭 채비 프리셋 + 등바람 대피) */}
-            <CompactEnvHud
-              spot={spot}
-              allSpots={allSpots}
-              weather={weather}
-              marine={marine}
-              activeRig={getSavedTackleConfig()}
-              onSelectSpot={onSelectSpot}
-              onOpenCompare={onOpenCompare}
-            />
+            {/* [최상단 통합 배치] 모든 경고 카드 (해양 기상 특보 + 연안안전사고 위험예보 + 들물 고립 탈출 골든타임) */}
+            {(() => {
+              const isWindDangerTop = simWindSpeed >= 9.5 || simWindGust >= 13.0;
+              const isCurrentDangerTop = simCurrentVel >= 0.9;
+              const isWaveDangerTop = simWaveHeight >= 1.8;
+              if (!isWindDangerTop && !isCurrentDangerTop && !isWaveDangerTop) return null;
+
+              return (
+                <div className="p-[10px] bg-[#1E293B] border border-amber-500/50 rounded-[16px] flex items-center gap-2.5 text-slate-200 text-xs">
+                  <ShieldAlert size={22} className="text-amber-400 shrink-0" />
+                  <div>
+                    <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                      <span>🚨 해양 기상 특보급 위험 경고</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed pt-0.5">
+                      {isWaveDangerTop && '⚠️ 높은 파고(너울)로 인한 갯바위/방파제 테트라포드 월파 위험! '}
+                      {isWindDangerTop && '⚠️ 강풍/돌풍으로 인한 낚시 불가 및 실족 추락 위험! '}
+                      {isCurrentDangerTop && '⚠️ 빠른 급류/와류로 인한 채비 쓸림 및 해상 안전사고 위험! '}
+                      출조를 자제하고 안전장구(구명조끼/펠트화)를 반드시 점검하세요.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* [제안 2] 국립해양조사원·해양경찰청 연안안전사고 위험예보제 위젯 (석축, 갯바위, 해변, 백사장에만 적용) */}
             {(() => {
@@ -1159,6 +1173,13 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               );
             })()}
 
+            {/* 기상과 물때 첫 카드: 풍향(화살표), 조류 각도(화살표), 파고·너울(0.6m, 3sec) */}
+            <CompactEnvHud
+              spot={spot}
+              weather={weather}
+              marine={marine}
+            />
+
             {/* [국립해양조사원 KHOA 공식 연동] 조위 그래픽 곡선 및 물때표 */}
             {tide && (() => {
               const nearestStation = findNearestKhoaStation(spot.lat, spot.lng);
@@ -1287,10 +1308,10 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
               return (
                 <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2.5">
-                  {/* 1행: 물때 명칭 & 음력 & 국립해양조사원 관측소 & 현재 조위 */}
+                  {/* 1행: 물때 명칭 & 음력 & 국립해양조사원 관측소 & 현재 조위 (앞 아이콘 생략) */}
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-extrabold text-base sm:text-lg text-emerald-300">🌊 {displayMulText}</span>
+                      <span className="font-extrabold text-base sm:text-lg text-emerald-300">{displayMulText}</span>
                       <span className="text-xs sm:text-sm text-slate-300 font-medium">({displayLunarDate})</span>
                       <span className="text-[10.5px] px-2 py-0.5 rounded-full bg-[#0F172A] text-slate-300 border border-slate-700/60 font-medium">
                         국립해양조사원 {nearestStation.station.name} 관측소 ({nearestStation.distanceKm}km)
@@ -1436,7 +1457,17 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                 </div>
               );
             })()}
-            {/* 풍속·조류·파고 위험 수준 판정 및 위험 경고 배너 (최상단 배치로 슬라이더와 날씨 카드 연속성 확보) */}
+
+            {/* 포인트 비교 & 바람 피하기 카드 (물때 표시 카드 아래 배치) */}
+            <SpotCompareAndWindCard
+              spot={spot}
+              allSpots={allSpots}
+              weather={weather}
+              onSelectSpot={onSelectSpot}
+              onOpenCompare={onOpenCompare}
+            />
+
+            {/* 풍속·조류·파고 위험 수준 판정 및 48시간 시뮬레이터 */}
             {(() => {
               const isWindDanger = simWindSpeed >= 9.5 || simWindGust >= 13.0;
               const isWindWarning = !isWindDanger && simWindSpeed >= 6.5;
@@ -1447,27 +1478,8 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
               const isWaveDanger = simWaveHeight >= 1.8;
               const isWaveWarning = !isWaveDanger && simWaveHeight >= 1.2;
 
-              const hasAnyDanger = isWindDanger || isCurrentDanger || isWaveDanger;
-
               return (
                 <>
-                  {hasAnyDanger && (
-                    <div className="p-[10px] bg-[#1E293B] border border-amber-500/50 rounded-[16px] flex items-center gap-2.5 text-slate-200 text-xs">
-                      <ShieldAlert size={22} className="text-amber-400 shrink-0" />
-                      <div>
-                        <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                          <span>🚨 해양 기상 특보급 위험 경고</span>
-                        </div>
-                        <p className="text-[11px] text-slate-300 leading-relaxed pt-0.5">
-                          {isWaveDanger && '⚠️ 높은 파고(너울)로 인한 갯바위/방파제 테트라포드 월파 위험! '}
-                          {isWindDanger && '⚠️ 강풍/돌풍으로 인한 낚시 불가 및 실족 추락 위험! '}
-                          {isCurrentDanger && '⚠️ 빠른 급류/와류로 인한 채비 쓸림 및 해상 안전사고 위험! '}
-                          출조를 자제하고 안전장구(구명조끼/펠트화)를 반드시 점검하세요.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
                   {/* 48시간 미래 환경 타임라인 시뮬레이터 (슬라이더 바로 아래 4대 날씨 카드가 인접하여 직관적 관찰 가능) */}
                   <div className="p-[10px] bg-[#1E293B] border border-slate-700/60 rounded-[16px] space-y-2">
                     <div className="flex items-center justify-between">
@@ -1629,6 +1641,9 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         <span className="font-bold text-xs text-slate-100 shrink-0">
                           수심 및 안착시간
                         </span>
+                        <span className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold bg-[#0F172A] text-emerald-300 border border-slate-700/60 shrink-0">
+                          {tackleConfig.totalWeightGrams ?? tackleConfig.weightGrams}g
+                        </span>
                         <span className="text-[10px] text-slate-400 truncate">
                           {getTackleShortLabel(tackleConfig)}
                         </span>
@@ -1692,7 +1707,7 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
 
                 {/* 그래프 본체: 스크롤 없이 가로 100% 반응형으로 채움 */}
                 <div className="w-full h-56 pt-1 rounded-xl bg-[#0F172A] border border-slate-700/50">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={200}>
                     <AreaChart
                       data={tide.curve36 || tide.hourly72Curve || tide.hourlyCurve}
                       margin={{ top: 18, right: 10, left: -22, bottom: 0 }}
@@ -1814,16 +1829,24 @@ export const SpotDetailPanel: React.FC<SpotDetailPanelProps> = ({
                         const dCode =
                           f.dayLabel === '내일' ? 'D+1' : f.dayLabel === '모레' ? 'D+2' : 'D+0';
                         const pureTime = f.timeRange.replace(/^\((오늘|내일|모레)\)\s*/, '').trim();
+                        const tideParenMatch = pureTime.match(/\((만조|간조)\)\s*$/);
+                        const timeOnly = pureTime.replace(/\s*\((만조|간조)\)\s*$/, '').trim();
+                        const tideSubLabel = tideParenMatch ? `(${tideParenMatch[1]})` : null;
                         const cleanReason = f.reason.replace(/[^\w\sㄱ-힣.,·~()]/g, '').trim();
                         return (
                           <tr key={idx} className="hover:bg-emerald-500/10">
-                            <td className="py-1 px-2 text-center font-mono font-bold text-emerald-300 whitespace-nowrap">
+                            <td className="py-1.5 px-2 text-center font-mono font-bold text-emerald-300 whitespace-nowrap align-top">
                               {dCode}
                             </td>
-                            <td className="py-1 px-2 font-mono text-slate-200 whitespace-nowrap">
-                              {pureTime}
+                            <td className="py-1.5 px-2 font-mono text-slate-200 whitespace-nowrap align-top">
+                              <div>{timeOnly}</div>
+                              {tideSubLabel && (
+                                <div className="text-[10px] font-sans font-semibold text-amber-300 mt-0.5">
+                                  {tideSubLabel}
+                                </div>
+                              )}
                             </td>
-                            <td className="py-1 px-2 text-slate-400">
+                            <td className="py-1.5 px-2 text-slate-400 align-top">
                               {cleanReason || f.reason}
                             </td>
                           </tr>

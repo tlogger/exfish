@@ -1,9 +1,20 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
-/* 전체 기본 타이포그래피 베이스 및 글자 크기 1포인트 상향 조정 (사용자 요구사항 2) */
+/* 전체 기본 타이포그래피 베이스 (한글 가독성 최우선 Pretendard Variable 통일) */
 html {
   font-size: 16px; /* 기본 모바일 폰트 1pt 증대 (기존 15px -> 16px) */
+  font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
+}
+
+body,
+.spot-detail-panel {
+  font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  font-feature-settings: "tnum" on;
+  letter-spacing: -0.01em;
 }
 
 @media (min-width: 768px) {
